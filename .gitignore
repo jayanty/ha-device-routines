@@ -1,0 +1,33 @@
+# Private instance context and raw captures. Nothing under these paths may ever be committed
+# (PRD Section 11.3, TECH_SPEC Section 8). The .gitignore is the first commit on purpose.
+CLAUDE.local.md
+local/
+*.local.*
+*.local
+.env
+tests/fixtures/raw/
+
+# Written on the Home Assistant host by the deploy tool, never in the repository.
+.deployed
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+
+# Frontend (Phase 4)
+node_modules/
+dist/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
