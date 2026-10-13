@@ -1,0 +1,114 @@
+[project]
+name = "ha-device-routines"
+version = "0.0.1"
+description = "Device level routines for Home Assistant: schedules, run timers and a plain language schedule summary on every device page"
+requires-python = ">=3.14"
+license = { text = "MIT" }
+
+# --------------------------------------------------------------------------------------
+# ruff: every rule on, then a short list of documented exceptions (TECH_SPEC Section 9).
+# --------------------------------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["custom_components", "tests", "tools"]
+extend-exclude = ["local"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    # The formatter owns trailing commas and implicit string joins; these two rules
+    # disagree with it and ruff itself asks for them to be off.
+    "COM812",
+    "ISC001",
+    # One of each docstring pair has to be chosen: no blank line before a class docstring
+    # (D211) and the summary on the first line (D212).
+    "D203",
+    "D213",
+    # A docstring on `__init__` or a dunder repeats what the class docstring already says.
+    "D105",
+    "D107",
+    # Home Assistant raises with the message inline; one variable per message is noise.
+    "EM101",
+    "EM102",
+    "TRY003",
+    # Home Assistant's entity and service APIs pass booleans positionally.
+    "FBT001",
+    "FBT002",
+    # Config dictionaries from Home Assistant are honestly `Any` at the boundary; mypy
+    # strict still forbids leaking them further in.
+    "ANN401",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert, poke at private state, compare with literal values and take fixtures
+# they never read. Docstrings are welcome but not required there.
+"tests/**" = ["S101", "PLR2004", "SLF001", "ARG001", "D", "FBT003", "PLR0913"]
+# Command line tools print their result; the privacy check runs git with a fixed argv.
+"tools/**" = ["T201", "S603", "S607"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+combine-as-imports = true
+known-first-party = ["custom_components", "tools", "tests"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+# The integration imports only through its own package and the core; relative imports
+# keep the pure modules obviously pure.
+ban-relative-imports = "parents"
+
+# --------------------------------------------------------------------------------------
+# mypy: strict on the component and the tools; tests are type checked without the
+# strictness that fights fixture typing.
+# --------------------------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unreachable = true
+disallow_any_generics = true
+files = ["custom_components/device_routines", "tools", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+warn_return_any = false
+
+[[tool.mypy.overrides]]
+# The harness ships without a py.typed marker.
+module = ["pytest_homeassistant_custom_component.*"]
+ignore_missing_imports = true
+
+# --------------------------------------------------------------------------------------
+# pytest and coverage
+# --------------------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers"
+markers = [
+    "live: talks to a real Home Assistant instance through local/live.env. Never runs in CI.",
+]
+
+[tool.coverage.run]
+source = ["custom_components/device_routines", "tools"]
+branch = true
+omit = ["tools/ha_package/*"]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@overload",
+    'if __name__ == "__main__":',
+]

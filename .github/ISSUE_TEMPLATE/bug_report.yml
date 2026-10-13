@@ -1,0 +1,42 @@
+name: Bug report
+description: Something in Device Routines does not behave as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please attach the diagnostics download from
+        Settings > Devices & services > Device Routines > three dot menu > Download diagnostics.
+        It is redacted: entity ids, device names, area names and automation aliases are
+        replaced before the file is written, so it is safe to attach.
+
+        Please do not paste your automations or entity ids into the issue. Describe the
+        shape instead, for example "a switch with a 17:00 to 09:00 window".
+  - type: input
+    id: version
+    attributes:
+      label: Device Routines version
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+    validations:
+      required: true
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened, and what did you expect instead
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics and relevant log lines

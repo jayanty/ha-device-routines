@@ -1,0 +1,45 @@
+# Local hooks that run in the project's own virtual environment, because mypy needs the
+# pinned Home Assistant core installed and the privacy check needs the local denylist.
+# Install once with:
+#   .venv/bin/pre-commit install --hook-type pre-commit --hook-type commit-msg
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: .venv/bin/python -m ruff check --force-exclude
+        language: system
+        types: [python]
+        require_serial: true
+      - id: ruff-format
+        name: ruff format
+        entry: .venv/bin/python -m ruff format --check --force-exclude
+        language: system
+        types: [python]
+        require_serial: true
+      - id: mypy
+        name: mypy --strict
+        entry: .venv/bin/python -m mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+        require_serial: true
+      - id: style-check
+        name: style check (no em dash)
+        entry: .venv/bin/python tools/style_check.py
+        language: system
+        types: [text]
+        require_serial: true
+      - id: privacy-check-staged
+        name: privacy check (staged files)
+        entry: .venv/bin/python tools/privacy_check.py --staged
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+      - id: privacy-check-commit-msg
+        name: privacy check (commit message)
+        entry: .venv/bin/python tools/privacy_check.py --commit-msg
+        language: system
+        stages: [commit-msg]
+        require_serial: true
