@@ -1,0 +1,7 @@
+# Strings the privacy check would otherwise report, allowed on purpose. One per line,
+# compared with the whole reported text, case insensitive. Generic examples only: never a
+# real home's entity id, name, host or address.
+noreply@anthropic.com
+# The repository owner's byline on the public design documents, there by the owner's own
+# choice; the private person entity behind it stays denylisted.
+Jayant Yadav

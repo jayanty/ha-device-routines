@@ -43,3 +43,43 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | ruff, mypy, hypothesis and pre-commit are pinned in `requirements_test.txt` (Dependabot bumps them monthly) so a new lint rule cannot turn CI red on its own. Coverage is measured on `custom_components/device_routines` and on `tools/` together, with the 95 percent gate on the whole, because the deploy and privacy tools are part of the safety story. The pre-commit hooks are local hooks that run the project's own virtual environment, because mypy needs the pinned core installed. |
 | Consequence | `scripts/` from the sibling repository is not reproduced; the commands live in README and CLAUDE.md. |
 | PRD register entry | no |
+
+## 2026-10-13 L5: the owner's byline is allowed in the public documents
+
+| Field | Content |
+| --- | --- |
+| Context | The three design documents carry the owner's name as a byline, and the instance has a person entity with the same name, so the denylist built from the registries flags the byline on every one of them. |
+| Options | (a) Strip the bylines from the documents; (b) allow the byline through `tools/privacy_allowlist.txt`. |
+| Choice | (b). The documents are the owner's own public work and the GitHub account already carries the name. Only the byline text is allowed; the person entity id and every other registry token stay on the denylist. |
+| Consequence | `tools/privacy_allowlist.txt` lists the byline with a comment saying why. |
+| PRD register entry | no |
+
+## 2026-10-13 L6: what the denylist leaves out
+
+| Field | Content |
+| --- | --- |
+| Context | TECH_SPEC 8 lists what goes into the denylist but not what must stay out. Built literally, the list from this instance blocked the words Home Assistant, Repairs, Package, Devices, HACS, bar and main, the names of Home Assistant apps and HACS plugins, and the core's own entity ids such as `sun.sun`, so every document failed the check. |
+| Options | (a) Keep the literal list and allow each false positive by hand; (b) teach the builder what identifies nothing: single generic words and stock room phrases, product and integration names of software devices (Supervisor, HACS, Spook, Backup, Sun, Met.no, the sibling integration), the core's own entity ids, and manufacturer and model strings; let a hand kept `extra` list in the capture add back anything the rules miss. |
+| Choice | (b), with the word and phrase lists in `tools/make_denylist.py` and the `extra` list in the private capture. Multi word names made of generic words stay on the list unless they are stock phrases, so an area called Owl Landing is still private while Living Room is not. Device ids are always listed. |
+| Consequence | 6308 tokens for this instance; the documents pass except for the byline of L5. A false positive is fixed in the builder with a test, never by editing the generated list. |
+| PRD register entry | no |
+
+## 2026-10-13 L7: a clone with private context must have a denylist
+
+| Field | Content |
+| --- | --- |
+| Context | The spec says the hook checks against the local denylist where one exists and CI uses generic patterns only. A hook that silently falls back to generic patterns on the one machine that holds private context would be the failure mode that matters most. |
+| Options | (a) Always fall back; (b) refuse to run when `CLAUDE.local.md` exists and `local/denylist.txt` does not. |
+| Choice | (b), exit code 2 with the command to build the list. A contributor's clone has neither file and runs the generic patterns only. |
+| Consequence | Rebuilding the denylist is a documented step after any registry change; `tools/privacy_check.py --staged` says so. |
+| PRD register entry | no |
+
+## 2026-10-13 L8: the anonymizer's MAC addresses live in a reserved range
+
+| Field | Content |
+| --- | --- |
+| Context | Anonymized fixtures still need MAC shaped strings where the original had one, and the generic MAC pattern of the privacy check would flag them in CI. |
+| Options | (a) Allow each fake address by hand; (b) replace addresses with locally administered ones under `02:00:00:00:00:` and have the check ignore that range. |
+| Choice | (b). No real device carries that prefix, the check ignores exactly that prefix, and the anonymizer and the check share the constant. |
+| Consequence | Registry shaped 32 character ids are already allowed inside `tests/fixtures/`; MAC addresses now follow the same idea by value rather than by location. |
+| PRD register entry | no |

@@ -19,27 +19,27 @@ repos:
         require_serial: true
       - id: mypy
         name: mypy --strict
+        # The staged Python files, with imports followed; CI runs mypy over everything.
         entry: .venv/bin/python -m mypy
         language: system
         types: [python]
-        pass_filenames: false
         require_serial: true
       - id: style-check
         name: style check (no em dash)
-        entry: .venv/bin/python tools/style_check.py
+        entry: .venv/bin/python -m tools.style_check
         language: system
         types: [text]
         require_serial: true
       - id: privacy-check-staged
         name: privacy check (staged files)
-        entry: .venv/bin/python tools/privacy_check.py --staged
+        entry: .venv/bin/python -m tools.privacy_check --staged
         language: system
         pass_filenames: false
         always_run: true
         require_serial: true
       - id: privacy-check-commit-msg
         name: privacy check (commit message)
-        entry: .venv/bin/python tools/privacy_check.py --commit-msg
+        entry: .venv/bin/python -m tools.privacy_check --commit-msg
         language: system
         stages: [commit-msg]
         require_serial: true
