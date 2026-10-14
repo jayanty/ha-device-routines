@@ -17,7 +17,9 @@ that on.
 2. `sensor.device_routines_dev_stable` polls the GitHub API for that tag every ten minutes
    (six unauthenticated calls an hour).
 3. When the sha changes, the automation **Device Routines: deploy dev-stable** runs
-   `shell_command.deploy_device_routines`, which prints one JSON object. The automation
+   `shell_command.deploy_device_routines`, which prints one JSON object. The first reading
+   after a start never deploys, so a restart cannot undo a rollback; a tag that moved
+   while Home Assistant was down is deployed by its next move or by hand. The automation
    then does exactly one thing:
    - `restart_required`: creates the persistent notification `device_routines_deploy`
      saying which commit is waiting. Python, the manifest, services, strings and

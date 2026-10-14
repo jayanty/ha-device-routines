@@ -163,3 +163,23 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | (b). The state trigger stays for a load after startup; the start branch covers a load during startup and then stops before the rollback logic. |
 | Consequence | The installed package must be replaced with the new file once (owner's step, no restart: an automation reload is enough). A test in `tests/tools/test_ha_package.py` holds the behavior. |
 | PRD register entry | no |
+
+## 2026-10-14 L17: the deploy automation ignores the first tag reading after a start
+
+| Field | Content |
+| --- | --- |
+| Context | Stage 0 item V11: after the rollback and restart 2, `sensor.device_routines_dev_stable` changed from `unavailable` to the tag it already pointed at. The deploy trigger only allowed `not_to: [unknown, unavailable]`, so that change would have redeployed the commit that had just been rolled back. It was skipped only because the sensor's first poll came before the triggers were armed. After an automatic rollback of a broken build, the next restart could put the broken build back. |
+| Options | (a) Keep the trigger and rely on the timing; (b) add `not_from: [unknown, unavailable]`, so only a real move of the tag between two readings deploys; (c) compare the tag with the deployed commit in a condition, which needs a status call on every start. |
+| Choice | (b). A tag that moved while Home Assistant was down is picked up by the next move of the tag or by `shell_command.deploy_device_routines` by hand; the tool is idempotent either way. |
+| Consequence | Replacing the installed package (L16) brings this change too. A test in `tests/tools/test_ha_package.py` holds it, and the package README says so. |
+| PRD register entry | no |
+
+## 2026-10-14 L18: sha prefixes are sliced inside the message templates
+
+| Field | Content |
+| --- | --- |
+| Context | Stage 0 item V11: the deploy automation's `short_sha` variable rendered as the integer 842088276435, because Home Assistant gives rendered templates native types and that commit's first twelve characters are all digits. A prefix such as `1234e567...` would even become a float. |
+| Options | (a) Keep the variable and accept odd values in rare cases; (b) slice the commit inside each notification message, where the result is always text. |
+| Choice | (b). Variables keep whole JSON objects only. |
+| Consequence | A test refuses a sha slice inside `variables:`. Comes with the package replacement of L16. |
+| PRD register entry | no |

@@ -81,10 +81,15 @@ automation:
     triggers:
       - trigger: state
         entity_id: sensor.device_routines_dev_stable
+        not_from:
+          - unknown
+          - unavailable
         not_to:
           - unknown
           - unavailable
-        note: A new sha on the tag. The deploy tool is idempotent, so a repeat is harmless.
+        note: >-
+          A new sha on the tag. Not the first reading after a start: that one is the tag
+          that was already deployed, and acting on it would undo a rollback.
     conditions:
       - condition: state
         entity_id: input_boolean.device_routines_auto_deploy
@@ -99,7 +104,6 @@ automation:
       - variables:
           result: >-
             {{ deploy.stdout | from_json if deploy.returncode == 0 and deploy.stdout else {} }}
-          short_sha: "{{ (result.commit | default('unknown'))[:12] }}"
       - choose:
           - conditions:
               - "{{ deploy.returncode != 0 }}"
@@ -124,8 +128,8 @@ automation:
                   notification_id: device_routines_deploy
                   title: Device Routines deployed
                   message: >-
-                    Device Routines {{ short_sha }} deployed; restart Home Assistant to
-                    load it. Changed: {{ result.changed_files | join(', ') }}.
+                    Device Routines {{ (result.commit | default('unknown'))[:12] }} deployed;
+                    restart Home Assistant to load it. Changed: {{ result.changed_files | join(', ') }}.
               - if:
                   - condition: state
                     entity_id: input_boolean.device_routines_auto_restart
@@ -150,8 +154,8 @@ automation:
                   notification_id: device_routines_deploy
                   title: Device Routines deployed
                   message: >-
-                    Device Routines {{ short_sha }} deployed; reload the browser to see
-                    the new console.
+                    Device Routines {{ (result.commit | default('unknown'))[:12] }} deployed;
+                    reload the browser to see the new console.
 
   - id: device_routines_restart_window
     alias: "Device Routines: restart window"

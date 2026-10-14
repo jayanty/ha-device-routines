@@ -41,3 +41,21 @@ nothing here describes the instance's devices, areas or automations. Times are U
 | 23:38 | Read before the rollback: `shell_command.device_routines_deploy_status` | Deployed `870d343`, previous `82c053b`, `rollback_of` null, one backup `...-82c053bc58a1`, `python_ok` true, `hacs_managed` false |
 | 23:38 | `shell_command.rollback_device_routines` over MCP | `ok`, `changed`, commit `82c053b`, previous `870d343`, `changed_files` `["const.py"]`, `restart_required` true |
 | 23:44:54 | Owner restart 2. Health came up `ok` | `commit` `82c053b`, `deployed_at` 23:39:23Z: the rollback is running. The start event followed at 23:45:05, the same order as restart 1, which confirms the L16 finding |
+| 23:47:23 | Deploy again: push of `8420882` (the L16 fix) to `dev` | Hooks passed |
+| 23:49:12 | CI run 38656209295 green; `dev-stable` moved to `8420882` | Every job succeeded |
+| 23:54:49 | `sensor.device_routines_dev_stable` read `842088276435`; the deploy automation ran (trace `328127f0`) | `ok`, `changed`, commit `8420882`, previous `82c053b` (the rolled back code), `changed_files` `["const.py"]`, `restart_required` true; notification "Device Routines 842088276435 deployed; restart Home Assistant to load it." Finding: the `short_sha` variable rendered as an integer because that prefix is all digits (decision L18) |
+
+The instance now runs `82c053b` with `8420882` deployed and waiting for a restart, which
+is the normal resting state of the loop between a deploy and a restart. The next restart
+loads the newest deployed commit.
+
+### Record
+
+| Field | Content |
+| --- | --- |
+| Assumption | The development channel of PRD 11.2 and TECH_SPEC 10: a green push to `dev` reaches the instance with no human step except the restart, and a rollback restores the previous commit |
+| Item | V11 |
+| Status | closed, with three amendments to the package |
+| Evidence | The steps table above: Health `commit` went `82c053b`, then `870d343` (the push) after restart 1, then `82c053b` (the rollback) after restart 2; the loop deployed `8420882` by itself 5 minutes 37 seconds after its promotion |
+| Consequence | Decisions L16 (the post restart check records a load during startup and runs in parallel mode), L17 (the first tag reading after a start never deploys, so a restart cannot undo a rollback) and L18 (sha prefixes are sliced inside message templates). The installed package must be replaced once with the new file and automations reloaded; no restart is needed for that. TECH_SPEC 10.2 is unchanged in intent; the package is its implementation |
+| Fixtures | none |

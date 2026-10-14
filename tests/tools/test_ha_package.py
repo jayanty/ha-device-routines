@@ -177,3 +177,23 @@ def test_the_readme_covers_the_bootstrap_and_the_rollback() -> None:
 
     for phrase in ("Bootstrap", "restart policy", "rolling back", "HACS channel", "<owner>"):
         assert phrase.lower() in text.lower(), phrase
+
+
+def test_the_first_reading_after_a_start_never_deploys() -> None:
+    """Stage 0 V11: after a restart the tag sensor goes from unavailable to the old sha.
+
+    Deploying on that change would put back a commit that was just rolled back.
+    """
+    trigger = package()["automation"][0]["triggers"][0]
+
+    assert set(trigger["not_from"]) == {"unknown", "unavailable"}
+    assert set(trigger["not_to"]) == {"unknown", "unavailable"}
+
+
+def test_no_variable_holds_a_bare_sha_prefix() -> None:
+    """Stage 0 V11: native template typing turned an all digit sha prefix into a number."""
+    for node in walk(package()["automation"]):
+        variables = node.get("variables")
+        if isinstance(variables, dict):
+            for template in variables.values():
+                assert "[:12]" not in str(template), template
