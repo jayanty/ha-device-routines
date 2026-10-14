@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.14"
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements_test.txt
+      - run: ruff check .
+      - run: ruff format --check .
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements_test.txt
+      - run: mypy
+
+  test:
+    name: test (${{ matrix.core }})
+    runs-on: ubuntu-latest
+    # The latest core leg is informative until it passes (TECH_SPEC 9); it never blocks.
+    continue-on-error: ${{ matrix.core == 'latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        core: [pinned, latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements_test.txt
+      - name: Install the latest core over the pin
+        if: matrix.core == 'latest'
+        run: pip install --upgrade pytest-homeassistant-custom-component homeassistant
+      - run: pytest -m "not live" --cov --cov-report=term-missing
+
+  hassfest:
+    name: hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: hacs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hacs/action@main
+        with:
+          category: integration
+          # The brands pull request is Phase 4 task 4.5; until it is merged the brands
+          # check cannot pass for a reason unrelated to this repository.
+          ignore: brands
+
+  privacy:
+    name: privacy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: python -m tools.privacy_check --ci
+
+  style:
+    name: style
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: python -m tools.style_check
+
+  deploy-tool-parity:
+    name: deploy-tool-parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compare tools/ha_deploy.py with the sibling repository's main branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh api repos/jayanty/ha-device-links/contents/tools/ha_deploy.py?ref=main \
+               --jq '.content' > sibling.b64 2>/dev/null; then
+            echo "::notice::The sibling repository or its tools/ha_deploy.py is not readable from here; parity not checked."
+            exit 0
+          fi
+          base64 -d sibling.b64 > sibling_ha_deploy.py
+          if ! diff -u sibling_ha_deploy.py tools/ha_deploy.py; then
+            echo "::error::tools/ha_deploy.py differs from the sibling's copy (PRD D15)."
+            exit 1
+          fi
+          echo "tools/ha_deploy.py is identical in both repositories."
+
+  promote:
+    name: promote
+    # Moves dev-stable to this commit when every other job is green, and only on a push
+    # to dev. The tag is the only thing the instance ever reads (PRD 11.2, D29).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    needs: [lint, typecheck, test, hassfest, hacs, privacy, style, deploy-tool-parity]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Move the dev-stable tag
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f dev-stable "$GITHUB_SHA"
+          git push --force origin refs/tags/dev-stable
+          echo "dev-stable -> $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"

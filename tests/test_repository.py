@@ -251,3 +251,40 @@ def test_only_the_adapter_reaches_internals() -> None:
 
 def test_no_em_dash_in_any_tracked_file() -> None:
     assert style_check.scan_files(style_check.tracked_files(REPO_ROOT)) == []
+
+
+# --------------------------------------------------------------------------------------
+# CI: the job names are the required checks on main
+# --------------------------------------------------------------------------------------
+
+REQUIRED_CHECKS = {
+    "lint",
+    "typecheck",
+    "test (pinned)",
+    "hassfest",
+    "hacs",
+    "privacy",
+    "style",
+    "deploy-tool-parity",
+}
+
+
+def test_ci_job_names_are_the_required_checks_plus_the_promotion() -> None:
+    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())
+    jobs = workflow["jobs"]
+    names = {job["name"].replace("${{ matrix.core }}", "pinned") for job in jobs.values()}
+
+    assert names == REQUIRED_CHECKS | {"promote"}
+    assert set(jobs["promote"]["needs"]) == set(jobs) - {"promote"}
+    assert "refs/heads/dev" in jobs["promote"]["if"]
+
+
+def test_the_release_workflow_builds_the_hacs_zip() -> None:
+    path = REPO_ROOT / ".github" / "workflows" / "release.yml"
+    workflow = yaml.safe_load(path.read_text())
+    # PyYAML reads the bare `on` key as the boolean True.
+    triggers = workflow.get("on", workflow.get(True))
+
+    assert triggers["push"]["tags"] == ["v*"]
+    assert "device_routines.zip" in path.read_text()
+    assert "manifest.json" in path.read_text()
