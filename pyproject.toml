@@ -56,8 +56,9 @@ ignore = [
 # they never read. Docstrings are welcome but not required there.
 "tests/**" = ["S101", "PLR2004", "SLF001", "ARG001", "D", "FBT003", "PLR0913", "S603", "S607"]
 # The tool tests assemble token shaped strings at runtime so that the test source never
-# contains one; the f-string suggestion would put them back.
-"tests/tools/**" = ["FLY002"]
+# contains one; the f-string suggestion would put them back. The deploy tests also pass
+# obviously fake tokens and stub network functions with lambdas that ignore arguments.
+"tests/tools/**" = ["FLY002", "S105", "S106", "ARG002", "ARG005"]
 # Command line tools print their result; the privacy check runs git with a fixed argv.
 "tools/**" = ["T201", "S603", "S607"]
 
@@ -101,6 +102,12 @@ warn_return_any = false
 # The harness ships without a py.typed marker.
 module = ["pytest_homeassistant_custom_component.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# A standalone script whose tests stub its network and filesystem calls through the
+# module attributes (`ha_deploy.urllib`, `ha_deploy.shutil`).
+module = ["tools.ha_deploy"]
+implicit_reexport = true
 
 # --------------------------------------------------------------------------------------
 # pytest and coverage

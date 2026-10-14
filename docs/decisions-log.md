@@ -103,3 +103,23 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | The new lookups everywhere. For the hub device the entry id is the integration's own. For attaching to another integration's device (Phase 2, after Stage 0 item V9) the lookup must use that integration's entry id or `async_get_devices`, which is now the first thing V9 has to establish. |
 | Consequence | V9 in the Stage 0 report records which lookup resolves another integration's device on this core. |
 | PRD register entry | no |
+
+## 2026-10-13 L11: what the deploy tool reports after a change
+
+| Field | Content |
+| --- | --- |
+| Context | TECH_SPEC 10.1 names the files that set `restart_required` (Python, the manifest, services, strings, translations), a blueprint only change as `reload_automations` and a frontend only change as `browser_reload`, but says nothing about the other files in the component (icons, the quality scale file, the blueprint directory listing) or about a change that mixes classes. |
+| Options | (a) Only the named files require a restart, anything else sets no flag; (b) every file outside `blueprints/` and `frontend/` requires a restart, because Home Assistant reads all of them at startup, and the two lighter flags are set only when no restart is needed. |
+| Choice | (b), implemented in `classify()` with a table test. A restart covers a reload, so a Python plus blueprint change reports `restart_required` alone. |
+| Consequence | The Home Assistant package of task 0.6 can act on exactly one flag per deploy. |
+| PRD register entry | no |
+
+## 2026-10-13 L12: the deploy tool keeps v1 compatibility for the sibling
+
+| Field | Content |
+| --- | --- |
+| Context | `tools/ha_deploy.py` is vendored identically in both repositories (PRD D15). The sibling's instance already runs v1 with `--branch dev`, `--config-dir`, backups under `<config>/<domain>/backups`, a token file under `<config>/<domain>/` and a `DEVICE_LINKS_DEPLOY_TOKEN` variable. |
+| Options | (a) Break those callers and update the sibling's configuration in the same pull request; (b) keep every v1 spelling working: `--branch` and `--config-dir` as aliases, legacy backups still listed and restorable, the legacy token file still read, and `<DOMAIN>_DEPLOY_TOKEN` honoured next to the generic `HA_DEPLOY_TOKEN`. |
+| Choice | (b). New backups go to `<config>/.ha_deploy/<domain>/backups`; a rollback consumes the newest backup wherever it lives. |
+| Consequence | The backport pull request to the sibling changes no configuration there. The CI parity job compares the file with the sibling's `main` only when that repository is readable; while it is private the job records a skip, not a pass. |
+| PRD register entry | no |

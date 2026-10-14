@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Deploy tool `tools/ha_deploy.py` v1.1, shared with the sibling repository: deploys a
+  tag, branch or commit (default the `dev-stable` tag CI promotes) into the running
+  instance without ever restarting it, is idempotent, says whether a restart, an
+  automation reload or a browser reload is needed, keeps five backups, refuses a second
+  rollback in a row and reports the deployed commit, the HACS channel and whether the
+  deployed code parses.
 - Integration skeleton: a zero field config flow creating the single entry, the hub
   service device with its Health sensor (version, running commit, channel, Home
   Assistant version and the self check fields), config entry diagnostics with secret
