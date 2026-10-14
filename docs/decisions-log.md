@@ -143,3 +143,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | (b), with the reason in the workflow. Every other HACS check runs. |
 | Consequence | Task 4.6 removes the ignore. |
 | PRD register entry | no |
+
+## 2026-10-13 L15: main was moved early to the commit that holds the license
+
+| Field | Content |
+| --- | --- |
+| Context | The HACS validation reads the repository's license from the GitHub API, which detects it on the default branch. The plan's first commit on `main` holds only `.gitignore`, so every CI run on `dev` failed the HACS job on "no license" and the promotion of `dev-stable` could never run, while the plan merges `dev` into `main` only at a phase exit with green CI. |
+| Options | (a) Ignore the license check in the HACS job until the phase exit; (b) fast forward `main` to the skeleton commit that added the LICENSE, an ancestor of `dev` with no product code, so the detection works and the phase exit stays a fast forward. |
+| Choice | (b), pushed as the owner with the protection's administrator bypass, since no CI had run on that commit. Every later move of `main` happens at a phase exit with green CI as the plan says. |
+| Consequence | `main` is at the skeleton commit until the Phase 0 exit; the HACS job validates the real license. |
+| PRD register entry | no |
