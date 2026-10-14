@@ -13,7 +13,8 @@ INTEGRATION_TITLE: Final = "Device Routines"
 HUB_IDENTIFIER: Final = "hub"
 HUB_MODEL: Final = "Hub"
 
-# Platforms forwarded to the config entry, in setup order.
+# Platforms forwarded to the config entry, in setup order. Later phases append their
+# platforms here.
 PLATFORMS: Final[list[Platform]] = [Platform.SENSOR]
 
 # Health sensor states (TECH_SPEC 10.3).
