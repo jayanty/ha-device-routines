@@ -4,7 +4,7 @@ Oct 13, 2026 · @Jayant Yadav
 
 The build order for Claude Code: Phase 0, Stage 0, then Phases 1 to 4, each with tasks, tests, validation steps and exit criteria. Behavior comes from PRD (public), design from Technical spec (public), private instance facts from Instance context (private). This tab is public and becomes `docs/IMPLEMENTATION_PLAN.md`. Section 8 is the handoff.
 
-Status: Phase 0 in progress (2026-10-13). Tasks 0.1 to 0.8 are done on `dev`; task 0.9 (bootstrap on the instance) and task 0.10 (end to end proof, Stage 0 item V11) need Jayant. Stage 0 not started.
+Status: Phase 0 done (2026-10-14): `main` at the Phase 0 merge, no release tag. Stage 0 in progress: V11 closed (with decisions L16 to L18), V2 and V4 next; every write item waits for Jayant's approval.
 
 ## 0. Rules of engagement (Claude Code reads this first)
 
