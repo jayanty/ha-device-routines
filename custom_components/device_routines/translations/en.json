@@ -1,0 +1,26 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Device Routines",
+        "description": "Device Routines adds start and stop times, run timers and a plain language schedule summary to your device pages. There is nothing to configure: everything else is chosen on each device page or in the options later."
+      }
+    },
+    "abort": {
+      "already_configured": "Device Routines is already set up. Only one instance is supported.",
+      "single_instance_allowed": "Device Routines is already set up. Only one instance is supported."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "health": {
+        "name": "Health",
+        "state": {
+          "ok": "OK",
+          "degraded": "Degraded",
+          "error": "Error"
+        }
+      }
+    }
+  }
+}

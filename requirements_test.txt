@@ -8,5 +8,4 @@ hypothesis==6.169.0
 mypy==2.4.0
 ruff==0.17.0
 pre-commit==4.7.0
-voluptuous-stubs==0.1.1
 types-PyYAML==6.0.12.20260906

@@ -83,3 +83,23 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | (b). No real device carries that prefix, the check ignores exactly that prefix, and the anonymizer and the check share the constant. |
 | Consequence | Registry shaped 32 character ids are already allowed inside `tests/fixtures/`; MAC addresses now follow the same idea by value rather than by location. |
 | PRD register entry | no |
+
+## 2026-10-13 L9: schemas are written with probatio
+
+| Field | Content |
+| --- | --- |
+| Context | Core 2026.10 validates with the `probatio` library and only aliases `voluptuous` to it for integrations that still import the old name. Typing against the old name gives mypy the wrong types for every form and service schema. |
+| Options | (a) `import voluptuous as vol` through the alias, with type stubs that no longer match; (b) `import probatio as vol`, the library the core actually ships and types. |
+| Choice | (b). Probatio is a hard dependency of every core version the integration supports (2026.10 and later). The `vol` alias keeps the code readable to anyone who knows the old library. |
+| Consequence | `voluptuous-stubs` left `requirements_test.txt`; the pure module import test refuses both names. |
+| PRD register entry | no |
+
+## 2026-10-13 L10: device registry lookups carry the config entry id
+
+| Field | Content |
+| --- | --- |
+| Context | Core 2026.10 deprecates `async_get_device` because identifiers and connections are no longer unique across config entries; the replacement lookups take a config entry id. The PRD assumes entities from this integration attach to devices other integrations created (A10). |
+| Options | Keep the deprecated call; use the new lookups. |
+| Choice | The new lookups everywhere. For the hub device the entry id is the integration's own. For attaching to another integration's device (Phase 2, after Stage 0 item V9) the lookup must use that integration's entry id or `async_get_devices`, which is now the first thing V9 has to establish. |
+| Consequence | V9 in the Stage 0 report records which lookup resolves another integration's device on this core. |
+| PRD register entry | no |

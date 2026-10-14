@@ -1,0 +1,15 @@
+{
+  "domain": "device_routines",
+  "name": "Device Routines",
+  "after_dependencies": ["ai_task"],
+  "codeowners": ["@jayanty"],
+  "config_flow": true,
+  "dependencies": ["automation", "blueprint", "timer", "schedule"],
+  "documentation": "https://github.com/jayanty/ha-device-routines",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/jayanty/ha-device-routines/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.0.1"
+}

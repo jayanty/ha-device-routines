@@ -1,0 +1,13 @@
+{
+  "entity": {
+    "sensor": {
+      "health": {
+        "default": "mdi:heart-pulse",
+        "state": {
+          "degraded": "mdi:heart-flash",
+          "error": "mdi:heart-off"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,326 @@
+# The Home Assistant Integration Quality Scale, as it stands for Device Routines.
+#
+# The scale is awarded only to core integrations; a custom integration is shown as custom
+# and is not scored. This project tracks every rule anyway, as its engineering checklist
+# (PRD G6). Three statuses, meaning what they say: `done` is satisfied now and something in
+# the test suite says so; `exempt` cannot apply, with the reason; `todo` names what is
+# missing and the phase that brings it. `tests/test_repository.py` checks that this file
+# accounts for exactly the official rules and that every entry carries a reason.
+#
+# Phase 0 ships a skeleton, so most rules are still todo. That is the honest state.
+
+rules:
+  # --- Bronze -------------------------------------------------------------------------
+
+  action-setup:
+    status: todo
+    comment: >-
+      The skip, pause, resume, enable, disable and maintenance actions arrive in Phase 2
+      (task 2.7) and will be registered in `async_setup` with translated validation errors.
+
+  appropriate-polling:
+    status: done
+    comment: >-
+      Nothing polls. The Health report is read once at setup and the Schedule summaries of
+      Phase 1 recompute on events only; a test will assert that no interval listener exists.
+
+  brands:
+    status: todo
+    comment: >-
+      `brand/icon.png` and `brand/logo.png` are placeholders. The final assets and the
+      pull request to `home-assistant/brands` are Phase 4 task 4.5.
+
+  common-modules:
+    status: todo
+    comment: >-
+      `entity.py` holds the hub base class. The coordinator (`summary.py`) and the service
+      layer (`manager.py`) arrive in Phases 1 and 2 and complete the shared modules.
+
+  config-flow:
+    status: done
+    comment: >-
+      A zero field user step with translated title and description creates the single entry
+      (PRD D33). The options flow arrives in Phase 1 with the settings scaffold.
+
+  config-flow-test-coverage:
+    status: done
+    comment: >-
+      `tests/integration/test_config_flow.py` covers the form, the created entry and the
+      refusal of a second instance.
+
+  dependency-transparency:
+    status: exempt
+    comment: >-
+      The integration has no Python requirements: it uses only what Home Assistant ships.
+      `tests/test_repository.py` fails if a requirement appears without a decision.
+
+  docs-actions:
+    status: todo
+    comment: >-
+      The user guide section on the actions is written with the actions in Phase 2 (task
+      2.11) and the dashboards section in Phase 3 (task 3.12).
+
+  docs-high-level-description:
+    status: done
+    comment: >-
+      README.md opens with what the integration does and why, without instance names.
+
+  docs-installation-instructions:
+    status: done
+    comment: >-
+      README.md walks through the HACS custom repository install step by step.
+
+  docs-removal-instructions:
+    status: todo
+    comment: >-
+      The user guide section Removing the integration, with the keep or delete setting of
+      PRD 10.4, is Phase 2 task 2.11.
+
+  entity-event-setup:
+    status: todo
+    comment: >-
+      No entity subscribes to events yet. The Schedule sensors of Phase 1 subscribe in
+      `async_added_to_hass` and unsubscribe in `async_will_remove_from_hass`.
+
+  entity-unique-id:
+    status: done
+    comment: >-
+      Every entity sets a unique id built from the domain, the hub or device id and the
+      entity key (`entity.py`).
+
+  has-entity-name:
+    status: done
+    comment: >-
+      The hub base class sets `has_entity_name` and every entity carries a translation key.
+
+  runtime-data:
+    status: done
+    comment: >-
+      Everything the entry owns is a `DeviceRoutinesRuntimeData` on `entry.runtime_data`;
+      nothing is kept in `hass.data`.
+
+  test-before-configure:
+    status: exempt
+    comment: >-
+      There is nothing to connect to. Setup reads two local files and configures Home
+      Assistant itself, so there is no connection to test before creating the entry.
+
+  test-before-setup:
+    status: exempt
+    comment: >-
+      Setup cannot fail for a reason a retry would fix: it reads two optional local files
+      and tolerates their absence. The adapter check of Phase 1 raises a Repairs issue
+      instead of failing setup, because the routines keep running without the integration.
+
+  unique-config-entry:
+    status: done
+    comment: >-
+      The manifest declares `single_config_entry` and the flow sets the domain as the
+      unique id, so a second instance is refused; a test proves it.
+
+  # --- Silver -------------------------------------------------------------------------
+
+  action-exceptions:
+    status: todo
+    comment: >-
+      Arrives with the actions in Phase 2: `ServiceValidationError` with a translation key
+      when no target has a routine, `HomeAssistantError` when a write fails.
+
+  config-entry-unloading:
+    status: done
+    comment: >-
+      `async_unload_entry` unloads the platforms; a test checks the entry reaches
+      `NOT_LOADED` and the Health sensor becomes unavailable.
+
+  docs-configuration-parameters:
+    status: todo
+    comment: >-
+      The global settings of PRD 10.4 are documented with the options flow in Phase 1 and
+      completed in Phase 3 (task 3.9).
+
+  docs-installation-parameters:
+    status: exempt
+    comment: >-
+      Setup has no parameters by design (PRD D33); the README says so.
+
+  entity-unavailable:
+    status: todo
+    comment: >-
+      Phase 2 entities become unavailable with a `reason` attribute when the adapter is
+      incompatible, a routine is detached or the target entity is missing (TECH_SPEC 4.5).
+
+  integration-owner:
+    status: done
+    comment: >-
+      `manifest.json` names the code owner, who is the repository owner and the only
+      maintainer for now.
+
+  log-when-unavailable:
+    status: todo
+    comment: >-
+      Logged once when the adapter check fails and once when it recovers, with the
+      adapter in Phase 1 (task 1.5).
+
+  parallel-updates:
+    status: done
+    comment: >-
+      `PARALLEL_UPDATES = 0` on the sensor platform; nothing polls, so there is nothing to
+      serialize. Each later platform sets it the same way.
+
+  reauthentication-flow:
+    status: exempt
+    comment: >-
+      There are no credentials: the integration configures Home Assistant itself.
+
+  test-coverage:
+    status: done
+    comment: >-
+      CI fails under 95 percent coverage of the component and the tools (pyproject.toml).
+
+  # --- Gold ---------------------------------------------------------------------------
+
+  devices:
+    status: done
+    comment: >-
+      The hub is a service device holding the house wide entities; from Phase 1 the
+      Schedule sensors attach to the devices other integrations created.
+
+  diagnostics:
+    status: done
+    comment: >-
+      Config entry diagnostics with secret shaped option keys redacted. Phase 1 adds the
+      Store and summaries with entity ids, names and aliases redacted (PRD 10.3).
+
+  discovery-update-info:
+    status: exempt
+    comment: >-
+      Nothing is discovered: there is no device or service of its own to find.
+
+  discovery:
+    status: exempt
+    comment: >-
+      Nothing is discovered: there is no device or service of its own to find.
+
+  docs-data-update:
+    status: todo
+    comment: >-
+      The user guide explains in Phase 1 how the Schedule sensor stays fresh without
+      polling (PRD FR-S7).
+
+  docs-examples:
+    status: todo
+    comment: >-
+      Worked examples (a window, a run timer, a weekly schedule) go into the user guide as
+      each feature ships, Phases 1 to 3.
+
+  docs-known-limitations:
+    status: todo
+    comment: >-
+      The user guide gets a limitations section in Phase 1 (what the parser cannot read)
+      and grows with each phase.
+
+  docs-supported-devices:
+    status: todo
+    comment: >-
+      The supported domains table of PRD 5.3 goes into the user guide in Phase 2.
+
+  docs-supported-functions:
+    status: todo
+    comment: >-
+      The routine catalog and the Schedule sensor are documented in the user guide as they
+      ship, Phases 1 to 3.
+
+  docs-troubleshooting:
+    status: todo
+    comment: >-
+      The Repairs catalog of TECH_SPEC 4.8 becomes the troubleshooting section in Phase 2.
+
+  docs-use-cases:
+    status: todo
+    comment: >-
+      The user guide opens with the three use cases of PRD Section 1 in Phase 1.
+
+  dynamic-devices:
+    status: todo
+    comment: >-
+      Phase 1: Schedule sensors appear when an automation starts acting on a device and are
+      removed when none does, following registry events.
+
+  entity-category:
+    status: done
+    comment: >-
+      The Health sensor is diagnostic. Later entities follow the categories of PRD 4.2.
+
+  entity-device-class:
+    status: done
+    comment: >-
+      The Health sensor is an enum sensor with translated states.
+
+  entity-disabled-by-default:
+    status: todo
+    comment: >-
+      The advanced routine controls of PRD 4.2 are created disabled by default in Phase 2.
+
+  entity-translations:
+    status: done
+    comment: >-
+      Every entity name and state comes from `strings.json`; `tests/test_repository.py`
+      checks that each translation key the source uses is defined.
+
+  exception-translations:
+    status: todo
+    comment: >-
+      Arrives with the first raised exceptions in Phase 2.
+
+  icon-translations:
+    status: done
+    comment: >-
+      Icons come from `icons.json`, including the Health states.
+
+  reconfiguration-flow:
+    status: exempt
+    comment: >-
+      There is no connection to reconfigure; every setting is an option.
+
+  repair-issues:
+    status: todo
+    comment: >-
+      The Repairs catalog of TECH_SPEC 4.8 starts with `adapter_incompatible` in Phase 1.
+
+  stale-devices:
+    status: todo
+    comment: >-
+      Phase 2 removes an opted out device's entities from the registry and cleans up its
+      managed automation after the cleanup period (PRD D28).
+
+  # --- Platinum -----------------------------------------------------------------------
+
+  async-dependency:
+    status: exempt
+    comment: >-
+      There is no library: the integration uses Home Assistant's own helpers only.
+
+  inject-websession:
+    status: exempt
+    comment: >-
+      Nothing makes HTTP requests. The optional AI summary of Phase 3 calls an AI Task
+      entity, not a web session.
+
+  strict-typing:
+    status: done
+    comment: >-
+      `mypy --strict` runs on the component and the tools in CI and in the pre commit hook.
+
+  # --- Documentation of the automation building blocks ----------------------------------
+
+  docs-conditions:
+    status: todo
+    comment: >-
+      The `device_routines.is_paused` and `is_active` conditions and their documentation
+      arrive in Phase 3 (task 3.4).
+
+  docs-triggers:
+    status: todo
+    comment: >-
+      The `device_routines.action_skipped`, `paused` and `resumed` triggers and their
+      documentation arrive in Phase 3 (task 3.4).

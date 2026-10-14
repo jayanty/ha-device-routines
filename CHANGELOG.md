@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Integration skeleton: a zero field config flow creating the single entry, the hub
+  service device with its Health sensor (version, running commit, channel, Home
+  Assistant version and the self check fields), config entry diagnostics with secret
+  shaped options redacted, translations, icons and the quality scale checklist with every
+  official rule accounted for.
 - Privacy tooling: `tools/privacy_check.py` (pre commit hook on staged content and the
   commit message, generic patterns in CI), `tools/make_denylist.py` (builds the private
   denylist from a registries capture), `tools/anonymize.py` (turns raw captures into
