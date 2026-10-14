@@ -1,0 +1,250 @@
+# Device Routines: development channel package (TECH_SPEC 10.2, PRD 11.2).
+#
+# Home Assistant pulls the code itself. CI moves the `dev-stable` tag on every green push
+# to `dev`; the REST sensor below polls that tag every ten minutes, the deploy automation
+# runs `tools/ha_deploy.py` when the sha changes, and a restart is left to a person unless
+# the opt in restart window is turned on. Nothing here is copied from a laptop.
+#
+# Install once (IMPLEMENTATION_PLAN task 0.9):
+#   1. Copy tools/ha_deploy.py to /config/tools/ha_deploy.py.
+#   2. Copy this file to /config/packages/device_routines_dev.yaml, with
+#      `homeassistant: packages: !include_dir_named packages` in configuration.yaml,
+#      or merge its sections into configuration.yaml.
+#   3. Replace <owner> below with the GitHub user that owns ha-device-routines.
+#   4. Check the configuration and restart.
+#   5. Turn on input_boolean.device_routines_auto_deploy and set the restart window.
+#
+# The only value to edit is <owner>. See README.md next to this file.
+
+shell_command:
+  # The deploy tool prints one JSON object on stdout; every automation below parses it.
+  deploy_device_routines: >-
+    python3 /config/tools/ha_deploy.py deploy --domain device_routines
+    --repo <owner>/ha-device-routines --ref {{ ref | default('dev-stable') }}
+  rollback_device_routines: >-
+    python3 /config/tools/ha_deploy.py rollback --domain device_routines
+  device_routines_deploy_status: >-
+    python3 /config/tools/ha_deploy.py status --domain device_routines
+
+rest:
+  - resource: https://api.github.com/repos/<owner>/ha-device-routines/git/ref/tags/dev-stable
+    scan_interval: 600
+    headers:
+      Accept: application/vnd.github+json
+      User-Agent: home-assistant-device-routines
+    sensor:
+      - name: Device Routines dev-stable
+        unique_id: device_routines_dev_stable
+        icon: mdi:tag-arrow-down
+        # The first twelve characters of the commit the tag points at, or unknown while
+        # the tag does not exist yet (before the first green push).
+        value_template: >-
+          {{ value_json.object.sha[:12]
+             if value_json is defined and value_json.object is defined
+             else 'unknown' }}
+
+input_boolean:
+  device_routines_auto_deploy:
+    name: Device Routines auto deploy
+    icon: mdi:download-network
+  device_routines_auto_restart:
+    name: Device Routines auto restart
+    icon: mdi:restart-alert
+
+input_datetime:
+  device_routines_restart_window_start:
+    name: Device Routines restart window start
+    has_date: false
+    has_time: true
+  device_routines_restart_window_end:
+    name: Device Routines restart window end
+    has_date: false
+    has_time: true
+
+# The last commit the integration loaded successfully. Written by the post restart check
+# below whenever the Health sensor reports ok, read by the same check after a restart to
+# tell a deploy that broke the integration from one that was never set up.
+input_text:
+  device_routines_last_good_commit:
+    name: Device Routines last good commit
+    max: 40
+
+automation:
+  - id: device_routines_dev_deploy
+    alias: "Device Routines: deploy dev-stable"
+    description: >-
+      Deploys the commit the dev-stable tag points at as soon as the REST sensor sees it
+      move, then reports what the deploy needs: a restart, an automation reload or a
+      browser reload. Restarts only inside the opt in window.
+    mode: queued
+    max: 3
+    triggers:
+      - trigger: state
+        entity_id: sensor.device_routines_dev_stable
+        not_to:
+          - unknown
+          - unavailable
+        note: A new sha on the tag. The deploy tool is idempotent, so a repeat is harmless.
+    conditions:
+      - condition: state
+        entity_id: input_boolean.device_routines_auto_deploy
+        state: "on"
+        note: The master switch of the pull loop.
+    actions:
+      - action: shell_command.deploy_device_routines
+        data:
+          ref: dev-stable
+        response_variable: deploy
+        note: One JSON object on stdout, or an error object on stderr with a non zero code.
+      - variables:
+          result: >-
+            {{ deploy.stdout | from_json if deploy.returncode == 0 and deploy.stdout else {} }}
+          short_sha: "{{ (result.commit | default('unknown'))[:12] }}"
+      - choose:
+          - conditions:
+              - "{{ deploy.returncode != 0 }}"
+            sequence:
+              - action: persistent_notification.create
+                data:
+                  notification_id: device_routines_deploy
+                  title: Device Routines deploy failed
+                  message: >-
+                    The deploy tool exited with code {{ deploy.returncode }}:
+                    {{ deploy.stderr }}
+            note: Nothing was swapped into place; the previous code keeps running.
+          - conditions:
+              - "{{ not result.changed }}"
+            sequence:
+              - stop: The commit was already deployed.
+          - conditions:
+              - "{{ result.restart_required }}"
+            sequence:
+              - action: persistent_notification.create
+                data:
+                  notification_id: device_routines_deploy
+                  title: Device Routines deployed
+                  message: >-
+                    Device Routines {{ short_sha }} deployed; restart Home Assistant to
+                    load it. Changed: {{ result.changed_files | join(', ') }}.
+              - if:
+                  - condition: state
+                    entity_id: input_boolean.device_routines_auto_restart
+                    state: "on"
+                  - condition: time
+                    after: input_datetime.device_routines_restart_window_start
+                    before: input_datetime.device_routines_restart_window_end
+                then:
+                  - action: homeassistant.restart
+                    note: Only inside the window, only when the switch is on (PRD D30).
+            note: Python, manifest, services, strings or translations changed.
+          - conditions:
+              - "{{ result.reload_automations }}"
+            sequence:
+              - action: automation.reload
+                note: Only the blueprint changed; routines re read it on reload.
+          - conditions:
+              - "{{ result.browser_reload }}"
+            sequence:
+              - action: persistent_notification.create
+                data:
+                  notification_id: device_routines_deploy
+                  title: Device Routines deployed
+                  message: >-
+                    Device Routines {{ short_sha }} deployed; reload the browser to see
+                    the new console.
+
+  - id: device_routines_restart_window
+    alias: "Device Routines: restart window"
+    description: >-
+      At the start of the window, restarts once when a deploy is waiting for a restart
+      and the opt in switch is on. A deploy is waiting when the commit the tool deployed
+      differs from the commit the Health sensor reports.
+    mode: single
+    triggers:
+      - trigger: time
+        at: input_datetime.device_routines_restart_window_start
+    conditions:
+      - condition: state
+        entity_id: input_boolean.device_routines_auto_restart
+        state: "on"
+    actions:
+      - action: shell_command.device_routines_deploy_status
+        response_variable: status
+      - variables:
+          report: >-
+            {{ status.stdout | from_json if status.returncode == 0 and status.stdout else {} }}
+          deployed_commit: "{{ (report.deployed | default({}) or {}).commit | default('') }}"
+          running_commit: "{{ state_attr('sensor.device_routines_health', 'commit') | default('', true) }}"
+      - condition: template
+        value_template: "{{ deployed_commit != '' and deployed_commit != running_commit }}"
+        note: A template, because the comparison spans a shell response and an attribute.
+      - action: homeassistant.restart
+        note: At most once per deploy, because afterwards the two commits are equal.
+
+  - id: device_routines_post_restart_check
+    alias: "Device Routines: post restart check"
+    description: >-
+      Remembers the commit each successful load ran, and three minutes after a start
+      rolls a deploy back when the integration did not come up. The deploy tool refuses a
+      second rollback without a deploy in between, so this cannot loop.
+    mode: queued
+    max: 3
+    triggers:
+      - trigger: state
+        entity_id: sensor.device_routines_health
+        to: ok
+        id: healthy
+      - trigger: homeassistant
+        event: start
+        id: started
+    actions:
+      - choose:
+          - conditions:
+              - condition: trigger
+                id: healthy
+            sequence:
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.device_routines_last_good_commit
+                data:
+                  value: "{{ state_attr('sensor.device_routines_health', 'commit') or '' }}"
+            note: The integration loaded; this commit is known good.
+          - conditions:
+              - condition: trigger
+                id: started
+            sequence:
+              - delay:
+                  minutes: 3
+              - condition: state
+                entity_id: sensor.device_routines_health
+                state:
+                  - unavailable
+                  - unknown
+                note: Three minutes after a start the Health sensor is still missing.
+              - action: shell_command.device_routines_deploy_status
+                response_variable: status
+              - variables:
+                  report: >-
+                    {{ status.stdout | from_json
+                       if status.returncode == 0 and status.stdout else {} }}
+                  deployed: "{{ report.deployed | default({}) or {} }}"
+                  last_good: "{{ states('input_text.device_routines_last_good_commit') }}"
+              - condition: template
+                value_template: >-
+                  {{ deployed.commit is defined
+                     and last_good not in ('', 'unknown')
+                     and deployed.commit != last_good
+                     and not deployed.rollback_of }}
+                note: >-
+                  Only a deploy newer than the last good load is rolled back, never an
+                  install that has not worked yet and never a rollback itself.
+              - action: shell_command.rollback_device_routines
+                response_variable: rolled
+              - action: persistent_notification.create
+                data:
+                  notification_id: device_routines_deploy
+                  title: Device Routines rolled back
+                  message: >-
+                    Device Routines did not load after the restart, so the previous
+                    commit was restored. Restart Home Assistant to load it.
+                    {{ rolled.stderr }}

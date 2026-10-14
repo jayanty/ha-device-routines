@@ -68,8 +68,8 @@ DEFAULT_REF = "dev-stable"
 # owner writes once on the host. It is never a command line argument: an argument would land
 # in the shell history, in the `shell_command` block and in the process list. A public
 # repository needs no token at all.
-TOKEN_ENV = "HA_DEPLOY_TOKEN"  # noqa: S105
-TOKEN_FILENAME = "deploy_token"  # noqa: S105
+TOKEN_ENV = "HA_DEPLOY_TOKEN"
+TOKEN_FILENAME = "deploy_token"
 
 # The only hosts an Authorization header is ever attached to. Checked per request rather
 # than once at the start: `codeload` redirects, and a token must not follow it off GitHub.
@@ -176,7 +176,7 @@ def read_token(config_dir: Path, domain: str) -> str | None:
     for path in _token_paths(Path(config_dir), domain):
         try:
             contents = path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
+        except (OSError, UnicodeDecodeError):
             continue
         _restrict(path)
         token = contents.strip()
@@ -204,9 +204,9 @@ def _fetch(url: str, *, timeout: float, accept: str, token: str | None = None) -
     """Fetch a URL over HTTPS, capped so a runaway response cannot fill /config."""
     require_https(url)
     headers = _authorized(url, token) | {"Accept": accept}
-    request = urllib.request.Request(url, headers=headers)  # noqa: S310
+    request = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             payload: bytes = response.read(MAX_ARCHIVE_BYTES + 1)
     except urllib.error.HTTPError as err:
         raise DeployError(f"cannot fetch {url}: {_explain(err, token)}") from err
@@ -356,7 +356,7 @@ def python_ok(root: Path) -> bool:
     for path in sorted(root.rglob("*.py")):
         try:
             compile(path.read_bytes(), str(path), "exec")
-        except SyntaxError, ValueError, OSError:
+        except (SyntaxError, ValueError, OSError):
             return False
     return True
 
@@ -428,7 +428,7 @@ def read_deployed(component_dir: Path) -> dict[str, object] | None:
         return None
     try:
         document: object = json.loads(marker.read_text(encoding="utf-8"))
-    except OSError, UnicodeDecodeError, json.JSONDecodeError:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     if not isinstance(document, dict):
         return None
@@ -473,7 +473,7 @@ def hacs_manages(config_dir: Path, domain: str) -> bool:
     """Report whether the HACS store says it installed this domain. Read only."""
     try:
         document: object = json.loads((config_dir / HACS_STORE).read_text(encoding="utf-8"))
-    except OSError, UnicodeDecodeError, json.JSONDecodeError:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return False
     repositories = document.get("data") if isinstance(document, dict) else None
     if not isinstance(repositories, dict):

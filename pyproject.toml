@@ -61,6 +61,17 @@ ignore = [
 "tests/tools/**" = ["FLY002", "S105", "S106", "ARG002", "ARG005"]
 # Command line tools print their result; the privacy check runs git with a fixed argv.
 "tools/**" = ["T201", "S603", "S607"]
+# The deploy tool is byte identical in the sibling repository, whose ruff config does not
+# enable the S rules, so it cannot carry noqa comments: the two findings are silenced here.
+# S105 flags the names of the token constants, which hold no secret; S310 flags urlopen,
+# whose URL is checked to be HTTPS first.
+"tools/ha_deploy.py" = ["S105", "S310"]
+
+# The deploy tool runs inside the Home Assistant container with whatever interpreter is
+# there and is vendored into a sibling that targets an older Python, so its syntax stays at
+# 3.11 (TECH_SPEC 10.1); the formatter and the upgrade rules must not move it past that.
+[tool.ruff.per-file-target-version]
+"tools/ha_deploy.py" = "py311"
 
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"

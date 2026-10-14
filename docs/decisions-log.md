@@ -123,3 +123,23 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | (b). New backups go to `<config>/.ha_deploy/<domain>/backups`; a rollback consumes the newest backup wherever it lives. |
 | Consequence | The backport pull request to the sibling changes no configuration there. The CI parity job compares the file with the sibling's `main` only when that repository is readable; while it is private the job records a skip, not a pass. |
 | PRD register entry | no |
+
+## 2026-10-13 L13: the package helpers restore their values, and the post restart check remembers the last good commit
+
+| Field | Content |
+| --- | --- |
+| Context | TECH_SPEC 10.2 gives the package helpers initial values (auto deploy on, auto restart off, the window 03:00 to 04:00) and says the post restart check compares "a deploy newer than the last successful load". Home Assistant's `initial:` key forces a helper back to that value on every restart, which would undo the owner's choice, and nothing in the instance records when the integration last loaded. |
+| Options | (a) `initial:` on every helper and a guess at the last load; (b) no `initial:` (the helpers restore their values, the Home Assistant best practice), one extra `input_text` that the post restart check writes with the commit of every successful load, and a rollback only when the deployed commit differs from that value. |
+| Choice | (b). The bootstrap gains one manual minute: turn auto deploy on and set the window once. The extra helper also keeps the check from rolling back an install that has never worked, which is what an unconfigured integration looks like. |
+| Consequence | Task 0.9's check lists the helper with the others; the three automations of the spec stay three, the recording branch lives in the post restart check. |
+| PRD register entry | no |
+
+## 2026-10-13 L14: the HACS validation ignores the brands check until Phase 4
+
+| Field | Content |
+| --- | --- |
+| Context | The HACS action verifies that the domain exists in `home-assistant/brands`. That pull request is Phase 4 task 4.5, and the check cannot pass before it is merged for a reason unrelated to this repository. |
+| Options | (a) Let the job fail until Phase 4; (b) pass `ignore: brands` to the action now and remove it when the brands pull request merges. |
+| Choice | (b), with the reason in the workflow. Every other HACS check runs. |
+| Consequence | Task 4.6 removes the ignore. |
+| PRD register entry | no |

@@ -1120,6 +1120,13 @@ def _deployed(config_dir: Path) -> dict[str, object]:
     return marker
 
 
+def test_the_tool_uses_python_311_syntax() -> None:
+    """It runs under the container's interpreter and is vendored into an older sibling."""
+    source = Path(ha_deploy.__file__).read_text()
+
+    ast.parse(source, feature_version=(3, 11))
+
+
 def test_the_version_header_is_the_shared_one() -> None:
     assert ha_deploy.__doc__ is not None
     assert ha_deploy.__doc__.startswith("ha_deploy v1.1, shared")
