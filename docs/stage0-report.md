@@ -31,3 +31,13 @@ nothing here describes the instance's devices, areas or automations. Times are U
 
 | Time | Step | Evidence |
 | --- | --- | --- |
+| 22:54:07 | Push of `870d343` to `dev` (the V11 plan and a comment in `const.py`) | Every pre commit hook passed |
+| 22:55:49 | CI run 38650720726 green; `promote` moved `dev-stable` | Every job succeeded (lint, typecheck, test pinned and latest, hassfest, hacs, privacy, style, deploy-tool-parity, promote); the tag resolves to `870d343` |
+| 22:58:48 | `sensor.device_routines_dev_stable` changed to `870d343fd2bc` on its own poll, three minutes after the promotion | Sensor `last_changed` |
+| 22:58:48 to 22:58:49 | The deploy automation ran (trace `84baaa9c`, state stopped, finished) | The tool returned `ok`, `changed`, commit `870d343`, previous `82c053b`, `changed_files` `["const.py"]`, `restart_required` true, `hacs_managed` false, no warnings; the choose took the restart branch; auto restart is off, so no restart was attempted |
+| 22:58:49 | Notification `device_routines_deploy` | "Device Routines 870d343fd2bc deployed; restart Home Assistant to load it. Changed: const.py." |
+| 23:33:56 | Owner restart 1. `sensor.device_routines_health` came up `ok` | `commit` `870d343`, `deployed_at` 22:58:49Z, channel `dev`: equal to the pushed sha |
+| 23:34:06 to 23:37:06 | The post restart check ran from the start event (trace `b1cd7bbc`) | After the three minute delay its state condition saw `ok` and stopped: no rollback. Finding: the `to: ok` trigger never fired, because Health turned `ok` ten seconds before the start event and automations arm their triggers only at that event, so the last good commit stayed `82c053b`. Fixed in the package, decision L16 |
+| 23:38 | Read before the rollback: `shell_command.device_routines_deploy_status` | Deployed `870d343`, previous `82c053b`, `rollback_of` null, one backup `...-82c053bc58a1`, `python_ok` true, `hacs_managed` false |
+| 23:38 | `shell_command.rollback_device_routines` over MCP | `ok`, `changed`, commit `82c053b`, previous `870d343`, `changed_files` `["const.py"]`, `restart_required` true |
+| 23:44:54 | Owner restart 2. Health came up `ok` | `commit` `82c053b`, `deployed_at` 23:39:23Z: the rollback is running. The start event followed at 23:45:05, the same order as restart 1, which confirms the L16 finding |

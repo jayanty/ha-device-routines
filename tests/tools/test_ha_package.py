@@ -152,6 +152,26 @@ def test_the_integration_is_never_reloaded_as_a_substitute() -> None:
     assert "homeassistant.reload_all" not in actions
 
 
+def test_a_load_during_startup_is_recorded_as_last_good() -> None:
+    """Stage 0 V11: a load before the start event is missed by the state trigger.
+
+    Automations arm their triggers when Home Assistant has started, so a Health sensor that
+    turns ok during startup never fires `to: ok`. The start branch must record it.
+    """
+    check = package()["automation"][2]
+    branches = check["actions"][0]["choose"]
+    started = next(b for b in branches if b["conditions"][0].get("id") == "started")
+    records = [
+        node
+        for node in walk(started["sequence"])
+        if node.get("action") == "input_text.set_value"
+        and node["target"]["entity_id"] == "input_text.device_routines_last_good_commit"
+    ]
+
+    assert records, "the start branch never records a healthy load"
+    assert check["mode"] == "parallel", "a queued healthy run would wait behind the delay"
+
+
 def test_the_readme_covers_the_bootstrap_and_the_rollback() -> None:
     text = README.read_text(encoding="utf-8")
 

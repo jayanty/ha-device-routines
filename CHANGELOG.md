@@ -14,8 +14,9 @@ All notable changes to this project are documented here. The format follows
   HACS zip and publishes a release with notes from this file.
 - Home Assistant package `tools/ha_package/device_routines_dev.yaml` for the development
   channel: the shell commands, the REST sensor watching `dev-stable`, the helpers and the
-  three automations that deploy, restart inside an opt in window and roll back after a
-  failed start, with a README covering the bootstrap and the restart policy.
+  three automations that deploy, restart inside an opt in window, roll back after a
+  failed start and remember the last commit that loaded (also when it loaded during
+  startup), with a README covering the bootstrap and the restart policy.
 - Deploy tool `tools/ha_deploy.py` v1.1, shared with the sibling repository: deploys a
   tag, branch or commit (default the `dev-stable` tag CI promotes) into the running
   instance without ever restarting it, is idempotent, says whether a restart, an

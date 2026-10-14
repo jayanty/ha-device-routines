@@ -187,13 +187,18 @@ automation:
       Remembers the commit each successful load ran, and three minutes after a start
       rolls a deploy back when the integration did not come up. The deploy tool refuses a
       second rollback without a deploy in between, so this cannot loop.
-    mode: queued
+    # Parallel, so a healthy load is recorded at once instead of waiting behind the three
+    # minute delay of the start branch.
+    mode: parallel
     max: 3
     triggers:
       - trigger: state
         entity_id: sensor.device_routines_health
         to: ok
         id: healthy
+        note: >-
+          Catches a load after Home Assistant has started. A load during startup comes
+          before the triggers are armed, so the start branch records that one.
       - trigger: homeassistant
         event: start
         id: started
@@ -215,6 +220,17 @@ automation:
             sequence:
               - delay:
                   minutes: 3
+              - if:
+                  - condition: state
+                    entity_id: sensor.device_routines_health
+                    state: ok
+                then:
+                  - action: input_text.set_value
+                    target:
+                      entity_id: input_text.device_routines_last_good_commit
+                    data:
+                      value: "{{ state_attr('sensor.device_routines_health', 'commit') or '' }}"
+                  - stop: The integration loaded during startup; its commit is recorded.
               - condition: state
                 entity_id: sensor.device_routines_health
                 state:

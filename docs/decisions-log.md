@@ -153,3 +153,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | (b), pushed as the owner with the protection's administrator bypass, since no CI had run on that commit. Every later move of `main` happens at a phase exit with green CI as the plan says. |
 | Consequence | `main` is at the skeleton commit until the Phase 0 exit; the HACS job validates the real license. |
 | PRD register entry | no |
+
+## 2026-10-14 L16: the post restart check records a load that happens during startup
+
+| Field | Content |
+| --- | --- |
+| Context | Stage 0 item V11 showed that after a restart the Health sensor turned `ok` about ten seconds before Home Assistant fired its start event. Automations arm their triggers only once Home Assistant has started, so the `to: ok` trigger of the post restart check (L13) never fired and `input_text.device_routines_last_good_commit` kept the commit of the load before. The run that did fire, the start branch, was queued, so a healthy load after startup also waited three minutes behind its delay. |
+| Options | (a) Keep the state trigger only and accept a stale last good commit, which weakens the rollback guard over time; (b) also record the commit in the start branch when Health is `ok` after the three minute wait, and run the automation in `parallel` mode so the state trigger records at once. |
+| Choice | (b). The state trigger stays for a load after startup; the start branch covers a load during startup and then stops before the rollback logic. |
+| Consequence | The installed package must be replaced with the new file once (owner's step, no restart: an automation reload is enough). A test in `tests/tools/test_ha_package.py` holds the behavior. |
+| PRD register entry | no |
