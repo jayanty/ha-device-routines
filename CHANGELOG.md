@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Golden corpus seed: 39 anonymized automations captured read only from a real instance
+  in Stage 0, each validated against the pinned core, and `tools/scrub_automations.py`,
+  which strips free text and opaque ids from captures before they are anonymized.
 - CI on every push and pull request: lint, strict typing, tests on the pinned and the
   latest core, hassfest, HACS validation, the privacy and style checks and the deploy tool
   parity check; a green push to `dev` moves the `dev-stable` tag. A `v*` tag builds the

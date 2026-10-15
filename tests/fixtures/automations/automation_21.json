@@ -1,0 +1,74 @@
+{
+  "config": {
+    "id": "automation_21",
+    "alias": "Automation 21",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "binary_sensor.example_binary_sensor_4",
+        "from": "on",
+        "to": "off"
+      }
+    ],
+    "conditions": [
+      "{{ trigger.from_state is not none and trigger.to_state is not none }}",
+      "{{ dur < (states('input_number.example_input_number_1') | int) }}"
+    ],
+    "actions": [
+      {
+        "action": "counter.increment",
+        "target": {
+          "entity_id": "counter.example_counter_1"
+        }
+      },
+      {
+        "action": "logbook.log",
+        "data": {
+          "name": "Name",
+          "message": "Message",
+          "entity_id": "binary_sensor.example_binary_sensor_4"
+        }
+      },
+      {
+        "if": [
+          {
+            "condition": "state",
+            "entity_id": "input_boolean.example_input_boolean_4",
+            "state": "on"
+          }
+        ],
+        "then": [
+          {
+            "action": "notify.phone_2",
+            "data": {
+              "title": "Title",
+              "message": "Message"
+            }
+          }
+        ]
+      }
+    ],
+    "mode": "queued",
+    "max": 10,
+    "variables": {
+      "dur": "{{ (as_timestamp(trigger.to_state.last_changed) - as_timestamp(trigger.from_state.last_changed)) | int }}"
+    }
+  },
+  "related": {
+    "entity": [
+      "binary_sensor.example_binary_sensor_4",
+      "counter.example_counter_1",
+      "input_boolean.example_input_boolean_4"
+    ],
+    "device": [
+      "ee00000000000000000000000000000c"
+    ],
+    "area": [
+      "area_1"
+    ],
+    "floor": [
+      "upper"
+    ]
+  }
+}

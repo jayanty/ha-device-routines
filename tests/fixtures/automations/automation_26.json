@@ -1,0 +1,62 @@
+{
+  "config": {
+    "id": "automation_26",
+    "alias": "Automation 26",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "binary_sensor.example_binary_sensor_4",
+        "to": "on",
+        "for": "00:00:05"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "template",
+        "value_template": "{% set start = 5.25 if now().weekday() < 5 else 6.5 %}{% set h = now().hour + now().minute/60 %}{% set ts = state_attr('input_datetime.example_input_datetime_1','timestamp') %}{% set midnight = now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp() %}{% set showered_today = ts is not none and ts >= midnight %}{{ h >= start and h < 9.5 and (not showered_today or (now().timestamp() - ts) <= 3600) }}"
+      },
+      {
+        "condition": "template",
+        "alias": "Step",
+        "value_template": "{% set m = states.binary_sensor.example_binary_sensor_4 %}{% set s = states.input_boolean.example_input_boolean_3 %}{{ s is none or s.state == 'off' or (m is not none and m.last_changed > s.last_changed) }}"
+      }
+    ],
+    "actions": [
+      {
+        "if": [
+          {
+            "condition": "state",
+            "entity_id": "light.example_light_2",
+            "state": "off"
+          }
+        ],
+        "then": [
+          {
+            "action": "light.turn_on",
+            "target": {
+              "entity_id": "light.example_light_2"
+            }
+          }
+        ]
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "binary_sensor.example_binary_sensor_4",
+      "light.example_light_2"
+    ],
+    "device": [
+      "ee00000000000000000000000000000b",
+      "ee00000000000000000000000000000c"
+    ],
+    "area": [
+      "area_1"
+    ],
+    "floor": [
+      "upper"
+    ]
+  }
+}

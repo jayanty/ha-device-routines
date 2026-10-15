@@ -238,10 +238,13 @@ def tokens_from_registries(data: Mapping[str, Any]) -> list[str]:
 def build_denylist(data: Mapping[str, Any], *, allow: Iterable[str] = ()) -> list[str]:
     """Return the sorted, case insensitively unique denylist for a capture."""
     allowed = {token.lower() for token in allow}
+    extra = {value.strip() for value in data.get("extra", []) if isinstance(value, str)}
     kept: dict[str, str] = {}
     for raw in tokens_from_registries(data):
         token = raw.strip()
-        if len(token) < MIN_LENGTH or is_generic(token) or token.lower() in allowed:
+        if not token or token.lower() in allowed:
+            continue
+        if token not in extra and (len(token) < MIN_LENGTH or is_generic(token)):
             continue
         kept.setdefault(token.lower(), token)
     return sorted(kept.values(), key=str.lower)

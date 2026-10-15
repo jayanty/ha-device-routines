@@ -1,0 +1,97 @@
+{
+  "config": {
+    "id": "automation_01",
+    "alias": "Automation 01",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "time",
+        "at": "09:45:00"
+      },
+      {
+        "trigger": "time",
+        "at": "10:00:00"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "time",
+        "weekday": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri"
+        ]
+      },
+      {
+        "condition": "vacuum.is_docked",
+        "target": {
+          "entity_id": "vacuum.example_vacuum_1"
+        },
+        "options": {
+          "for": "01:00:00"
+        }
+      },
+      {
+        "condition": "numeric_state",
+        "entity_id": "sensor.example_sensor_1",
+        "above": 95
+      },
+      {
+        "condition": "state",
+        "entity_id": "sensor.example_sensor_2",
+        "state": "none"
+      },
+      {
+        "condition": "state",
+        "entity_id": "switch.example_switch_1",
+        "state": "off"
+      },
+      {
+        "condition": "state",
+        "entity_id": "binary_sensor.example_binary_sensor_1",
+        "state": "on"
+      },
+      {
+        "condition": "state",
+        "entity_id": "binary_sensor.example_binary_sensor_2",
+        "state": "off"
+      },
+      {
+        "condition": "template",
+        "value_template": "{{ not (now().weekday() == 4 and ((now().date() - as_datetime('2026-08-14').date()).days // 7) % 2 == 0) }}"
+      }
+    ],
+    "actions": [
+      {
+        "action": "vacuum.start",
+        "target": {
+          "entity_id": "vacuum.example_vacuum_1"
+        },
+        "data": {}
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "binary_sensor.example_binary_sensor_1",
+      "binary_sensor.example_binary_sensor_2",
+      "sensor.example_sensor_1",
+      "sensor.example_sensor_2",
+      "switch.example_switch_1",
+      "vacuum.example_vacuum_1"
+    ],
+    "device": [
+      "ee000000000000000000000000000001",
+      "ee000000000000000000000000000002"
+    ],
+    "area": [
+      "living_room"
+    ],
+    "floor": [
+      "main"
+    ]
+  }
+}

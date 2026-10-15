@@ -1,0 +1,155 @@
+{
+  "config": {
+    "id": "automation_18",
+    "alias": "Automation 18",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "device",
+        "device_id": "8600b057d7f635962d08ccbb62557909",
+        "domain": "mqtt",
+        "type": "action",
+        "subtype": "single",
+        "id": "button_single_press"
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "alias": "Step",
+        "choose": [
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "state",
+                "entity_id": "switch.example_switch_5",
+                "state": "off",
+                "for": {
+                  "seconds": 10
+                }
+              }
+            ],
+            "sequence": [
+              {
+                "action": "switch.turn_on",
+                "target": {
+                  "entity_id": "switch.example_switch_5"
+                }
+              }
+            ]
+          },
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "state",
+                "entity_id": "switch.example_switch_5",
+                "state": "on",
+                "for": {
+                  "minutes": 2
+                }
+              },
+              {
+                "condition": "not",
+                "conditions": [
+                  {
+                    "condition": "state",
+                    "entity_id": "binary_sensor.example_binary_sensor_5",
+                    "state": "off",
+                    "for": {
+                      "minutes": 2
+                    }
+                  }
+                ]
+              }
+            ],
+            "sequence": [
+              {
+                "action": "switch.turn_off",
+                "target": {
+                  "entity_id": "switch.example_switch_5"
+                }
+              },
+              {
+                "delay": {
+                  "seconds": 10
+                }
+              },
+              {
+                "action": "switch.turn_on",
+                "target": {
+                  "entity_id": "switch.example_switch_5"
+                }
+              }
+            ]
+          }
+        ],
+        "default": []
+      },
+      {
+        "alias": "Step",
+        "delay": {
+          "seconds": 75
+        }
+      },
+      {
+        "alias": "Step",
+        "if": [
+          {
+            "condition": "state",
+            "entity_id": "switch.example_switch_5",
+            "state": "on"
+          },
+          {
+            "condition": "state",
+            "entity_id": "binary_sensor.example_binary_sensor_5",
+            "state": "on"
+          }
+        ],
+        "then": [
+          {
+            "action": "switch.turn_off",
+            "target": {
+              "entity_id": "switch.example_switch_5"
+            }
+          },
+          {
+            "delay": {
+              "seconds": 10
+            }
+          },
+          {
+            "action": "switch.turn_on",
+            "target": {
+              "entity_id": "switch.example_switch_5"
+            }
+          }
+        ]
+      }
+    ],
+    "mode": "single",
+    "max_exceeded": "silent"
+  },
+  "related": {
+    "entity": [
+      "binary_sensor.example_binary_sensor_5",
+      "switch.example_switch_5"
+    ],
+    "device": [
+      "ee00000000000000000000000000000d",
+      "ee00000000000000000000000000000e"
+    ],
+    "area": [
+      "garage",
+      "area_1"
+    ],
+    "floor": [
+      "main",
+      "upper"
+    ],
+    "label": [
+      "label_1"
+    ]
+  }
+}

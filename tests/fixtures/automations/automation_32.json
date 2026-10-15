@@ -1,0 +1,38 @@
+{
+  "config": {
+    "id": "automation_32",
+    "alias": "Automation 32",
+    "description": "Description.",
+    "triggers": [
+      {
+        "entity_id": [
+          "sensor.example_sensor_5"
+        ],
+        "to": [
+          "battery"
+        ],
+        "for": {
+          "hours": 0,
+          "minutes": 0,
+          "seconds": 10
+        },
+        "trigger": "state"
+      }
+    ],
+    "actions": [
+      {
+        "data": {
+          "title": "Title",
+          "message": "Message"
+        },
+        "action": "notify.phone_2"
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "sensor.example_sensor_5"
+    ]
+  }
+}

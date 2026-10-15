@@ -1,0 +1,64 @@
+{
+  "config": {
+    "id": "automation_29",
+    "alias": "Automation 29",
+    "description": "",
+    "triggers": [
+      {
+        "trigger": "event.received",
+        "target": {
+          "entity_id": "event.example_event_1"
+        },
+        "options": {
+          "event_type": [
+            "multi_press_1",
+            "long_press"
+          ]
+        }
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "not",
+        "conditions": [
+          {
+            "condition": "vacuum.is_docked",
+            "target": {
+              "entity_id": "vacuum.example_vacuum_1"
+            },
+            "options": {
+              "for": "00:00:10"
+            }
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "action": "vacuum.return_to_base",
+        "metadata": {},
+        "target": {
+          "entity_id": "vacuum.example_vacuum_1"
+        },
+        "data": {}
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "event.example_event_1",
+      "vacuum.example_vacuum_1"
+    ],
+    "device": [
+      "ee000000000000000000000000000001",
+      "ee00000000000000000000000000000f"
+    ],
+    "area": [
+      "living_room"
+    ],
+    "floor": [
+      "main"
+    ]
+  }
+}

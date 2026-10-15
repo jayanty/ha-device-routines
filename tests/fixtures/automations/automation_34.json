@@ -1,0 +1,22 @@
+{
+  "config": {
+    "id": "automation_34",
+    "alias": "Automation 34",
+    "description": "",
+    "triggers": [
+      {
+        "trigger": "webhook",
+        "allowed_methods": [
+          "POST",
+          "PUT"
+        ],
+        "local_only": true,
+        "webhook_id": "webhook_1"
+      }
+    ],
+    "conditions": [],
+    "actions": [],
+    "mode": "single"
+  },
+  "related": {}
+}

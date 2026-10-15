@@ -1,0 +1,29 @@
+{
+  "config": {
+    "id": "automation_33",
+    "alias": "Automation 33",
+    "description": "Description.",
+    "triggers": [
+      {
+        "entity_id": "sensor.example_sensor_5",
+        "to": "utility",
+        "trigger": "state"
+      }
+    ],
+    "actions": [
+      {
+        "data": {
+          "title": "Title",
+          "message": "Message"
+        },
+        "action": "notify.phone_2"
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "sensor.example_sensor_5"
+    ]
+  }
+}

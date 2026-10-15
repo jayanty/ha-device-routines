@@ -1,0 +1,78 @@
+{
+  "config": {
+    "id": "automation_11",
+    "alias": "Automation 11",
+    "description": "",
+    "triggers": [
+      {
+        "event_type": "timer.finished",
+        "event_data": {
+          "entity_id": "timer.example_timer_1"
+        },
+        "trigger": "event"
+      }
+    ],
+    "actions": [
+      {
+        "choose": [
+          {
+            "conditions": [
+              {
+                "condition": "template",
+                "value_template": "{{ is_state('input_select.example_input_select_1','opening')\n   and is_state('binary_sensor.example_binary_sensor_3','open') }}\n"
+              }
+            ],
+            "sequence": [
+              {
+                "target": {
+                  "entity_id": "input_select.example_input_select_1"
+                },
+                "data": {
+                  "option": "open"
+                },
+                "action": "input_select.select_option"
+              }
+            ]
+          },
+          {
+            "conditions": [
+              {
+                "condition": "template",
+                "value_template": "{{ is_state('input_select.example_input_select_1','closing')\n   and is_state('binary_sensor.example_binary_sensor_3','closed') }}\n"
+              }
+            ],
+            "sequence": [
+              {
+                "target": {
+                  "entity_id": "input_select.example_input_select_1"
+                },
+                "data": {
+                  "option": "closed"
+                },
+                "action": "input_select.select_option"
+              }
+            ]
+          }
+        ],
+        "default": [
+          {
+            "target": {
+              "entity_id": "input_select.example_input_select_1"
+            },
+            "data": {
+              "option": "stopped"
+            },
+            "action": "input_select.select_option"
+          }
+        ]
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "input_select.example_input_select_1",
+      "timer.example_timer_1"
+    ]
+  }
+}

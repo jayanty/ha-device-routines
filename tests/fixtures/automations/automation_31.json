@@ -1,0 +1,61 @@
+{
+  "config": {
+    "id": "automation_31",
+    "alias": "Automation 31",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "time",
+        "at": "08:00:00"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "switch.is_on",
+        "target": {
+          "entity_id": "switch.example_switch_6"
+        },
+        "options": {
+          "behavior": "any",
+          "for": {
+            "hours": 0,
+            "minutes": 5,
+            "seconds": 0
+          }
+        }
+      }
+    ],
+    "actions": [
+      {
+        "action": "switch.turn_off",
+        "target": {
+          "entity_id": "switch.example_switch_6"
+        }
+      },
+      {
+        "delay": "00:03:00"
+      },
+      {
+        "action": "switch.turn_on",
+        "target": {
+          "entity_id": "switch.example_switch_6"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "switch.example_switch_6"
+    ],
+    "device": [
+      "ee000000000000000000000000000010"
+    ],
+    "area": [
+      "master_bedroom"
+    ],
+    "floor": [
+      "upper"
+    ]
+  }
+}

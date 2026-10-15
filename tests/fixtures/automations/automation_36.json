@@ -1,0 +1,135 @@
+{
+  "config": {
+    "id": "automation_36",
+    "alias": "Automation 36",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": [
+          "input_boolean.example_input_boolean_5",
+          "input_boolean.example_input_boolean_6",
+          "timer.example_timer_7",
+          "schedule.example_schedule_1",
+          "binary_sensor.example_binary_sensor_8"
+        ],
+        "id": "call_changed"
+      },
+      {
+        "trigger": "time_pattern",
+        "minutes": "/2",
+        "id": "periodic"
+      },
+      {
+        "trigger": "homeassistant",
+        "event": "start",
+        "id": "ha_start"
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "alias": "Step",
+        "if": [
+          {
+            "condition": "or",
+            "conditions": [
+              {
+                "condition": "state",
+                "entity_id": "input_boolean.example_input_boolean_5",
+                "state": "on"
+              },
+              {
+                "condition": "state",
+                "entity_id": "input_boolean.example_input_boolean_6",
+                "state": "on"
+              },
+              {
+                "condition": "state",
+                "entity_id": "timer.example_timer_7",
+                "state": "active"
+              },
+              {
+                "condition": "and",
+                "conditions": [
+                  {
+                    "condition": "state",
+                    "entity_id": "schedule.example_schedule_1",
+                    "state": "on"
+                  },
+                  {
+                    "condition": "state",
+                    "entity_id": "binary_sensor.example_binary_sensor_8",
+                    "state": "off"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "then": [
+          {
+            "if": [
+              {
+                "condition": "state",
+                "entity_id": "switch.example_switch_5",
+                "state": "off"
+              }
+            ],
+            "then": [
+              {
+                "action": "switch.turn_on",
+                "target": {
+                  "entity_id": "switch.example_switch_5"
+                }
+              }
+            ]
+          }
+        ],
+        "else": [
+          {
+            "if": [
+              {
+                "condition": "state",
+                "entity_id": "switch.example_switch_5",
+                "state": "on"
+              }
+            ],
+            "then": [
+              {
+                "action": "switch.turn_off",
+                "target": {
+                  "entity_id": "switch.example_switch_5"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "mode": "queued",
+    "max": 10
+  },
+  "related": {
+    "entity": [
+      "binary_sensor.example_binary_sensor_8",
+      "input_boolean.example_input_boolean_5",
+      "input_boolean.example_input_boolean_6",
+      "schedule.example_schedule_1",
+      "switch.example_switch_5",
+      "timer.example_timer_7"
+    ],
+    "device": [
+      "ee00000000000000000000000000000d"
+    ],
+    "area": [
+      "garage"
+    ],
+    "floor": [
+      "main"
+    ],
+    "label": [
+      "label_1"
+    ]
+  }
+}

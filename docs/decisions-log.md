@@ -183,3 +183,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | (b). Variables keep whole JSON objects only. |
 | Consequence | A test refuses a sha slice inside `variables:`. Comes with the package replacement of L16. |
 | PRD register entry | no |
+
+## 2026-10-14 L19: automation captures are scrubbed before they are anonymized
+
+| Field | Content |
+| --- | --- |
+| Context | Stage 0 item V2 captured 39 automation configs. The anonymizer replaces denylisted tokens only, and the trial run left a remote access URL, a webhook id, phone notify services, the owner's initials and registry ids of entities in the output, besides every alias, description and note, which are automation text the privacy rule forbids. The denylist builder also dropped the two letter initials added by hand, against its own comment that extras are never filtered. |
+| Options | (a) Hand edit the fixtures; (b) a scrub step before the anonymizer that keeps every structural key and replaces free text and opaque values with generic stand ins, plus a fix so hand kept extras bypass the length and generic word filters. |
+| Choice | (b): `tools/scrub_automations.py` (aliases, descriptions, notes, stop texts, titles, messages and names become generic; URLs, webhook ids, notify services and registry entity ids map to stand ins consistently across files; files become `automation_NN.json`), and `build_denylist` keeps every extra as given. Each with tests. |
+| Consequence | The fixture pipeline is capture, scrub, anonymize, privacy check, read every remaining string by hand. Trigger ids and data values the owner chose are kept, because templates and trigger conditions refer to them; the denylist covers names inside them. |
+| PRD register entry | no |

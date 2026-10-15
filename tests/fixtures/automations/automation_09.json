@@ -1,0 +1,87 @@
+{
+  "config": {
+    "id": "automation_09",
+    "alias": "Automation 09",
+    "description": "",
+    "triggers": [
+      {
+        "event": "start",
+        "trigger": "homeassistant"
+      }
+    ],
+    "actions": [
+      {
+        "target": {
+          "entity_id": "timer.example_timer_1"
+        },
+        "action": "timer.cancel"
+      },
+      {
+        "choose": [
+          {
+            "conditions": [
+              {
+                "condition": "state",
+                "entity_id": "binary_sensor.example_binary_sensor_3",
+                "state": "open"
+              }
+            ],
+            "sequence": [
+              {
+                "target": {
+                  "entity_id": "input_select.example_input_select_1"
+                },
+                "data": {
+                  "option": "open"
+                },
+                "action": "input_select.select_option"
+              }
+            ]
+          },
+          {
+            "conditions": [
+              {
+                "condition": "state",
+                "entity_id": "binary_sensor.example_binary_sensor_3",
+                "state": "closed"
+              }
+            ],
+            "sequence": [
+              {
+                "target": {
+                  "entity_id": "input_select.example_input_select_1"
+                },
+                "data": {
+                  "option": "closed"
+                },
+                "action": "input_select.select_option"
+              }
+            ]
+          }
+        ],
+        "default": [
+          {
+            "target": {
+              "entity_id": "input_select.example_input_select_1"
+            },
+            "data": {
+              "option": "stopped"
+            },
+            "action": "input_select.select_option"
+          }
+        ]
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "binary_sensor.example_binary_sensor_3",
+      "input_select.example_input_select_1",
+      "timer.example_timer_1"
+    ],
+    "device": [
+      "ee00000000000000000000000000000a"
+    ]
+  }
+}

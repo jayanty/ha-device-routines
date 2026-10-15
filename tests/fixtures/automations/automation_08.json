@@ -1,0 +1,36 @@
+{
+  "config": {
+    "id": "automation_08",
+    "alias": "Automation 08",
+    "description": "",
+    "triggers": [
+      {
+        "entity_id": "sensor.example_sensor_5",
+        "to": "utility",
+        "trigger": "state"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "state",
+        "entity_id": "switch.example_switch_3",
+        "state": "off"
+      }
+    ],
+    "actions": [
+      {
+        "target": {
+          "entity_id": "switch.example_switch_3"
+        },
+        "action": "switch.turn_on"
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "sensor.example_sensor_5",
+      "switch.example_switch_3"
+    ]
+  }
+}

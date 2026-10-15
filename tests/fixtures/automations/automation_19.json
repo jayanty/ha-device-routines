@@ -1,0 +1,59 @@
+{
+  "config": {
+    "id": "automation_19",
+    "alias": "Automation 19",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "light.example_light_1",
+        "to": "on",
+        "for": "01:00:00"
+      },
+      {
+        "trigger": "state",
+        "entity_id": "binary_sensor.example_binary_sensor_4",
+        "to": "off",
+        "for": "00:05:00"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "state",
+        "entity_id": "light.example_light_1",
+        "state": "on",
+        "for": "01:00:00"
+      },
+      {
+        "condition": "state",
+        "entity_id": "binary_sensor.example_binary_sensor_4",
+        "state": "off",
+        "for": "00:05:00"
+      }
+    ],
+    "actions": [
+      {
+        "action": "light.turn_off",
+        "target": {
+          "entity_id": "light.example_light_1"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "binary_sensor.example_binary_sensor_4",
+      "light.example_light_1"
+    ],
+    "device": [
+      "ee00000000000000000000000000000c"
+    ],
+    "area": [
+      "area_1"
+    ],
+    "floor": [
+      "upper"
+    ]
+  }
+}

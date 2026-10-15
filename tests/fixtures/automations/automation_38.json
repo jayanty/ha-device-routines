@@ -1,0 +1,126 @@
+{
+  "config": {
+    "id": "automation_38",
+    "alias": "Automation 38",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "time",
+        "at": "17:00:00",
+        "id": "scheduled_on"
+      },
+      {
+        "trigger": "time",
+        "at": "09:00:00",
+        "id": "scheduled_off"
+      },
+      {
+        "trigger": "homeassistant",
+        "event": "start",
+        "id": "reconcile"
+      },
+      {
+        "trigger": "state",
+        "entity_id": "switch.example_switch_7",
+        "from": "unavailable",
+        "for": "00:00:10",
+        "id": "reconcile"
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "choose": [
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "scheduled_on"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "switch.turn_on",
+                "target": {
+                  "entity_id": "switch.example_switch_7"
+                }
+              }
+            ]
+          },
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "scheduled_off"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "switch.turn_off",
+                "target": {
+                  "entity_id": "switch.example_switch_7"
+                }
+              }
+            ]
+          },
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "reconcile"
+              }
+            ],
+            "sequence": [
+              {
+                "if": [
+                  {
+                    "condition": "time",
+                    "after": "17:00:00",
+                    "before": "09:00:00"
+                  }
+                ],
+                "then": [
+                  {
+                    "action": "switch.turn_on",
+                    "target": {
+                      "entity_id": "switch.example_switch_7"
+                    },
+                    "continue_on_error": true
+                  }
+                ],
+                "else": [
+                  {
+                    "action": "switch.turn_off",
+                    "target": {
+                      "entity_id": "switch.example_switch_7"
+                    },
+                    "continue_on_error": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "mode": "queued",
+    "max": 5
+  },
+  "related": {
+    "entity": [
+      "switch.example_switch_7"
+    ],
+    "device": [
+      "ee000000000000000000000000000013"
+    ],
+    "area": [
+      "area_2"
+    ],
+    "floor": [
+      "upper"
+    ]
+  }
+}

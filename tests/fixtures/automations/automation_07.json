@@ -1,0 +1,53 @@
+{
+  "config": {
+    "id": "automation_07",
+    "alias": "Automation 07",
+    "description": "",
+    "triggers": [
+      {
+        "entity_id": "sensor.example_sensor_5",
+        "to": "battery",
+        "trigger": "state"
+      },
+      {
+        "entity_id": [
+          "sensor.example_sensor_6"
+        ],
+        "below": 85,
+        "trigger": "numeric_state"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "state",
+        "entity_id": "sensor.example_sensor_5",
+        "state": "battery"
+      },
+      {
+        "condition": "template",
+        "value_template": "{{ states('sensor.example_sensor_6')|float(0) < 85 }}"
+      },
+      {
+        "condition": "state",
+        "entity_id": "switch.example_switch_3",
+        "state": "on"
+      }
+    ],
+    "actions": [
+      {
+        "target": {
+          "entity_id": "switch.example_switch_3"
+        },
+        "action": "switch.turn_off"
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "sensor.example_sensor_6",
+      "sensor.example_sensor_5",
+      "switch.example_switch_3"
+    ]
+  }
+}

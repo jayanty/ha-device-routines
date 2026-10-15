@@ -1,0 +1,93 @@
+{
+  "config": {
+    "id": "automation_13",
+    "alias": "Automation 13",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "binary_sensor.example_binary_sensor_4",
+        "to": "off"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "state",
+        "entity_id": "switch.example_switch_4",
+        "state": "on"
+      }
+    ],
+    "actions": [
+      {
+        "action": "timer.start",
+        "target": {
+          "entity_id": "timer.example_timer_3"
+        },
+        "data": {
+          "duration": "00:12:00"
+        }
+      },
+      {
+        "if": [
+          "{{ fin_new > fin_cur }}"
+        ],
+        "then": [
+          {
+            "action": "timer.start",
+            "target": {
+              "entity_id": "timer.example_timer_2"
+            },
+            "data": {
+              "duration": "{{ '00:%02d:00' % (r | int) }}"
+            }
+          }
+        ]
+      },
+      {
+        "if": [
+          "{{ shower or session_min >= 25 }}"
+        ],
+        "then": [
+          {
+            "action": "input_datetime.set_datetime",
+            "target": {
+              "entity_id": "input_datetime.example_input_datetime_1"
+            },
+            "data": {
+              "datetime": "{{ now() }}"
+            }
+          }
+        ]
+      }
+    ],
+    "mode": "queued",
+    "max": 5,
+    "variables": {
+      "session_ts": "{{ state_attr('input_datetime.example_input_datetime_2','timestamp') or now().timestamp() }}",
+      "session_min": "{{ (now().timestamp() - session_ts)/60 }}",
+      "shower": "{{ is_state('input_boolean.example_input_boolean_2','on') }}",
+      "r": "{{ 30 if (shower or session_min >= 25) else (5 if session_min >= 10 else 3) }}",
+      "fin_new": "{{ now().timestamp() + r*60 }}",
+      "fin_cur": "{{ as_timestamp(state_attr('timer.example_timer_2','finishes_at')) if is_state('timer.example_timer_2','active') else 0 }}"
+    }
+  },
+  "related": {
+    "entity": [
+      "binary_sensor.example_binary_sensor_4",
+      "input_datetime.example_input_datetime_1",
+      "switch.example_switch_4",
+      "timer.example_timer_2",
+      "timer.example_timer_3"
+    ],
+    "device": [
+      "ee00000000000000000000000000000b",
+      "ee00000000000000000000000000000c"
+    ],
+    "area": [
+      "area_1"
+    ],
+    "floor": [
+      "upper"
+    ]
+  }
+}

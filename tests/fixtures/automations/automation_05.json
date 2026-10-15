@@ -1,0 +1,86 @@
+{
+  "config": {
+    "id": "automation_05",
+    "alias": "Automation 05",
+    "description": "Description.",
+    "triggers": [
+      {
+        "entity_id": [
+          "sensor.example_sensor_3"
+        ],
+        "to": "1",
+        "trigger": "state"
+      }
+    ],
+    "actions": [
+      {
+        "parallel": [
+          {
+            "data": {
+              "title": "Title",
+              "message": "Message",
+              "data": {
+                "actions": [
+                  {
+                    "action": "URI_VIEW_SNAPSHOT",
+                    "title": "Title",
+                    "uri": "{{ latest_snapshot_url }}",
+                    "uri_launch": true
+                  },
+                  {
+                    "action": "URI_VIEW_LIVE",
+                    "title": "Title",
+                    "uri": "/dash-camera/0",
+                    "uri_launch": true
+                  }
+                ],
+                "push": {
+                  "sound": "default"
+                },
+                "ttl": 0,
+                "priority": "high"
+              }
+            },
+            "action": "notify.phone_1"
+          },
+          {
+            "data": {
+              "entity_id": "camera.example_camera_1",
+              "filename": "/config/www/axis_latest.jpg"
+            },
+            "action": "camera.snapshot"
+          },
+          {
+            "data": {
+              "entity_id": "camera.example_camera_1",
+              "filename": "{{ snapshot_path }}"
+            },
+            "action": "camera.snapshot"
+          }
+        ]
+      }
+    ],
+    "mode": "parallel",
+    "variables": {
+      "snapshot_filename": "axis_snapshot_{{ now().strftime('%Y%m%d_%H%M%S') }}.jpg",
+      "snapshot_path": "/config/www/{{ snapshot_filename }}",
+      "snapshot_url": "https://example.invalid/path{{ snapshot_filename }}",
+      "latest_snapshot_url": "https://example.invalid/path"
+    }
+  },
+  "related": {
+    "entity": [
+      "camera.example_camera_1",
+      "sensor.example_sensor_3"
+    ],
+    "device": [
+      "ee000000000000000000000000000009"
+    ],
+    "area": [
+      "outside"
+    ],
+    "floor": [
+      "main"
+    ]
+  }
+}

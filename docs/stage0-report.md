@@ -59,3 +59,70 @@ loads the newest deployed commit.
 | Evidence | The steps table above: Health `commit` went `82c053b`, then `870d343` (the push) after restart 1, then `82c053b` (the rollback) after restart 2; the loop deployed `8420882` by itself 5 minutes 37 seconds after its promotion |
 | Consequence | Decisions L16 (the post restart check records a load during startup and runs in parallel mode), L17 (the first tag reading after a start never deploys, so a restart cannot undo a rollback) and L18 (sha prefixes are sliced inside message templates). The installed package must be replaced once with the new file and automations reloaded; no restart is needed for that. TECH_SPEC 10.2 is unchanged in intent; the package is its implementation |
 | Fixtures | none |
+
+## V2: automation configs and reference helper results (A3, A4)
+
+### Plan
+
+| Field | Content |
+| --- | --- |
+| What | For every automation on the instance: the config its loaded entity exposes, the reference helper results, and how a YAML defined automation appears. |
+| How | Read only, over MCP: the `automation/config` WebSocket command (it returns the loaded entity's `raw_config`) for every automation entity; the `search/related` WebSocket command, which runs the automation component's reference helpers, for every automation; the config REST endpoint (`ha_config_get_automation`) for comparison. Raw results to `local/captures/automations/` (not tracked); `tools/scrub_automations.py` then `tools/anonymize.py` into `tests/fixtures/automations/`. |
+| What proves it | Configs returned for automations the REST endpoint cannot see; helper results that list the entities and devices each automation targets. |
+| What restores it | Nothing to restore: no write. |
+
+### Evidence
+
+| Observation | Detail |
+| --- | --- |
+| Automation entities | 43: 39 defined in the UI, the 3 of the development package (YAML, in a package), and 1 registry entry restored as `unavailable` with no config behind it. |
+| A4: configs of YAML automations | `automation/config` returned the full config of every loaded automation, the package automations included. The REST endpoint answered "not found" for the package automations: it reads `automations.yaml` only, exactly as the PRD expected. |
+| A4: a duplicate id | The system log holds "ID ... already exists - ignoring" for one automation id defined twice; the ignored copy has no entity and is visible to neither path. |
+| A4: an orphaned entity | The restored, `unavailable` entity has no config: `automation/config` answers "Entity not found". Discovery must skip it. |
+| A3: entity targets | `search/related` resolved entity targets, including the new target style (`switch.is_on` conditions with `target`, `event.received` triggers with `target`), and the YAML package automations. |
+| A3: device triggers, conditions and actions | `search/related` failed with `unknown_error` on all 3 automations whose device triggers, conditions and actions name the entity by registry id. Reading the pinned core: `entities_in_automation` returns those registry ids unchanged and the search component calls `split_entity_id` on them. `automations_with_device` still finds these automations by `device_id`. |
+| A3: what the helpers miss | Entities named only inside templates (several automations read helpers through `states()`, `is_state()` or `state_attr()`) never appear in the helper results. Script calls (`script.x` as an action) are not entity references either. |
+| A3: area and label targets | No automation on the instance targets an area or a label, so these two paths cannot be shown live. They are core helpers with core tests; Phase 1 covers them in the harness against the pinned core. |
+| Corpus shapes | Time windows with a reconcile on start, run timers through `for:`, an off then on cycle with a delay, `timer.finished` and `schedule.block_*` triggers, template guards, device triggers, multi automation controllers with helpers and scripts, a webhook with no actions, notification only automations. |
+
+### Record
+
+| Field | Content |
+| --- | --- |
+| Assumption | A3 (the reference helpers find automations that target a device's entities directly, through the device, its area or a label, YAML included) and A4 (the loaded automation entity exposes its full config for UI and YAML automations) |
+| Item | V2 |
+| Status | A4 closed. A3 amended: entity and device paths closed live, area and label paths deferred to the Phase 1 harness, and entity references may be registry ids |
+| Evidence | The table above; raw captures in `local/captures/automations/` (private) |
+| Consequence | TECH_SPEC 4.2, the "Read automation configs and references" row: resolve registry id references through the entity registry, keep action targets only, skip automation entities without a config, treat template only references as invisible. Never call `split_entity_id` on a raw reference |
+| Fixtures | `tests/fixtures/automations/automation_01.json` to `automation_39.json`: config and, where the helpers answered, the related entities, devices, areas, floors and labels. `tests/golden/test_corpus.py` validates each against the pinned core |
+
+## V4: AI Task availability (A12)
+
+### Plan
+
+| Field | Content |
+| --- | --- |
+| What | Whether `ai_task.generate_data` is usable on this instance with a locally hosted model. |
+| How | Read only: list `ai_task` entities, the `ai_task` services and the AI Task preferences. A `generate_data` call with a synthetic automation only if an entity exists. |
+| What proves it | An AI Task entity and a structured answer to a synthetic prompt. |
+| What restores it | Nothing to restore: no write. |
+
+### Evidence
+
+| Observation | Detail |
+| --- | --- |
+| Services | `ai_task.generate_data` and `ai_task.generate_image` are registered; `generate_data` takes `task_name`, `instructions`, an optional `entity_id` (AI Task entities with the generate data feature), `structure` and `attachments`. |
+| Entities | No `ai_task` entity exists; the local LLM integration provides conversation agents only. |
+| Preferences | `ai_task/preferences/get` returns no default entity for data or images. |
+| Call | Not made: without an entity the service has nothing to run on. |
+
+### Record
+
+| Field | Content |
+| --- | --- |
+| Assumption | A12 (`ai_task.generate_data` is available and usable with a locally hosted model) |
+| Item | V4 |
+| Status | deferred: the service exists, no AI Task entity does |
+| Evidence | The table above |
+| Consequence | None for v1: AI summaries stay off by default (FR-S5, the default noted in the instance context). If an AI Task entity is created on the local endpoint later, V4 runs its `generate_data` call then |
+| Fixtures | none |

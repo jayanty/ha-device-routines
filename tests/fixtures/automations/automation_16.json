@@ -1,0 +1,39 @@
+{
+  "config": {
+    "id": "automation_16",
+    "alias": "Automation 16",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "switch.example_switch_4",
+        "to": "on",
+        "for": "01:00:00"
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "action": "switch.turn_off",
+        "target": {
+          "entity_id": "switch.example_switch_4"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "switch.example_switch_4"
+    ],
+    "device": [
+      "ee00000000000000000000000000000b"
+    ],
+    "area": [
+      "area_1"
+    ],
+    "floor": [
+      "upper"
+    ]
+  }
+}

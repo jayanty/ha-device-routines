@@ -1,0 +1,78 @@
+{
+  "config": {
+    "id": "automation_15",
+    "alias": "Automation 15",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "binary_sensor.example_binary_sensor_4",
+        "to": "on",
+        "for": "00:05:00"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "or",
+        "conditions": [
+          {
+            "condition": "time",
+            "after": "05:15:00",
+            "before": "22:00:00",
+            "weekday": [
+              "mon",
+              "tue",
+              "wed",
+              "thu",
+              "fri"
+            ]
+          },
+          {
+            "condition": "time",
+            "after": "06:30:00",
+            "before": "22:00:00",
+            "weekday": [
+              "sat",
+              "sun"
+            ]
+          }
+        ]
+      },
+      {
+        "condition": "template",
+        "alias": "Step",
+        "value_template": "{% set m = states.binary_sensor.example_binary_sensor_4 %}{% set s = states.input_boolean.example_input_boolean_1 %}{{ s is none or s.state == 'off' or (m is not none and m.last_changed > s.last_changed) }}"
+      },
+      {
+        "condition": "state",
+        "entity_id": "switch.example_switch_4",
+        "state": "off"
+      }
+    ],
+    "actions": [
+      {
+        "action": "switch.turn_on",
+        "target": {
+          "entity_id": "switch.example_switch_4"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "binary_sensor.example_binary_sensor_4",
+      "switch.example_switch_4"
+    ],
+    "device": [
+      "ee00000000000000000000000000000b",
+      "ee00000000000000000000000000000c"
+    ],
+    "area": [
+      "area_1"
+    ],
+    "floor": [
+      "upper"
+    ]
+  }
+}

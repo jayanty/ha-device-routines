@@ -1,0 +1,786 @@
+{
+  "config": {
+    "id": "automation_35",
+    "alias": "Automation 35",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "numeric_state",
+        "entity_id": "sensor.example_sensor_7",
+        "above": 0.4,
+        "id": "draw_start"
+      },
+      {
+        "trigger": "numeric_state",
+        "entity_id": "sensor.example_sensor_7",
+        "above": 1.49,
+        "id": "flow_fast"
+      },
+      {
+        "trigger": "numeric_state",
+        "entity_id": "sensor.example_sensor_7",
+        "above": 0.99,
+        "for": {
+          "seconds": 65
+        },
+        "id": "flow_sustained"
+      },
+      {
+        "trigger": "numeric_state",
+        "entity_id": "sensor.example_sensor_7",
+        "below": 0.4,
+        "for": {
+          "seconds": 65
+        },
+        "id": "draw_end"
+      },
+      {
+        "trigger": "numeric_state",
+        "entity_id": "sensor.example_sensor_8",
+        "above": 104.9,
+        "id": "return_hot"
+      },
+      {
+        "trigger": "numeric_state",
+        "entity_id": "sensor.example_sensor_8",
+        "below": 95,
+        "id": "return_cold"
+      },
+      {
+        "trigger": "timer.finished",
+        "target": {
+          "entity_id": "timer.example_timer_4"
+        },
+        "id": "min_run_done"
+      },
+      {
+        "trigger": "timer.finished",
+        "target": {
+          "entity_id": "timer.example_timer_5"
+        },
+        "id": "max_run_done"
+      },
+      {
+        "trigger": "device",
+        "device_id": "8600b057d7f635962d08ccbb62557909",
+        "domain": "mqtt",
+        "type": "action",
+        "subtype": "single",
+        "id": "button"
+      },
+      {
+        "trigger": "state",
+        "entity_id": [
+          "binary_sensor.example_binary_sensor_7",
+          "binary_sensor.example_binary_sensor_8"
+        ],
+        "to": [
+          "on",
+          "off"
+        ],
+        "id": "eligibility"
+      },
+      {
+        "trigger": "state",
+        "entity_id": "sensor.example_sensor_8",
+        "to": [
+          "unavailable",
+          "unknown"
+        ],
+        "for": {
+          "minutes": 10
+        },
+        "id": "return_lost"
+      },
+      {
+        "trigger": "state",
+        "entity_id": "sensor.example_sensor_8",
+        "from": [
+          "unavailable",
+          "unknown"
+        ],
+        "not_to": [
+          "unavailable",
+          "unknown"
+        ],
+        "id": "return_back"
+      },
+      {
+        "trigger": "state",
+        "entity_id": "input_datetime.example_input_datetime_2",
+        "not_from": [
+          "unknown",
+          "unavailable"
+        ],
+        "not_to": [
+          "unknown",
+          "unavailable"
+        ],
+        "id": "example_name_1_session"
+      },
+      {
+        "trigger": "state",
+        "entity_id": "binary_sensor.example_binary_sensor_6",
+        "from": "off",
+        "to": "on",
+        "id": "example_name_1_humidity"
+      },
+      {
+        "trigger": "schedule.block_started",
+        "target": {
+          "entity_id": "schedule.example_schedule_1"
+        },
+        "id": "window_start"
+      },
+      {
+        "trigger": "schedule.block_ended",
+        "target": {
+          "entity_id": "schedule.example_schedule_1"
+        },
+        "id": "window_end"
+      },
+      {
+        "trigger": "time_pattern",
+        "minutes": "/5",
+        "id": "periodic"
+      },
+      {
+        "trigger": "homeassistant",
+        "event": "start",
+        "id": "ha_start"
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "alias": "Step",
+        "choose": [
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "draw_start"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "script.example_script_1",
+                "data": {
+                  "kind": "draw_start",
+                  "decision": "log"
+                }
+              }
+            ]
+          },
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "flow_fast"
+              },
+              {
+                "condition": "numeric_state",
+                "entity_id": "sensor.example_sensor_7",
+                "below": 5.01
+              },
+              {
+                "condition": "or",
+                "conditions": [
+                  {
+                    "condition": "numeric_state",
+                    "entity_id": "sensor.example_sensor_9",
+                    "below": -1.49
+                  },
+                  {
+                    "condition": "numeric_state",
+                    "entity_id": "sensor.example_sensor_10",
+                    "above": 0.99
+                  }
+                ]
+              }
+            ],
+            "sequence": [
+              {
+                "action": "script.example_script_2",
+                "data": {
+                  "reason": "flow_fast"
+                }
+              }
+            ]
+          },
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "flow_sustained"
+              }
+            ],
+            "sequence": [
+              {
+                "if": [
+                  {
+                    "condition": "numeric_state",
+                    "entity_id": "sensor.example_sensor_7",
+                    "below": 5.01
+                  }
+                ],
+                "then": [
+                  {
+                    "action": "script.example_script_2",
+                    "data": {
+                      "reason": "flow_sustained"
+                    }
+                  }
+                ],
+                "else": [
+                  {
+                    "action": "script.example_script_1",
+                    "data": {
+                      "kind": "flow_sustained",
+                      "decision": "ignore_high_flow"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "draw_end"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "script.example_script_1",
+                "data": {
+                  "kind": "draw_end",
+                  "decision": "log"
+                }
+              }
+            ]
+          },
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "max_run_done"
+              }
+            ],
+            "sequence": [
+              {
+                "if": [
+                  {
+                    "condition": "numeric_state",
+                    "entity_id": "sensor.example_sensor_7",
+                    "above": 0.99,
+                    "below": 5.01
+                  }
+                ],
+                "then": [
+                  {
+                    "action": "timer.start",
+                    "target": {
+                      "entity_id": "timer.example_timer_5"
+                    },
+                    "data": {
+                      "duration": "00:30:00"
+                    }
+                  },
+                  {
+                    "action": "script.example_script_1",
+                    "data": {
+                      "kind": "cap",
+                      "decision": "extend_flow"
+                    }
+                  }
+                ],
+                "else": [
+                  {
+                    "action": "input_boolean.turn_off",
+                    "target": {
+                      "entity_id": [
+                        "input_boolean.example_input_boolean_5",
+                        "input_boolean.example_input_boolean_6"
+                      ]
+                    }
+                  },
+                  {
+                    "action": "timer.start",
+                    "target": {
+                      "entity_id": "timer.example_timer_6"
+                    },
+                    "data": {
+                      "duration": "00:20:00"
+                    }
+                  },
+                  {
+                    "action": "script.example_script_1",
+                    "data": {
+                      "kind": "cap",
+                      "decision": "stop_and_rest"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "button"
+              }
+            ],
+            "sequence": [
+              {
+                "if": [
+                  {
+                    "condition": "state",
+                    "entity_id": "switch.example_switch_5",
+                    "state": "on"
+                  }
+                ],
+                "then": [
+                  {
+                    "action": "script.example_script_1",
+                    "data": {
+                      "kind": "button",
+                      "decision": "covered"
+                    }
+                  }
+                ],
+                "else": [
+                  {
+                    "action": "script.example_script_1",
+                    "data": {
+                      "kind": "button",
+                      "decision": "start"
+                    }
+                  }
+                ]
+              },
+              {
+                "action": "timer.start",
+                "target": {
+                  "entity_id": "timer.example_timer_7"
+                },
+                "data": {
+                  "duration": "00:15:00"
+                }
+              }
+            ]
+          },
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "return_lost"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "input_boolean.turn_on",
+                "target": {
+                  "entity_id": "input_boolean.example_input_boolean_7"
+                }
+              },
+              {
+                "action": "script.example_script_1",
+                "data": {
+                  "kind": "return_lost",
+                  "decision": "fallback_on"
+                }
+              }
+            ]
+          },
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "return_back"
+              },
+              {
+                "condition": "state",
+                "entity_id": "input_boolean.example_input_boolean_7",
+                "state": "on"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "input_boolean.turn_off",
+                "target": {
+                  "entity_id": "input_boolean.example_input_boolean_7"
+                }
+              },
+              {
+                "action": "script.example_script_1",
+                "data": {
+                  "kind": "return_back",
+                  "decision": "fallback_off"
+                }
+              }
+            ]
+          },
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "example_name_1_session"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "script.example_script_1",
+                "data": {
+                  "kind": "example_name_1_session",
+                  "decision": "log"
+                }
+              }
+            ]
+          },
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "example_name_1_humidity"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "script.example_script_1",
+                "data": {
+                  "kind": "example_name_1_humidity",
+                  "decision": "log"
+                }
+              }
+            ]
+          },
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "window_start"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "script.example_script_1",
+                "data": {
+                  "kind": "window_start",
+                  "decision": "preheat_on"
+                }
+              }
+            ]
+          },
+          {
+            "alias": "Step",
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "window_end"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "script.example_script_1",
+                "data": {
+                  "kind": "window_end",
+                  "decision": "preheat_off"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "alias": "Step",
+        "if": [
+          {
+            "condition": "state",
+            "entity_id": "input_boolean.example_input_boolean_5",
+            "state": "on"
+          },
+          {
+            "condition": "numeric_state",
+            "entity_id": "sensor.example_sensor_7",
+            "below": 0.5
+          },
+          {
+            "condition": "numeric_state",
+            "entity_id": "sensor.example_sensor_8",
+            "above": 104.9
+          },
+          {
+            "condition": "state",
+            "entity_id": "timer.example_timer_4",
+            "state": "idle"
+          }
+        ],
+        "then": [
+          {
+            "action": "input_boolean.turn_off",
+            "target": {
+              "entity_id": "input_boolean.example_input_boolean_5"
+            }
+          },
+          {
+            "if": [
+              {
+                "condition": "state",
+                "entity_id": "input_boolean.example_input_boolean_6",
+                "state": "off"
+              }
+            ],
+            "then": [
+              {
+                "action": "timer.cancel",
+                "target": {
+                  "entity_id": "timer.example_timer_5"
+                }
+              }
+            ]
+          },
+          {
+            "action": "script.example_script_1",
+            "data": {
+              "kind": "demand",
+              "decision": "clear"
+            }
+          }
+        ]
+      },
+      {
+        "alias": "Step",
+        "if": [
+          {
+            "condition": "state",
+            "entity_id": "input_boolean.example_input_boolean_6",
+            "state": "on"
+          },
+          {
+            "condition": "or",
+            "conditions": [
+              {
+                "condition": "numeric_state",
+                "entity_id": "sensor.example_sensor_8",
+                "above": 104.9
+              },
+              {
+                "condition": "state",
+                "entity_id": "binary_sensor.example_binary_sensor_7",
+                "state": "off"
+              },
+              {
+                "condition": "state",
+                "entity_id": "binary_sensor.example_binary_sensor_8",
+                "state": "on"
+              },
+              {
+                "condition": "state",
+                "entity_id": "input_boolean.example_input_boolean_7",
+                "state": "on"
+              }
+            ]
+          }
+        ],
+        "then": [
+          {
+            "action": "input_boolean.turn_off",
+            "target": {
+              "entity_id": "input_boolean.example_input_boolean_6"
+            }
+          },
+          {
+            "if": [
+              {
+                "condition": "state",
+                "entity_id": "input_boolean.example_input_boolean_5",
+                "state": "off"
+              }
+            ],
+            "then": [
+              {
+                "action": "timer.cancel",
+                "target": {
+                  "entity_id": "timer.example_timer_5"
+                }
+              }
+            ]
+          },
+          {
+            "action": "script.example_script_1",
+            "data": {
+              "kind": "keep_warm",
+              "decision": "clear"
+            }
+          }
+        ]
+      },
+      {
+        "alias": "Step",
+        "if": [
+          {
+            "condition": "state",
+            "entity_id": "input_boolean.example_input_boolean_6",
+            "state": "off"
+          },
+          {
+            "condition": "state",
+            "entity_id": "binary_sensor.example_binary_sensor_7",
+            "state": "on"
+          },
+          {
+            "condition": "state",
+            "entity_id": "binary_sensor.example_binary_sensor_8",
+            "state": "off"
+          },
+          {
+            "condition": "state",
+            "entity_id": "input_boolean.example_input_boolean_7",
+            "state": "off"
+          },
+          {
+            "condition": "state",
+            "entity_id": "timer.example_timer_6",
+            "state": "idle"
+          },
+          {
+            "condition": "numeric_state",
+            "entity_id": "sensor.example_sensor_8",
+            "below": 95
+          }
+        ],
+        "then": [
+          {
+            "action": "input_boolean.turn_on",
+            "target": {
+              "entity_id": "input_boolean.example_input_boolean_6"
+            }
+          },
+          {
+            "if": [
+              {
+                "condition": "state",
+                "entity_id": "timer.example_timer_5",
+                "state": "idle"
+              }
+            ],
+            "then": [
+              {
+                "action": "timer.start",
+                "target": {
+                  "entity_id": "timer.example_timer_5"
+                },
+                "data": {
+                  "duration": "00:30:00"
+                }
+              }
+            ]
+          },
+          {
+            "action": "script.example_script_1",
+            "data": {
+              "kind": "keep_warm",
+              "decision": "start"
+            }
+          }
+        ]
+      },
+      {
+        "alias": "Step",
+        "if": [
+          {
+            "condition": "state",
+            "entity_id": "input_boolean.example_input_boolean_7",
+            "state": "on"
+          },
+          {
+            "condition": "state",
+            "entity_id": "binary_sensor.example_binary_sensor_7",
+            "state": "on"
+          },
+          {
+            "condition": "state",
+            "entity_id": "timer.example_timer_7",
+            "state": "idle",
+            "for": {
+              "minutes": 35
+            }
+          }
+        ],
+        "then": [
+          {
+            "action": "timer.start",
+            "target": {
+              "entity_id": "timer.example_timer_7"
+            },
+            "data": {
+              "duration": "00:10:00"
+            }
+          },
+          {
+            "action": "script.example_script_1",
+            "data": {
+              "kind": "fallback",
+              "decision": "pulse"
+            }
+          }
+        ]
+      }
+    ],
+    "mode": "queued",
+    "max": 30
+  },
+  "related": {
+    "entity": [
+      "binary_sensor.example_binary_sensor_6",
+      "binary_sensor.example_binary_sensor_7",
+      "binary_sensor.example_binary_sensor_8",
+      "input_boolean.example_input_boolean_5",
+      "input_boolean.example_input_boolean_7",
+      "input_boolean.example_input_boolean_6",
+      "input_datetime.example_input_datetime_2",
+      "schedule.example_schedule_1",
+      "sensor.example_sensor_7",
+      "sensor.example_sensor_8",
+      "sensor.example_sensor_10",
+      "sensor.example_sensor_9",
+      "switch.example_switch_5",
+      "timer.example_timer_7",
+      "timer.example_timer_6",
+      "timer.example_timer_5",
+      "timer.example_timer_4"
+    ],
+    "device": [
+      "ee00000000000000000000000000000d",
+      "ee00000000000000000000000000000e",
+      "ee000000000000000000000000000011",
+      "ee000000000000000000000000000012"
+    ],
+    "area": [
+      "garage",
+      "area_1",
+      "outside"
+    ],
+    "floor": [
+      "main",
+      "upper"
+    ],
+    "label": [
+      "label_1"
+    ]
+  }
+}

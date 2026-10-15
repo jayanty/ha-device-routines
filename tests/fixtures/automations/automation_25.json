@@ -1,0 +1,47 @@
+{
+  "config": {
+    "id": "automation_25",
+    "alias": "Automation 25",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "binary_sensor.example_binary_sensor_4",
+        "to": "off"
+      }
+    ],
+    "actions": [
+      {
+        "delay": "00:03:00"
+      },
+      {
+        "condition": "state",
+        "entity_id": "binary_sensor.example_binary_sensor_4",
+        "state": "off"
+      },
+      {
+        "action": "light.turn_off",
+        "target": {
+          "entity_id": "light.example_light_2"
+        }
+      }
+    ],
+    "mode": "restart"
+  },
+  "related": {
+    "entity": [
+      "binary_sensor.example_binary_sensor_4",
+      "light.example_light_2"
+    ],
+    "device": [
+      "ee00000000000000000000000000000b",
+      "ee00000000000000000000000000000c"
+    ],
+    "area": [
+      "area_1"
+    ],
+    "floor": [
+      "upper"
+    ]
+  }
+}

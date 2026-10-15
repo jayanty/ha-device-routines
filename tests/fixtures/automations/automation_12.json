@@ -1,0 +1,48 @@
+{
+  "config": {
+    "id": "automation_12",
+    "alias": "Automation 12",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "switch.example_switch_4",
+        "to": "off"
+      }
+    ],
+    "conditions": [
+      "{{ trigger.to_state.context.parent_id == none }}"
+    ],
+    "actions": [
+      {
+        "action": "input_boolean.turn_on",
+        "target": {
+          "entity_id": "input_boolean.example_input_boolean_1"
+        }
+      },
+      {
+        "action": "timer.cancel",
+        "target": {
+          "entity_id": "timer.example_timer_2"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "input_boolean.example_input_boolean_1",
+      "switch.example_switch_4",
+      "timer.example_timer_2"
+    ],
+    "device": [
+      "ee00000000000000000000000000000b"
+    ],
+    "area": [
+      "area_1"
+    ],
+    "floor": [
+      "upper"
+    ]
+  }
+}

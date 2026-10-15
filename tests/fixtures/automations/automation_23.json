@@ -1,0 +1,39 @@
+{
+  "config": {
+    "id": "automation_23",
+    "alias": "Automation 23",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "light.example_light_2",
+        "to": "on",
+        "for": "01:00:00"
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "action": "light.turn_off",
+        "target": {
+          "entity_id": "light.example_light_2"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "light.example_light_2"
+    ],
+    "device": [
+      "ee00000000000000000000000000000b"
+    ],
+    "area": [
+      "area_1"
+    ],
+    "floor": [
+      "upper"
+    ]
+  }
+}

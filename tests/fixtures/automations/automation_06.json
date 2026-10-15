@@ -1,0 +1,92 @@
+{
+  "config": {
+    "id": "automation_06",
+    "alias": "Automation 06",
+    "description": "",
+    "triggers": [
+      {
+        "entity_id": [
+          "sensor.example_sensor_4"
+        ],
+        "above": 28,
+        "for": {
+          "hours": 0,
+          "minutes": 3,
+          "seconds": 0
+        },
+        "id": "hot",
+        "trigger": "numeric_state"
+      },
+      {
+        "entity_id": [
+          "sensor.example_sensor_4"
+        ],
+        "below": 26,
+        "for": {
+          "hours": 0,
+          "minutes": 1,
+          "seconds": 0
+        },
+        "id": "cool",
+        "trigger": "numeric_state"
+      }
+    ],
+    "actions": [
+      {
+        "choose": [
+          {
+            "conditions": [
+              {
+                "condition": "template",
+                "value_template": "{{ trigger.id == 'hot' }}"
+              }
+            ],
+            "sequence": [
+              {
+                "condition": "state",
+                "entity_id": "switch.example_switch_2",
+                "state": "off"
+              },
+              {
+                "target": {
+                  "entity_id": "switch.example_switch_2"
+                },
+                "action": "switch.turn_on",
+                "data": {}
+              }
+            ]
+          },
+          {
+            "conditions": [
+              {
+                "condition": "template",
+                "value_template": "{{ trigger.id == 'cool' }}"
+              }
+            ],
+            "sequence": [
+              {
+                "condition": "state",
+                "entity_id": "switch.example_switch_2",
+                "state": "on"
+              },
+              {
+                "target": {
+                  "entity_id": "switch.example_switch_2"
+                },
+                "action": "switch.turn_off",
+                "data": {}
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "sensor.example_sensor_4",
+      "switch.example_switch_2"
+    ]
+  }
+}

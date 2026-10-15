@@ -1,0 +1,46 @@
+{
+  "config": {
+    "id": "automation_03",
+    "alias": "Automation 03",
+    "description": "",
+    "triggers": [
+      {
+        "type": "turned_off",
+        "device_id": "638bf026595b7fb03dea708ab28d39cf",
+        "entity_id": "ee000000000000000000000000000005",
+        "domain": "switch",
+        "trigger": "device",
+        "for": {
+          "hours": 0,
+          "minutes": 0,
+          "seconds": 30
+        }
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "device",
+        "type": "is_off",
+        "device_id": "638bf026595b7fb03dea708ab28d39cf",
+        "entity_id": "ee000000000000000000000000000005",
+        "domain": "switch"
+      },
+      {
+        "condition": "device",
+        "type": "is_off",
+        "device_id": "638bf026595b7fb03dea708ab28d39cf",
+        "entity_id": "ee000000000000000000000000000006",
+        "domain": "switch"
+      }
+    ],
+    "actions": [
+      {
+        "type": "turn_on",
+        "device_id": "638bf026595b7fb03dea708ab28d39cf",
+        "entity_id": "ee000000000000000000000000000005",
+        "domain": "switch"
+      }
+    ],
+    "mode": "single"
+  }
+}

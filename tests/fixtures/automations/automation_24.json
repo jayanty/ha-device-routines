@@ -1,0 +1,41 @@
+{
+  "config": {
+    "id": "automation_24",
+    "alias": "Automation 24",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "light.example_light_2",
+        "to": "off"
+      }
+    ],
+    "conditions": [
+      "{{ trigger.to_state.context.parent_id == none }}"
+    ],
+    "actions": [
+      {
+        "action": "input_boolean.turn_on",
+        "target": {
+          "entity_id": "input_boolean.example_input_boolean_3"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "input_boolean.example_input_boolean_3",
+      "light.example_light_2"
+    ],
+    "device": [
+      "ee00000000000000000000000000000b"
+    ],
+    "area": [
+      "area_1"
+    ],
+    "floor": [
+      "upper"
+    ]
+  }
+}

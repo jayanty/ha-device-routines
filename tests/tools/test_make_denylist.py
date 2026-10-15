@@ -270,3 +270,15 @@ def test_devices_from_the_home_still_count(token: str) -> None:
 )
 def test_more_words_everyone_uses_are_generic(token: str) -> None:
     assert make_denylist.is_generic(token)
+
+
+def test_hand_kept_extras_are_never_filtered() -> None:
+    """Initials and other short or generic looking extras are listed as given."""
+    capture = {**REGISTRIES, "extra": ["ZQ", "east", "Quuxville Road"]}
+
+    tokens = make_denylist.build_denylist(capture)
+
+    assert "ZQ" in tokens
+    assert "east" in tokens
+    assert "Quuxville Road" in tokens
+    assert "ZQ" not in make_denylist.build_denylist(capture, allow=["zq"])

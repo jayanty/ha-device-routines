@@ -1,0 +1,41 @@
+{
+  "config": {
+    "id": "automation_28",
+    "alias": "Automation 28",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "binary_sensor.example_binary_sensor_6",
+        "to": "off",
+        "for": "00:05:00"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "state",
+        "entity_id": "input_boolean.example_input_boolean_2",
+        "state": "on"
+      }
+    ],
+    "actions": [
+      {
+        "action": "input_datetime.set_datetime",
+        "target": {
+          "entity_id": "input_datetime.example_input_datetime_1"
+        },
+        "data": {
+          "datetime": "{{ now() }}"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "binary_sensor.example_binary_sensor_6",
+      "input_boolean.example_input_boolean_2",
+      "input_datetime.example_input_datetime_1"
+    ]
+  }
+}

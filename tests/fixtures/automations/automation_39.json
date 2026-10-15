@@ -1,0 +1,39 @@
+{
+  "config": {
+    "id": "automation_39",
+    "alias": "Automation 39",
+    "description": "Description.",
+    "triggers": [
+      {
+        "entity_id": [
+          "sensor.example_sensor_11"
+        ],
+        "to": [
+          "battery"
+        ],
+        "for": {
+          "hours": 0,
+          "minutes": 5,
+          "seconds": 0
+        },
+        "trigger": "state"
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "data": {
+          "title": "Title",
+          "message": "Message"
+        },
+        "action": "notify.phone_2"
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "sensor.example_sensor_11"
+    ]
+  }
+}

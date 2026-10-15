@@ -1,0 +1,47 @@
+{
+  "config": {
+    "id": "automation_14",
+    "alias": "Automation 14",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "event",
+        "event_type": "timer.finished",
+        "event_data": {
+          "entity_id": "timer.example_timer_2"
+        }
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "state",
+        "entity_id": "switch.example_switch_4",
+        "state": "on"
+      }
+    ],
+    "actions": [
+      {
+        "action": "switch.turn_off",
+        "target": {
+          "entity_id": "switch.example_switch_4"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "switch.example_switch_4",
+      "timer.example_timer_2"
+    ],
+    "device": [
+      "ee00000000000000000000000000000b"
+    ],
+    "area": [
+      "area_1"
+    ],
+    "floor": [
+      "upper"
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "config": {
+    "id": "automation_20",
+    "alias": "Automation 20",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "time",
+        "at": "00:00:00"
+      }
+    ],
+    "actions": [
+      {
+        "action": "counter.reset",
+        "target": {
+          "entity_id": "counter.example_counter_1"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "related": {
+    "entity": [
+      "counter.example_counter_1"
+    ]
+  }
+}

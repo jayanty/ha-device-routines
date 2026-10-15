@@ -1,0 +1,103 @@
+{
+  "config": {
+    "id": "automation_22",
+    "alias": "Automation 22",
+    "description": "Description.",
+    "triggers": [
+      {
+        "trigger": "time",
+        "at": "05:15:00",
+        "id": "wk_morning"
+      },
+      {
+        "trigger": "time",
+        "at": "06:30:00",
+        "id": "wknd_morning"
+      },
+      {
+        "trigger": "time",
+        "at": "22:00:00",
+        "id": "night"
+      },
+      {
+        "trigger": "homeassistant",
+        "event": "start",
+        "id": "ha_start"
+      },
+      {
+        "trigger": "state",
+        "entity_id": "binary_sensor.example_binary_sensor_4",
+        "to": "off",
+        "id": "left"
+      }
+    ],
+    "actions": [
+      {
+        "choose": [
+          {
+            "conditions": [
+              {
+                "condition": "template",
+                "value_template": "{{ desired == disabled_mode }}"
+              },
+              {
+                "condition": "state",
+                "entity_id": "binary_sensor.example_binary_sensor_4",
+                "state": "on"
+              }
+            ],
+            "sequence": [
+              {
+                "stop": "Stopped."
+              }
+            ]
+          }
+        ],
+        "default": [
+          {
+            "if": [
+              {
+                "condition": "template",
+                "value_template": "{{ not is_state('select.example_select_1', desired) }}"
+              }
+            ],
+            "then": [
+              {
+                "action": "select.select_option",
+                "target": {
+                  "entity_id": "select.example_select_1"
+                },
+                "data": {
+                  "option": "{{ desired }}"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "mode": "queued",
+    "max": 5,
+    "variables": {
+      "auto_mode": "Auto on/off when occupied: Light is on when room is occupied, off when unoccupied",
+      "disabled_mode": "Disabled. Light does not turn on or off with presence",
+      "is_active": "{{ (now().hour + now().minute/60) >= (5.25 if now().weekday() < 5 else 6.5) and now().hour < 22 }}",
+      "desired": "{{ auto_mode if is_active else disabled_mode }}"
+    }
+  },
+  "related": {
+    "entity": [
+      "binary_sensor.example_binary_sensor_4",
+      "select.example_select_1"
+    ],
+    "device": [
+      "ee00000000000000000000000000000c"
+    ],
+    "area": [
+      "area_1"
+    ],
+    "floor": [
+      "upper"
+    ]
+  }
+}
