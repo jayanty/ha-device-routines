@@ -4,7 +4,7 @@ Oct 13, 2026 · @Jayant Yadav
 
 The build order for Claude Code: Phase 0, Stage 0, then Phases 1 to 4, each with tasks, tests, validation steps and exit criteria. Behavior comes from PRD (public), design from Technical spec (public), private instance facts from Instance context (private). This tab is public and becomes `docs/IMPLEMENTATION_PLAN.md`. Section 8 is the handoff.
 
-Status: Phase 0 done (2026-10-14): `main` at the Phase 0 merge, no release tag. Stage 0 in progress: V11 closed (decisions L16 to L18), V2 closed for A4 and amended for A3 (39 corpus fixtures, decision L19), V4 deferred (no AI Task entity). Next: the write items V3, V5 to V9 and V13 and the harness items V10 and V12; every write item waits for Jayant's approval.
+Status: Stage 0 done (2026-10-17): every assumption closed, amended or deferred (`docs/stage0-report.md`, decisions L20 to L25, TECH_SPEC amended); harness pinned to core 2026.10.2; `main` fast forwarded to the Stage 0 exit. Open cleanup items C1 to C6 need Jayant (C1, installing the L16 to L18 package, before the next restart). Next: Phase 1 task 1.1.
 
 ## 0. Rules of engagement (Claude Code reads this first)
 

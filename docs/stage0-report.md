@@ -452,3 +452,72 @@ run on every push.
 | Evidence | The table above; four harness tests |
 | Consequence | None to the design: Phase 3's triggers and conditions follow the core shape (`async_get_triggers`, `async_get_conditions`, the two YAML files) |
 | Fixtures | `tests/fixtures/stage0/custom_components/stage0_probe/` (synthetic) |
+
+## Development package check (L16 to L18 installed?)
+
+Read only, 2026-10-17 at 18:57Z, after the owner reported replacing the package and
+reloading automations. The loaded configs (`automation/config`) and the entity attributes
+still show the previous package: the post restart check runs in `queued` mode, the deploy
+trigger has `not_to` but no `not_from`, and the deploy automation still sets `short_sha`
+in `variables`. Every package automation's `last_changed` is the 18:10:52Z restart, so no
+automation reload has happened since, and the post restart check's start run at 18:11Z
+took the queued path. `input_text.device_routines_last_good_commit` still reads `82c053b`
+while Health runs `797e0c4`, which is the stale value L16 fixes. The deploy loop itself
+works; the risk until the new package is in place is the L17 case (a restart after a
+rollback redeploys the rolled back commit). Cleanup item C1.
+
+## Summary
+
+| Assumption | Item | Status | Where the design changed |
+| --- | --- | --- | --- |
+| A1 blueprint installed by code, no restart | V5 | closed | TECH_SPEC 4.2 install row names the exact call |
+| A2 write path, per id reload | V6 | amended: the editor's lock is not reachable | TECH_SPEC 4.2 write row: own lock and hash compare, registry removal on delete |
+| A3 reference helpers | V2, harness | closed (entity, device, area, floor, label), with V2's registry id amendment | TECH_SPEC 4.2 read row |
+| A4 loaded entity exposes its config | V2 | closed | none |
+| A5 helpers from code with id and label | V7 | amended: through the WebSocket commands in process | TECH_SPEC 4.2 helper row, decision L23 |
+| A5b restored expired timer fires | V10 | amended: it finishes before triggers are armed | TECH_SPEC 4.2, 5.3, 7, decision L20 |
+| A6 midnight blocks | V10 | closed | TECH_SPEC 5.3 note: state triggers only |
+| A7 DST behavior known | V10 | closed, spec corrected | TECH_SPEC 3.6, decision L21 |
+| A8 blueprint features | V5 | closed for validation and runtime; form rendering to C3 | none |
+| A9 contexts (amended in v1.1) | V3 | closed for time triggered runs; by hand, app and voice to C2 | none |
+| A10 attach to another integration's device | V9 | amended in the harness; device page placement to C4 | TECH_SPEC 4.2 attach row, decision L25 |
+| A11 take control keeps the id | V8 | closed | none (decision L24 from the same probe) |
+| A12 AI Task | V4 | deferred (no AI Task entity) | none; AI summaries off for v1 |
+| A13 datetime in time triggers and conditions | V12 | amended to the designed fallback | TECH_SPEC 5.3, 5.4, decision L22 |
+| A14 custom purpose specific triggers and conditions | V13 | closed for the core; picker rendering to C5 | none |
+
+Every throwaway artifact (`stage0_v3_time_probe`, `stage0_v6_long_run`,
+`stage0_v6_probe`, `stage0_v8_probe`, the `stage0/stage0_probe.yaml` blueprint and its
+Spook update entity, `timer` and `schedule` `stage0_v7_*`, the `stage0_routines` label)
+was removed; the final read at 19:25Z found no `stage0` entity, automation, blueprint or
+label. The sandbox plug ended `off`, as it started.
+
+## Decision defaults applied
+
+- PRD defaults D1 to D34 apply unchanged. D2(a), internals through one adapter, holds; its
+  fallback (b) is no longer needed for helpers (L23).
+- Instance context defaults: AI summaries off for v1; keep alive in minutes only; the
+  sandbox plug was used for V3 under the owner's blanket approval of the Stage 0 write
+  items in plan order (2026-10-17).
+- The throwaway integration of V5, V6 and V13 was replaced by core paths reachable without
+  a restart (`blueprint/save`, the config endpoint) and by a harness integration, because
+  loading a new custom integration needs a restart, which no session does.
+- The harness moved to core 2026.10.2, the instance's version, and HACS requires it.
+
+## Cleanup items (need the owner)
+
+| Id | Item | What it needs | When |
+| --- | --- | --- | --- |
+| C1 | Install the L16 to L18 package: copy `tools/ha_package/device_routines_dev.yaml` over the installed package file and reload automations; then a session confirms over MCP `mode: parallel`, `not_from` on the deploy trigger, no `short_sha` variable, and after the next restart that the last good commit follows Health | Owner, file copy and a reload (no restart) | Before the next restart |
+| C2 | V3 by hand, by app and by voice on one Z-Wave, one Zigbee, one Matter and one Wi-Fi device (instance question 5), plus one script run, recorded and anonymized into `tests/fixtures/attribution/` | Owner names the devices and operates them while a session records | Before Phase 2's attribution task |
+| C3 | One look at the blueprint form (sections, condition selector) and the editor's Take control button | Owner, a few minutes in the UI, when the Phase 2 blueprint is installed | Phase 2 |
+| C4 | Device page placement of a linked record's entities (A10, L25) | A deploy carrying the first entity, then a restart, then one look at a device page | First Phase 1 live deploy |
+| C5 | The editor's pickers show Device Routines triggers and conditions with device, area and label targets | A deploy carrying them, a restart, one look | Phase 3 |
+| C6 | V4: an AI Task entity on the local endpoint, then one `generate_data` call (optional) | Owner creates the entity | Any time; AI summaries stay off until then |
+
+## Exit
+
+Every assumption is closed, amended or deferred; the write items ran under the owner's
+blanket approval and the parts that need the owner are the cleanup items above; fixtures
+were committed only after anonymization and the privacy check; TECH_SPEC follows every
+amendment. Stage 0 is complete.
