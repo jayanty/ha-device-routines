@@ -193,3 +193,33 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | (b): `tools/scrub_automations.py` (aliases, descriptions, notes, stop texts, titles, messages and names become generic; URLs, webhook ids, notify services and registry entity ids map to stand ins consistently across files; files become `automation_NN.json`), and `build_denylist` keeps every extra as given. Each with tests. |
 | Consequence | The fixture pipeline is capture, scrub, anonymize, privacy check, read every remaining string by hand. Trigger ids and data values the owner chose are kept, because templates and trigger conditions refer to them; the denylist covers names inside them. |
 | PRD register entry | no |
+
+## 2026-10-17 L20: a timer that expired while Home Assistant was down is caught up by the integration
+
+| Field | Content |
+| --- | --- |
+| Context | Stage 0 V10 (A5b): the timer component finishes a restored timer whose end has passed while the entity is added during startup, and automations arm their triggers only in a startup job after that. Neither the `timer.finished` event trigger nor the purpose specific `timer.finished` trigger sees that finish; only a start trigger runs, and by then the timer reads `idle` with `last_transition: finished`, which a timer that finished normally an hour earlier also reads. A5b as written fails for a routine. |
+| Options | (a) Accept the miss, so a Turn off after that ran out during a restart never turns the device off; (b) a blueprint start branch that acts on `idle` plus `last_transition: finished`, which also fires after a normal finish followed by a manual change during the downtime; (c) the integration reads the timer's pre shutdown state from the restore state helper at setup (`active` with a `finishes_at` in the past means the finish was missed) and, once Home Assistant has started, fires `device_routines_timer_caught_up` with the device id; the blueprint gets a second `timer_done` trigger on that event, so the normal branch runs. |
+| Choice | (c). It is exact and keeps the action in the automation. The read goes through `ha_adapter` (`restore_state.async_get(hass).last_states`). |
+| Consequence | TECH_SPEC 4.2 gains the capability row, 5.3 the event trigger, 7 the startup step. Behavior without the integration (PRD 3.1 and 9.2): a timer that runs out during a restart is not caught up until the integration is back, which the user guide states. A harness test (`tests/stage0/test_v10_timer_restore.py`) holds the core behavior so a core change is noticed. |
+| PRD register entry | no (A5b amended in the Stage 0 report) |
+
+## 2026-10-17 L21: daylight saving rules follow what the core time trigger really does
+
+| Field | Content |
+| --- | --- |
+| Context | TECH_SPEC 3.6 said a skipped wall clock time runs at the first valid instant after it and a repeated one runs once. Stage 0 V10 (A7) on core 2026.10.1, the 2026 United States and European dates: a skipped time does not run that night at all, and a repeated time runs twice, once per offset, an hour apart. PRD 5.2 asks that the behavior follow the core time trigger and be documented. |
+| Options | (a) Make routines differ from the core with an extra trigger or an integration side catch up; (b) mirror the core in `nextrun` and the sentences, and document it. |
+| Choice | (b). Every on and off action is guarded by the device state, so the second run at a repeated time changes nothing; a pulse at a repeated time pulses twice, which the guide states, and a routine whose start time falls in the skipped hour does not start that day. |
+| Consequence | TECH_SPEC 3.6 DST paragraph rewritten; the user guide documents both nights; `nextrun` tests use the 2026 dates and match `tests/stage0/test_v10_schedule_dst.py`. |
+| PRD register entry | no |
+
+## 2026-10-17 L22: Paused until stays a datetime entity, read through one template condition
+
+| Field | Content |
+| --- | --- |
+| Context | Stage 0 V12 (A13): the time trigger accepts `input_datetime` and `sensor` entities only and the time condition `input_datetime`, `time` and `sensor` only, so a `datetime` entity fails both, as PRD 9.5 expected. The PRD 9.5 alternative, a timestamp sensor, works for the trigger but not for the condition: the time condition takes only the local time of day of a timestamp sensor, so a pause until tomorrow 07:30 reads as over at 08:00 today. |
+| Options | (a) Timestamp sensor for both, which breaks every pause longer than a day; (b) timestamp sensor for the trigger and the template for the condition, which adds an entity per routine; (c) keep the `datetime` entity, use the one template condition of TECH_SPEC 5.4 for `not_paused`, omit `pause_ended`, and let the integration call resume at the stored time (PRD 9.5). |
+| Choice | (c). The template is `{% set s = states(entity) %}{{ s in ('unknown', 'unavailable', '') or as_datetime(s) <= now() }}`, proven in the harness for unknown, unavailable, past and future values. A `datetime` entity that implements RestoreEntity gets its value back after a restart (harness). |
+| Consequence | TECH_SPEC 5.3 drops `pause_ended` and 5.4 makes the template the only path; the blueprint's `homeassistant.min_version` is 2026.10.1. Without the integration a pause still ends, at the next scheduled trigger, as PRD 9.5 says. |
+| PRD register entry | no (A13 closed with the designed fallback) |

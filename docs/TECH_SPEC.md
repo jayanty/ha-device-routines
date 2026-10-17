@@ -107,7 +107,7 @@ class Conflict:          a: int, b: int, reason_key: str, at: datetime | None
 - `next_occurrences(item, now, tz, sun) -> list[Occurrence]` and `next_run(...)`.
 - `expected_state(settings, now, schedule_state) -> on | off | None`, the single source of truth for catch up, skip targets and sentences. A window belongs to the weekday it starts on: a window from 17:00 to 09:00 with Weekdays is off on Monday at 08:00 because Sunday is not a start day.
 - `skip_target(settings, now, paused_until, schedule_state) -> SkipTarget`: the action the sentence shows, with its paired end for a window start (D18) and the resulting Paused until value.
-- DST: times are wall clock. A time that does not exist on the spring forward day runs at the first valid instant after it; a time that exists twice on the fall back day runs once, at the first occurrence. The rules mirror the HA time trigger (A7, V10) and are tested on the 2026 US and EU dates.
+- DST: times are wall clock and the rules mirror the HA time trigger as Stage 0 observed it (A7, V10, decision L21): a time that does not exist on the spring forward day does not run that day at all; a time that exists twice on the fall back day runs twice, once per offset, an hour apart. The device state guard makes the second on or off a no op. Tested on the 2026 US and EU dates.
 
 ### 3.7 conflicts.py
 
@@ -151,12 +151,13 @@ The only module allowed to touch internals. Each capability is one small functio
 
 | Capability | Primary path | Fallback |
 | --- | --- | --- |
-| Read automation configs and references | `automations_with_entity`, `automations_with_device`, `automations_with_area`, `automations_with_label` from the automation component, and the entity's `raw_config` (Stage 0 V2: the same config the `automation/config` WebSocket command returns, for UI and YAML automations alike). Device triggers, conditions and actions name entities by registry id, so every entity reference is resolved with `entity_registry.async_resolve_entity_id` before use and an unresolved one is dropped; the core's own `search/related` fails on such automations because it splits the raw id. Helper results include entities that are only read (triggers, conditions), so the summary still keeps action targets only, and entities named only inside templates are invisible to the helpers. An automation entity without a config (a restored, unavailable registry entry, or a YAML automation ignored for a duplicate id) is skipped | None needed; these are public helpers |
+| Read automation configs and references | `automations_with_entity`, `automations_with_device`, `automations_with_area`, `automations_with_label` from the automation component, and the entity's `raw_config` (Stage 0 V2: the same config the `automation/config` WebSocket command returns, for UI and YAML automations alike). Device triggers, conditions and actions name entities by registry id, so every entity reference is resolved with `entity_registry.async_resolve_entity_id` before use and an unresolved one is dropped; the core's own `search/related` fails on such automations because it splits the raw id. Helper results include entities that are only read (triggers, conditions), so the summary still keeps action targets only, and entities named only inside templates are invisible to the helpers. The helpers never expand an id (Stage 0, A3 harness), so discovery for a device also asks `automations_with_area` for the device's area and each entity's own area, `automations_with_floor` for those areas' floors and `automations_with_label` for the device's and the entities' labels, and then keeps only actions whose domain matches one of the device's entities. An automation entity without a config (a restored, unavailable registry entry, or a YAML automation ignored for a duplicate id) is skipped | None needed; these are public helpers |
 | Write an automation entry | Replicate the config editor: load `automations.yaml` with `load_yaml_dict`, replace or append the one entry, `write_utf8_file_atomic`, then `automation.reload` with `id`. Hold the editor's own lock when V6 finds it reachable; otherwise a module lock plus a file hash compare before the write and one retry | D2(b): the WebSocket automation config command over loopback with a token the user creates in options |
 | Install the blueprint | The automation `DomainBlueprints` instance under `hass.data` for the blueprint domain: `async_add_blueprint(Blueprint(yaml, expected_domain=automation), path, allow_override=True)` | Write the file and call `automation.reload` |
 | Create timer and schedule helpers | The storage collection of the timer and schedule components (`async_create_item`), then `entity_registry.async_update_entity` for the entity id, the label and the device | D2(b): the `timer/create` and `schedule/create` WebSocket commands |
 | Labels and categories | The label and category registry helpers | None |
 | Attach entities to devices from other integrations | The approach proven in ha-device-links; V9 reconfirms it on the current core | `device_info` with the device's identifiers, which adds this config entry to the device |
+| Catch up a timer that ran out during a restart | `restore_state.async_get(hass).last_states` at setup: a routine timer that was `active` with a `finishes_at` in the past was finished during startup before any trigger was armed (Stage 0 V10, decision L20). After the Home Assistant started event the manager fires `device_routines_timer_caught_up` with the device id | None; without the integration the finish is missed, as the user guide states |
 | Detect take control | `use_blueprint` absent on an automation whose id carries M1 | None |
 
 ### 4.3 attribution.py
@@ -291,20 +292,20 @@ Sentinel entities never exist: a state trigger on a missing entity never fires, 
 | --- | --- |
 | `scheduled_on` | time at `on_time`, enabled `on_time_enabled` |
 | `scheduled_off` | time at `off_time`, enabled `off_time_enabled` |
-| `block_on`, `block_off` | state of `schedule_entity` to on, to off; enabled `schedule_enabled` |
+| `block_on`, `block_off` | state of `schedule_entity` to on, to off; enabled `schedule_enabled`. Never `schedule.block_started`, which fires again at midnight between back to back blocks (Stage 0 V10, A6) |
 | `ha_start` | Home Assistant start |
 | `reconnect` | state of `target_entity` from unavailable, for 10 seconds (a debounce, not a duration that must survive restarts) |
 | `device_on` | state of `target_entity` from `inactive_state` |
 | `device_off` | state of `target_entity` to `inactive_state` |
-| `timer_done` | the timer finished trigger when the platform offers one (V5), else the `timer.finished` event filtered on `timer_entity` |
+| `timer_done` | the purpose specific `timer.finished` trigger on `timer_entity`, and a second trigger with the same id on the event `device_routines_timer_caught_up` filtered on `device_id` (decision L20) |
 | `pause_changed` | state of `paused_until_entity` |
-| `pause_ended` | time at `paused_until_entity` when A13 holds; otherwise omitted, and the integration calls resume at the stored time |
+| `pause_ended` | omitted: the time trigger refuses a `datetime` entity (Stage 0 V12, decision L22); the integration calls resume at the stored time |
 | `override_cleared` | state of `override_entity` to off |
 | `pulse` | time at `pulse_at`, enabled `pulse_enabled` |
 
-### 5.4 Shared conditions (repeated per branch; no templates except the A13 fallback)
+### 5.4 Shared conditions (repeated per branch; no templates except `not_paused`)
 
-- `not_paused`: the paused entity is unknown, unavailable or in the past (time after the entity). Fallback when A13 fails: one template that returns true when the state is unknown, unavailable or empty, or when `as_datetime(state) <= now()`, unit tested.
+- `not_paused`: one template, `{% set s = states(entity) %}{{ s in ('unknown', 'unavailable', '') or as_datetime(s) <= now() }}`, unit tested. A native time condition is not possible: it refuses a `datetime` entity and compares a timestamp sensor by time of day only (Stage 0 V12, decision L22).
 - `expected_on`: with `schedule_enabled`, the schedule entity is on. With `crosses_midnight`, either (time after `on_time` and weekday in `days_start`) or (time before `off_time` and weekday in `days_end`). Otherwise time after `on_time` before `off_time` with weekday in `days_start`. Meaningful only when `has_window` (both times enabled, or a schedule linked).
 - `no_override`: the override entity is unavailable or off.
 - `device_inactive` and `device_active`: the target state equals, or does not equal, `inactive_state`.
@@ -323,7 +324,7 @@ Sentinel entities never exist: a state trigger on a missing entity never fires, 
 | `timer_done` | `not_paused` | with `turn_off_after_min` set: off action; with `turn_back_on_after_min` set: `extra_ok`, then on action |
 | `ha_start`, `reconnect`, `override_cleared` | `catch_up`, `not_paused`, `no_override` | with `has_window`: on action when `expected_on` and `device_inactive`, off action when not `expected_on` and `device_active`; one shot (on enabled, off disabled): on action when time after `on_time` before `late_window_end`, weekday in `days_start` and `device_inactive` |
 | `pause_changed` | the paused entity is in the future | pause the timer |
-| `pause_changed`, `pause_ended` | the paused entity is not in the future | resume the timer, then the catch up branch (D20) |
+| `pause_changed` (a resume, or the integration clearing the entity at the stored end) | the paused entity is not in the future | resume the timer, then the catch up branch (D20) |
 | `pulse` | `not_paused`, the device steady for `pulse_min_steady_min` in either state | opposite action; delay `pulse_minutes`; restore. Pulse uses delay deliberately: a restart mid pulse is repaired by catch up, and the timer stays unambiguous for the one duration feature a routine can have |
 | any scheduled or countdown branch | `not_paused` false | fire `device_routines_action_skipped` with device id, automation id, trigger id, action and scheduled time, then stop |
 
@@ -342,6 +343,7 @@ Store `.storage/device_routines`, version 1, keys: `owned` (automation id to dev
 `async_reconcile()` runs after the Home Assistant started event, after every integration update, and from maintenance:
 
 1. Adapter check; stop here with `adapter_incompatible` when it fails.
+   After the started event only: fire `device_routines_timer_caught_up` for each routine timer the restore state shows ran out during the restart (decision L20).
 2. Blueprint: missing, install; hash equals the shipped one, nothing; hash equals a previously shipped version, install (upgrade); anything else, `blueprint_modified`.
 3. The `Routines` label and the `Device Routines` category exist with the right icon.
 4. Ownership index: scan every automation; owned means M1 and M2; add missing entries, drop stale ones, detect detached ones.

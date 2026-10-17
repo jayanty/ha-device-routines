@@ -126,3 +126,100 @@ loads the newest deployed commit.
 | Evidence | The table above |
 | Consequence | None for v1: AI summaries stay off by default (FR-S5, the default noted in the instance context). If an AI Task entity is created on the local endpoint later, V4 runs its `generate_data` call then |
 | Fixtures | none |
+
+## V10: restored expired timer, midnight schedule blocks, DST dates (A5b, A6, A7)
+
+### Plan
+
+| Field | Content |
+| --- | --- |
+| What | A5b: a timer restored with an end in the past fires a `timer.finished` that a routine sees. A6: schedule blocks that meet at midnight do not blip off and on. A7: what the time trigger does with a skipped and a repeated wall clock time. |
+| How | Harness only, against the pinned core (`tests/stage0/test_v10_timer_restore.py`, `tests/stage0/test_v10_schedule_dst.py`). A5b: a cold start (`CoreState.not_running`) with a restore cache holding an active timer, three automations listening (the `timer.finished` event, the purpose specific `timer.finished` trigger, a start trigger), then `async_start`; a second case with time left. A6: a schedule with Monday 22:00 to 24:00 and Tuesday 00:00 to 02:00, walked minute by minute from 23:55 to 02:00 with state triggers to on and to off and the purpose specific block triggers. A7: a time trigger at 02:30 (or 01:30 in Los Angeles in the autumn) walked minute by minute through the night of each 2026 change in America/Los_Angeles and Europe/Berlin. |
+| What proves it | The automation runs each probe records, and the state changes of the timer and the schedule. |
+| What restores it | Nothing: no live write. The probes stay in the suite, so a core upgrade that changes any answer fails CI. |
+
+The plans and the probes were written in the same commit; the probes are repeatable and
+run on every push.
+
+### Evidence
+
+| Probe | Observation |
+| --- | --- |
+| A5b, end in the past | The core fires `timer.finished` once, while the entity is added during startup. Neither the event trigger nor the purpose specific trigger is armed yet: only the start automation runs. Afterwards the timer reads `idle` with `last_transition: finished`. |
+| A5b, time left | The timer resumes as `active`; when it ends after startup, both triggers run. |
+| A6 | The state stays `on` across midnight; one attribute only change (`next_event` moves to 02:00). State triggers to on and to off stay silent and `schedule.block_ended` does not fire. `schedule.block_started` does fire at midnight, by design for back to back blocks. At 02:00 the state turns off and both off triggers run. |
+| A7, skipped (02:30 on 2026-03-08 in Los Angeles, 2026-03-29 in Berlin) | The trigger does not run that night at all. |
+| A7, repeated (01:30 on 2026-11-01 in Los Angeles, 02:30 on 2026-10-25 in Berlin) | The trigger runs twice, first with the daylight saving offset, then an hour later with the standard offset. |
+
+### Record
+
+| Field | Content |
+| --- | --- |
+| Assumption | A5b (a restored timer that expired while HA was down fires `timer.finished` at startup), A6 (adjacent blocks at midnight cause no blip), A7 (DST behavior known and documented) |
+| Item | V10 |
+| Status | A5b amended; A6 closed; A7 closed, with the spec corrected to the observed behavior |
+| Evidence | The table above; seven harness tests |
+| Consequence | A5b: decision L20, the integration catches a missed finish up from the restore state helper and the blueprint gets a second `timer_done` trigger on `device_routines_timer_caught_up` (TECH_SPEC 4.2, 5.3, 7). A6: the blueprint keeps state triggers for `block_on` and `block_off` and must not use `schedule.block_started` (TECH_SPEC 5.3 note). A7: decision L21, TECH_SPEC 3.6 rewritten |
+| Fixtures | none (synthetic harness data) |
+
+## V12: a datetime entity in time triggers and conditions (A13)
+
+### Plan
+
+| Field | Content |
+| --- | --- |
+| What | Whether the time trigger and the time condition accept a `datetime` entity; how a timestamp sensor compares; whether the TECH_SPEC 5.4 template fallback is correct; whether a restored `datetime` entity keeps its value. |
+| How | Harness only (`tests/stage0/test_v12_datetime.py`): validate an automation with each construct; run a time trigger and a time condition on a timestamp sensor across its time; render the template for unknown, unavailable, past and future values; add a `datetime` entity that implements RestoreEntity over a restore cache. |
+| What proves it | Validation errors or acceptance, automation runs, condition results, the restored state. |
+| What restores it | Nothing: no live write. |
+
+### Evidence
+
+| Probe | Observation |
+| --- | --- |
+| Time trigger, `datetime` entity | Refused at validation: the trigger accepts `input_datetime` and `sensor` entities only. |
+| Time condition, `datetime` entity | Refused at validation ("Invalid time specified"): the condition accepts `input_datetime`, `time` and `sensor` only. |
+| Timestamp sensor | The trigger fires at the sensor's point in time. The condition compares only the local time of day: with the sensor at tomorrow 07:30, `after` is already true at 08:00 today. |
+| Template fallback | Correct for all four values. |
+| Restored `datetime` entity | The value comes back from the restore cache. |
+
+### Record
+
+| Field | Content |
+| --- | --- |
+| Assumption | A13 (time triggers and conditions accept a `datetime` entity; a restored one keeps its value) |
+| Item | V12 |
+| Status | amended to the designed fallback, as PRD 9.5 expected |
+| Evidence | The table above; eight harness tests |
+| Consequence | Decision L22: Paused until stays a `datetime` entity; `not_paused` is the one template condition; `pause_ended` is omitted and the integration resumes at the stored time. The timestamp sensor alternative of PRD 9.5 is ruled out because the condition ignores the date. TECH_SPEC 5.3 and 5.4 updated |
+| Fixtures | none |
+
+## A3, area, floor and label paths (deferred from V2)
+
+### Plan
+
+| Field | Content |
+| --- | --- |
+| What | Whether the reference helpers find automations that target a device through its area, its floor or a label. |
+| How | Harness only (`tests/stage0/test_a3_area_label.py`): synthetic registries with a living room fan on a device in an area on a floor with a label, and automations targeting each id, plus one that targets the area with another domain's action. |
+| What proves it | The helper results for each id. |
+| What restores it | Nothing: no live write. |
+
+### Evidence
+
+| Helper | Observation |
+| --- | --- |
+| `automations_with_area`, `_floor`, `_label` | Each finds the automations that name that id, and only those. |
+| `automations_with_entity`, `_device` | Blind to area, floor and label targets: they list literal references only. |
+| `areas_in_automation` | Lists an area targeted by a `light.turn_on` action next to a fan's area: the helpers do not look at the action's domain. |
+
+### Record
+
+| Field | Content |
+| --- | --- |
+| Assumption | A3, the area and label part |
+| Item | V2 (deferred part) |
+| Status | closed |
+| Evidence | The table above; one harness test |
+| Consequence | TECH_SPEC 4.2, the read row: discovery for a device asks `automations_with_area` for the device's area and each entity's own area, `automations_with_floor` for those areas' floors, and `automations_with_label` for the device's and the entities' labels, then keeps only actions whose domain matches one of the device's entities |
+| Fixtures | none |
