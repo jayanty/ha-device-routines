@@ -29,9 +29,11 @@ are; the plan's Section 8.3 is the prompt for every later session.
    never reload the config entry as a substitute. Say restart needed and stop. Only the
    opt in automation of the development package may restart, and only once the owner
    turns it on.
-2. Read only probes against the live instance are pre approved. Every write probe and
-   every live write scenario needs the owner's explicit approval for that specific item,
-   with a read before it and a read after it proving the state was restored.
+2. Read only probes and, since 2026-10-17 (decision L26), write probes and live write
+   scenarios against the live instance are pre approved. Every write still needs a read
+   before it and a read after it proving the state was restored or is the intended end
+   state. Restarts (rule 1) and steps only the owner can take (copying files into the
+   config directory, operating devices, looking at the UI) still need the owner.
 3. Nothing from `CLAUDE.local.md`, `local/` or the live instance goes into a commit,
    fixture, test, doc, issue, pull request or commit message: no entity ids, device,
    area, floor or person names, automation text, hosts, addresses or tokens. The pre

@@ -253,3 +253,14 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | (b), pending the live look C4 at how the device page presents a linked record. The name is copied too, or the record and entity ids are named after the config entry. |
 | Consequence | TECH_SPEC 4.2 attach row rewritten; the manager removes this integration's linked record when the user's device goes (the registry keeps it otherwise), as part of the PRD 3.1 device removal row. If C4 shows the entities off the user's page, the owner decides between (c) and a dedicated design. |
 | PRD register entry | no |
+
+## 2026-10-17 L26: live writes no longer need a per item approval
+
+| Field | Content |
+| --- | --- |
+| Context | Plan rule 2 and CLAUDE.md rule 2 asked for the owner's explicit approval of every write probe and live write scenario. The owner changed the rule on 2026-10-17 for everything going forward. |
+| Options | (a) Keep per item approvals; (b) pre approve writes and keep the read before and the read after. |
+| Choice | (b), the owner's instruction. Restarts (rule 1) stay forbidden, and steps only the owner can take (copying files into the config directory, operating devices, looking at the UI) still need him. |
+| Consequence | Plan Section 0 rule 2, the Phase 2 to 4 validation lines, the kickoff prompt, TECH_SPEC 11.7 and CLAUDE.md rule 2 now say so. Every live write is still recorded with its read before and after in the phase's validation record. |
+| PRD register entry | no |
+

@@ -465,7 +465,7 @@ Schedule sensors exist where expected; owned automations carry M1 to M8; the sha
 
 ### 11.7 Acceptance scenarios
 
-PRD 13.4 S1 to S13 are mapped to phases in the Implementation plan; each live write scenario needs Jayant's approval per item.
+PRD 13.4 S1 to S13 are mapped to phases in the Implementation plan; each live write scenario runs with a read before and after (pre approved since decision L26).
 
 ## 12. Performance, limits, security
 

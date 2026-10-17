@@ -13,7 +13,7 @@ Documents in the repository: `docs/PRD.md` (behavior and the decision register),
 Operating rules:
 
 1. Never restart Home Assistant. Never call `ha_restart` or `homeassistant.restart`, and never reload the config entry as a substitute. Say restart needed and stop. Only the opt in automation of TECH\_SPEC 10.2 may restart, and only once Jayant turns it on.
-2. Read only probes against the live instance are pre approved. Every write probe and every live write scenario needs Jayant's explicit approval for that specific item, with a read before it and a read after it proving the state was restored.
+2. Read only probes and, since 2026-10-17 (decision L26), write probes and live write scenarios against the live instance are pre approved. Every write still needs a read before it and a read after it proving the state was restored or is the intended end state. Restarts (rule 1) and steps only Jayant can take (copying files into the config directory, operating devices, looking at the UI) still need him. Where a phase below says approval for a live write, read it as this rule.
 3. Nothing from `CLAUDE.local.md`, `local/` or the live instance goes into a commit, fixture, test, doc, issue, pull request or commit message. The pre commit privacy check must pass; never bypass hooks.
 4. Work on `dev`. Conventional commits. Push when the local gates pass. Merge `dev` into `main` only at a phase exit with green CI.
 5. One phase at a time, in order; inside a phase, tasks in order unless a dependency says otherwise. Do not start the next phase before the exit criteria are met and recorded.
@@ -126,11 +126,11 @@ Tests: behavior matrix B01 to B05, B08 to B13, B18 to B36 and B39 to B46 (B06, B
 Validation, live, after the deploy and restart:
 
 - Read only: owned automations carry M1 to M8; the label, category and blueprint exist; Health is `ok`; `pytest -m live` is green.
-- Write scenarios on the sandbox device named in `CLAUDE.local.md`, each with approval and a read before and after. Before S2, the hand written automation driving that device is turned off (approval). S2: set the window, timed under 60 seconds. S3: Jayant stops and starts Home Assistant across the on time. S4: manual on at noon, then a restart. S5: turn off after with a restart in the middle. S6: edit the form, then set a refused action in the form. S7: take control, plus a lookalike automation. S8: the removal flow runs in the harness only, because a single instance cannot be removed and kept live; live, only take control is exercised on the sandbox routine. S11: skip next. S12: pause for two hours by area, then a restart. S13: skip next by label with one plain device. After the phase the sandbox's hand written automation stays off while the routine drives the device; it becomes the S9 candidate in Phase 4.
+- Write scenarios on the sandbox device named in `CLAUDE.local.md`, each with a read before and after (pre approved, rule 2). Before S2, the hand written automation driving that device is turned off. S2: set the window, timed under 60 seconds. S3: Jayant stops and starts Home Assistant across the on time. S4: manual on at noon, then a restart. S5: turn off after with a restart in the middle. S6: edit the form, then set a refused action in the form. S7: take control, plus a lookalike automation. S8: the removal flow runs in the harness only, because a single instance cannot be removed and kept live; live, only take control is exercised on the sandbox routine. S11: skip next. S12: pause for two hours by area, then a restart. S13: skip next by label with one plain device. After the phase the sandbox's hand written automation stays off while the routine drives the device; it becomes the S9 candidate in Phase 4.
 
 Exit: tests green; every scenario recorded; `CHANGELOG.md` and `manifest.json` at 0.2.0; tag `v0.2.0`.
 
-Needs Jayant: the approvals above; restarts for the deploy and for S3, S4, S5 and S12; turning the sandbox automation off.
+Needs Jayant: restarts for the deploy and for S3, S4, S5 and S12; operating Home Assistant across S3.
 
 ## 5. Phase 3: P1 features, settings, WebSocket API
 
@@ -153,11 +153,11 @@ Tasks:
 
 Tests: B06, B07, B14 to B17, B37 and B38; integration tests for triggers and conditions, the schedule helper lifecycle, the AI path with a fake AI Task entity (rate limit, cache, startup hold), conflicts, area assignment and settings migration; WebSocket contract tests for every command comparing payloads with the manager's results; subscription event tests.
 
-Validation, live: the read only suite; S1 on a weekly hand written automation; the pulse and keep alive scenarios on the sandbox device with approval; the read only WebSocket commands exercised through a one off script you provide and Jayant runs in his browser session; conversion of the two 60 minute failsafe automations stays deferred to Phase 4.
+Validation, live: the read only suite; S1 on a weekly hand written automation; the pulse and keep alive scenarios on the sandbox device; the read only WebSocket commands exercised through a one off script you provide and Jayant runs in his browser session; conversion of the two 60 minute failsafe automations stays deferred to Phase 4.
 
 Exit: tests green; validation recorded; `CHANGELOG.md` and `manifest.json` at 0.3.0; tag `v0.3.0`.
 
-Needs Jayant: approvals for the pulse and keep alive scenarios; the AI Task decision (default off, with the V4 result noted); one restart per deploy.
+Needs Jayant: the AI Task decision (default off, with the V4 result noted); one restart per deploy.
 
 ## 6. Phase 4: P2 features, console, publication
 
@@ -176,11 +176,11 @@ Tasks:
 
 Tests: compiler and blueprint tests for FR-R9 and R10; conversion matcher tests (exact matches offered, partial matches never); console unit tests; a browser end to end test is optional and dropped if it adds flakiness.
 
-Validation, live: S9 on the sandbox device's hand written automation (approval); the console walked through by Jayant; the HACS install of the release on his instance when he switches channels, after which the deploy tool reports `hacs_managed`.
+Validation, live: S9 on the sandbox device's hand written automation; the console walked through by Jayant; the HACS install of the release on his instance when he switches channels, after which the deploy tool reports `hacs_managed`.
 
 Exit: tests green; validation recorded; `CHANGELOG.md` and `manifest.json` at 1.0.0; tag `v1.0.0`; the brands pull request opened; the HACS default submission opened.
 
-Needs Jayant: the S9 approval; the console review; the channel switch decision.
+Needs Jayant: the console review; the channel switch decision.
 
 ## 7. Ongoing operations
 
@@ -208,7 +208,7 @@ Read, in this order, before writing any code: docs/PRD.md (behavior and the deci
 
 Rules that override everything else:
 1. Never restart Home Assistant and never reload the config entry as a substitute. Say restart needed and stop.
-2. Read only probes against my instance are pre approved. Every write probe and every live write scenario needs my explicit approval for that specific item, with a read before and a read after proving restoration.
+2. Read only probes and write probes against my instance are pre approved (decision L26). Every write needs a read before and a read after proving restoration or the intended end state. Restarts stay mine.
 3. Nothing private (entity ids, device, area or person names, hostnames, IPs, tokens, the text of my automations) ever goes into a commit, fixture, test, doc, issue or commit message. The pre commit privacy check must pass; never bypass hooks.
 4. Proceed on the PRD decision defaults without asking. Log every choice the PRD and spec do not cover in docs/decisions-log.md. Ask me only for the Needs Jayant items of the current phase, or when a default would be unsafe.
 5. No em dash character anywhere. Conventional commits. ruff and mypy --strict clean. Coverage at least 95 percent.
