@@ -1,0 +1,18 @@
+{
+  "source": "Stage 0 V3, live, 2026-10-17: a time triggered automation turning a Matter plug on, then off",
+  "events": [
+    {"event_type": "automation_triggered", "time_fired": "2026-10-17T19:14:00.331877+00:00",
+     "data": {"entity_id": "automation.stage0_v3_time_probe", "source": "time"},
+     "context": {"id": "01M55MJ2GBXN30ZYV2Y4TAC92G", "parent_id": null, "user_id": null}},
+    {"event_type": "state_changed", "time_fired": "2026-10-17T19:14:00.491974+00:00",
+     "data": {"entity_id": "switch.example_switch_7", "old_state": "off", "new_state": "on"},
+     "context": {"id": "01M55MJ2GBXN30ZYV2Y4TAC92G", "parent_id": null, "user_id": null}},
+    {"event_type": "automation_triggered", "time_fired": "2026-10-17T19:15:00.077111+00:00",
+     "data": {"entity_id": "automation.stage0_v3_time_probe", "source": "time"},
+     "context": {"id": "01M55MKWVDYW247YXEHPWNRDJQ", "parent_id": null, "user_id": null}},
+    {"event_type": "state_changed", "time_fired": "2026-10-17T19:15:00.213454+00:00",
+     "data": {"entity_id": "switch.example_switch_7", "old_state": "on", "new_state": "off"},
+     "context": {"id": "01M55MKWVDYW247YXEHPWNRDJQ", "parent_id": null, "user_id": null}}
+  ],
+  "expected": ["automation", "automation"]
+}

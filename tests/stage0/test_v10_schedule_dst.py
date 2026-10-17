@@ -5,7 +5,7 @@ must not blip off and on, or a routine's `block_off` and `block_on` triggers wou
 the device. A7: what the core time trigger does with a wall clock time that is skipped or
 repeated on a daylight saving day, on the 2026 United States and European dates.
 
-Recorded results (core 2026.10.1): A6 holds, the state stays on and only the attribute
+Recorded results (core 2026.10.2): A6 holds, the state stays on and only the attribute
 `next_event` changes at midnight. A7: a skipped time does not run that night at all, and a
 repeated time runs twice, once per offset.
 """

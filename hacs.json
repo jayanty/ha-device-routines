@@ -1,7 +1,7 @@
 {
   "name": "Device Routines",
   "render_readme": true,
-  "homeassistant": "2026.10.0",
+  "homeassistant": "2026.10.2",
   "zip_release": true,
   "filename": "device_routines.zip"
 }

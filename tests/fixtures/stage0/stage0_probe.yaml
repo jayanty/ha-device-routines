@@ -1,0 +1,101 @@
+# Stage 0 V5 throwaway blueprint. Delete after the probe.
+blueprint:
+  name: stage0 probe
+  description: Stage 0 V5 throwaway. Sections, a condition selector, enabled bound to inputs, the sentinel pattern and the purpose specific timer trigger.
+  domain: automation
+  source_url: https://github.com/jayanty/ha-device-routines/blob/dev/docs/stage0-report.md
+  homeassistant:
+    min_version: 2026.10.0
+  input:
+    target:
+      name: Target
+      input:
+        target_entity:
+          name: Target entity
+          selector:
+            entity:
+              filter:
+                - domain: [switch, fan, light]
+    schedule:
+      name: Schedule
+      collapsed: false
+      input:
+        on_time_enabled:
+          name: On time enabled
+          default: false
+          selector:
+            boolean: {}
+        on_time:
+          name: On time
+          default: "00:00:00"
+          selector:
+            time: {}
+        guard_enabled:
+          name: Guard enabled
+          default: false
+          selector:
+            boolean: {}
+    timers:
+      name: Timers
+      collapsed: true
+      input:
+        timer_entity:
+          name: Timer
+          default: timer.device_routines_unused
+          selector:
+            entity:
+              filter:
+                - domain: timer
+        paused_until_entity:
+          name: Paused until
+          default: datetime.device_routines_unused
+          selector:
+            entity:
+              filter:
+                - domain: datetime
+    advanced:
+      name: Advanced
+      collapsed: true
+      input:
+        extra_conditions:
+          name: Extra conditions
+          default: []
+          selector:
+            condition: {}
+mode: queued
+max: 10
+variables:
+  paused_entity: !input paused_until_entity
+triggers:
+  - alias: Scheduled on
+    trigger: time
+    at: !input on_time
+    id: scheduled_on
+    enabled: !input on_time_enabled
+  - alias: Timer done
+    trigger: timer.finished
+    target:
+      entity_id: !input timer_entity
+    id: timer_done
+  - alias: Timer caught up
+    trigger: event
+    event_type: device_routines_timer_caught_up
+    event_data:
+      device_id: stage0
+    id: timer_done
+conditions:
+  - alias: Not paused
+    condition: template
+    value_template: "{% set s = states(paused_entity) %}{{ s in ('unknown', 'unavailable', '') or as_datetime(s) <= now() }}"
+  - alias: Guard
+    condition: state
+    entity_id: !input target_entity
+    state: "on"
+    enabled: !input guard_enabled
+  - condition: and
+    conditions: !input extra_conditions
+actions:
+  - alias: Record
+    event: stage0_probe_ran
+    event_data:
+      trigger_id: "{{ trigger.id }}"

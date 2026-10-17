@@ -1,0 +1,9 @@
+{
+  "domain": "stage0_probe",
+  "name": "Stage 0 probe",
+  "codeowners": [],
+  "documentation": "https://github.com/jayanty/ha-device-routines",
+  "iot_class": "calculated",
+  "requirements": [],
+  "version": "0.0.1"
+}

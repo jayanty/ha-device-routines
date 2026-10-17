@@ -5,7 +5,7 @@ Paused until is a `datetime` entity. The blueprint's `pause_ended` trigger and i
 pinned core accepts, how a timestamp sensor compares, whether the template fallback of
 TECH_SPEC 5.4 behaves, and whether a restored `datetime` entity keeps its value.
 
-Recorded results (core 2026.10.1): the time trigger accepts `input_datetime` and `sensor`
+Recorded results (core 2026.10.2): the time trigger accepts `input_datetime` and `sensor`
 only, the time condition `input_datetime`, `time` and `sensor` only, so a `datetime`
 entity fails both; a timestamp sensor works in both; the template fallback is correct; a
 `datetime` entity that implements RestoreEntity gets its value back. The time condition

@@ -6,7 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The test harness is pinned to core 2026.10.2 (harness 0.13.373), the version the
+  development instance runs, and HACS requires at least that version: Stage 0 validated
+  the integration's assumptions on it.
+
 ### Added
+
+- Stage 0 harness probes in `tests/stage0/`: restored timers, schedule blocks at midnight,
+  daylight saving nights, `datetime` entities in time triggers and conditions, the area,
+  floor and label reference helpers, blueprint install and features, the automation write
+  path, helper creation, attaching entities to devices and custom purpose specific
+  triggers and conditions. Each records what the pinned core does, so a core upgrade that
+  changes an answer fails CI.
 
 - Golden corpus seed: 39 anonymized automations captured read only from a real instance
   in Stage 0, each validated against the pinned core, and `tools/scrub_automations.py`,
@@ -37,6 +50,6 @@ All notable changes to this project are documented here. The format follows
   fixtures with stable generic stand ins) and `tools/style_check.py` (refuses the em dash
   character), each with unit tests.
 - Repository skeleton: tooling configuration (ruff with every rule on, mypy strict,
-  pytest with the Home Assistant test harness pinned to core 2026.10.1, coverage gate at
+  pytest with the Home Assistant test harness pinned to the validated core, coverage gate at
   95 percent), the MIT license, HACS metadata, issue and pull request templates,
   Dependabot, placeholder brand images and the decisions log.

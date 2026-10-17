@@ -1,0 +1,11 @@
+routine_active:
+  target:
+    entity:
+      domain: switch
+  fields:
+    behavior:
+      required: true
+      default: any
+      selector:
+        automation_behavior:
+          mode: condition

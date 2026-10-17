@@ -1,0 +1,11 @@
+routine_started:
+  target:
+    entity:
+      domain: switch
+  fields:
+    behavior:
+      required: true
+      default: each
+      selector:
+        automation_behavior:
+          mode: trigger

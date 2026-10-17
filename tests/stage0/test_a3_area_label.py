@@ -6,7 +6,7 @@ area or a label. These probes run the automation component's reference helpers a
 the pinned core with synthetic registries: a living room fan whose device sits in the
 living room on the ground floor and carries a label.
 
-Recorded results (core 2026.10.1): each helper finds the automation by the id it names,
+Recorded results (core 2026.10.2): each helper finds the automation by the id it names,
 in actions and in triggers alike, and never expands it. An area, floor or label target
 is invisible to `automations_with_entity` and `automations_with_device`, so discovery has
 to ask each helper with the ids the device resolves to.

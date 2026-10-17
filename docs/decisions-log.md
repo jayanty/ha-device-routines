@@ -208,7 +208,7 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 
 | Field | Content |
 | --- | --- |
-| Context | TECH_SPEC 3.6 said a skipped wall clock time runs at the first valid instant after it and a repeated one runs once. Stage 0 V10 (A7) on core 2026.10.1, the 2026 United States and European dates: a skipped time does not run that night at all, and a repeated time runs twice, once per offset, an hour apart. PRD 5.2 asks that the behavior follow the core time trigger and be documented. |
+| Context | TECH_SPEC 3.6 said a skipped wall clock time runs at the first valid instant after it and a repeated one runs once. Stage 0 V10 (A7) on cores 2026.10.1 and 2026.10.2, the 2026 United States and European dates: a skipped time does not run that night at all, and a repeated time runs twice, once per offset, an hour apart. PRD 5.2 asks that the behavior follow the core time trigger and be documented. |
 | Options | (a) Make routines differ from the core with an extra trigger or an integration side catch up; (b) mirror the core in `nextrun` and the sentences, and document it. |
 | Choice | (b). Every on and off action is guarded by the device state, so the second run at a repeated time changes nothing; a pulse at a repeated time pulses twice, which the guide states, and a routine whose start time falls in the skipped hour does not start that day. |
 | Consequence | TECH_SPEC 3.6 DST paragraph rewritten; the user guide documents both nights; `nextrun` tests use the 2026 dates and match `tests/stage0/test_v10_schedule_dst.py`. |
@@ -221,5 +221,35 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Context | Stage 0 V12 (A13): the time trigger accepts `input_datetime` and `sensor` entities only and the time condition `input_datetime`, `time` and `sensor` only, so a `datetime` entity fails both, as PRD 9.5 expected. The PRD 9.5 alternative, a timestamp sensor, works for the trigger but not for the condition: the time condition takes only the local time of day of a timestamp sensor, so a pause until tomorrow 07:30 reads as over at 08:00 today. |
 | Options | (a) Timestamp sensor for both, which breaks every pause longer than a day; (b) timestamp sensor for the trigger and the template for the condition, which adds an entity per routine; (c) keep the `datetime` entity, use the one template condition of TECH_SPEC 5.4 for `not_paused`, omit `pause_ended`, and let the integration call resume at the stored time (PRD 9.5). |
 | Choice | (c). The template is `{% set s = states(entity) %}{{ s in ('unknown', 'unavailable', '') or as_datetime(s) <= now() }}`, proven in the harness for unknown, unavailable, past and future values. A `datetime` entity that implements RestoreEntity gets its value back after a restart (harness). |
-| Consequence | TECH_SPEC 5.3 drops `pause_ended` and 5.4 makes the template the only path; the blueprint's `homeassistant.min_version` is 2026.10.1. Without the integration a pause still ends, at the next scheduled trigger, as PRD 9.5 says. |
+| Consequence | TECH_SPEC 5.3 drops `pause_ended` and 5.4 makes the template the only path; the blueprint's `homeassistant.min_version` is 2026.10.2. Without the integration a pause still ends, at the next scheduled trigger, as PRD 9.5 says. |
 | PRD register entry | no (A13 closed with the designed fallback) |
+
+## 2026-10-17 L23: helpers are created through their WebSocket commands, dispatched in process
+
+| Field | Content |
+| --- | --- |
+| Context | Stage 0 V7 (A5): the timer and schedule storage collections that TECH_SPEC 4.2 names are local variables of each component's setup, so integration code cannot call `async_create_item`. The registered WebSocket commands (`timer/create` and so on) reach the same collection with the same schema, and they require an administrator. |
+| Options | (a) Find the collection by introspecting listeners, fragile across releases; (b) D2(b), the WebSocket API over loopback with a token the user creates, which breaks the zero field config flow (D33); (c) dispatch the registered commands in process through an `ActiveConnection` whose user is a system user in the administrators group that the integration creates once; (d) own timer entities, which would stop routines working without the integration. |
+| Choice | (c). It uses only the documented command contract, needs no secret and no network, and the harness and the live probe exercised the identical handlers. The system user is created at first setup, its id kept in the config entry data, and removed when the entry is removed. |
+| Consequence | TECH_SPEC 4.2 helper row rewritten; `ha_adapter.check` verifies that the four commands are registered and disables editing with `adapter_incompatible` otherwise. Diagnostics list the system user's id, never a token (none exists). The D2(b) fallback is no longer needed for helpers. |
+| PRD register entry | no |
+
+## 2026-10-17 L24: the shipped blueprint carries no source_url
+
+| Field | Content |
+| --- | --- |
+| Context | Stage 0 V5 and V8: a blueprint saved with a `source_url` gets the core's re-import action, and on instances with Spook an update entity that offers to replace the file from that URL. The Device Routines blueprint is managed by the integration (TECH_SPEC 5.1 and 5.6); a replacement from GitHub would put a different version under the routines and raise `blueprint_modified`. The Home Assistant best practice asks for a `source_url` on shared blueprints. |
+| Options | (a) Keep a `source_url` and handle the replacement as a modification; (b) ship the file without `source_url`, since it is installed and upgraded by the integration, never imported by hand. |
+| Choice | (b). The description says the file is managed by Device Routines. |
+| Consequence | TECH_SPEC 5.1 says so; a test in Phase 2 refuses a `source_url` in the shipped blueprint. |
+| PRD register entry | no |
+
+## 2026-10-17 L25: entities reach a device page as a linked record
+
+| Field | Content |
+| --- | --- |
+| Context | Stage 0 V9 (A10): core 2026.10 gives every device record a single config entry and makes identifiers unique per entry. An entity whose `DeviceInfo` copies the user's device identifiers now lands on a new record of this integration carrying those identifiers, which the core lists as a linked device of the user's device; setting the entity's `device_id` to the user's device directly is undone whenever the platform adds the entity. |
+| Options | (a) The registry `device_id` path, which does not survive a load; (b) `DeviceInfo` with the identifiers and name copied verbatim from the registry entry (the ha-device-links approach), accepting the linked record; (c) a child device under the user's device (`async_get_or_create_child`), which shows as a separate sub device. |
+| Choice | (b), pending the live look C4 at how the device page presents a linked record. The name is copied too, or the record and entity ids are named after the config entry. |
+| Consequence | TECH_SPEC 4.2 attach row rewritten; the manager removes this integration's linked record when the user's device goes (the registry keeps it otherwise), as part of the PRD 3.1 device removal row. If C4 shows the entities off the user's page, the owner decides between (c) and a dedicated design. |
+| PRD register entry | no |
