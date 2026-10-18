@@ -119,14 +119,18 @@ SCHEMA_1_INPUT_KEYS: Final = (
     "docked_guard",
     "extra_conditions",
 )
-# The inputs Device Routines sets itself and `decompile` never reads: the profile's
-# actions and off state, the device id, the derived inputs and the helper entities. They
-# fill the form's last section, collapsed (owner decision O3), in this order.
-SET_BY_DEVICE_ROUTINES: Final = (
+# The inputs Device Routines sets itself and `decompile` never reads (owner decision O3,
+# decision L74). The four without a default (the profile's actions and off state, the
+# device id) stay in Target under the device, each description starting "Set by Device
+# Routines:", because the core's form keeps a section holding an input without a default
+# open; the derived inputs and the helper entities fill the collapsed last section.
+SET_IN_TARGET: Final = (
     "on_action",
     "off_action",
     "inactive_state",
     "device_id",
+)
+SET_IN_MANAGED_SECTION: Final = (
     "on_at_sunrise",
     "on_at_sunset",
     "off_at_sunrise",
@@ -139,11 +143,13 @@ SET_BY_DEVICE_ROUTINES: Final = (
     "override_entity",
     "paused_until_entity",
 )
-# The 38 inputs in file order, the order the core flattens the sections in: what a person
-# may change in the form (Target, Schedule, Timers, Behavior, Advanced), then the inputs
-# Device Routines sets.
+SET_BY_DEVICE_ROUTINES: Final = (*SET_IN_TARGET, *SET_IN_MANAGED_SECTION)
+# The 38 inputs in file order, the order the core flattens the sections in: Target (the
+# device, then the four set by Device Routines), what a person may change in the form
+# (Schedule, Timers, Behavior, Advanced), then the collapsed last section.
 INPUT_KEYS: Final = (
     "target_entity",
+    *SET_IN_TARGET,
     "on_time_enabled",
     "on_time",
     "on_kind",
@@ -166,7 +172,7 @@ INPUT_KEYS: Final = (
     "pulse_min_steady_min",
     "docked_guard",
     "extra_conditions",
-    *SET_BY_DEVICE_ROUTINES,
+    *SET_IN_MANAGED_SECTION,
 )
 # The nine inputs schema 2 adds (plan Section 6.2.1), in their order among the 38.
 SCHEMA_2_NEW_KEYS: Final = tuple(key for key in INPUT_KEYS if key not in SCHEMA_1_INPUT_KEYS)

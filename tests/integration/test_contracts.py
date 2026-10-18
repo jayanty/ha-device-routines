@@ -7,8 +7,9 @@ Three contracts, one part each:
    blueprint's inputs, key for key in order, each value of the type its selector holds,
    and the automation entry the manager writes validates the way the core validates a
    `use_blueprint` automation. The hand written `inputs()` mirror of the blueprint tests
-   equals `compile` for the same settings. The form's sections before the last hold
-   exactly the inputs `decompile` reads; the last holds what Device Routines sets (O3).
+   equals `compile` for the same settings. The form's sections hold the inputs
+   `decompile` reads where a person edits them, and what Device Routines sets marked in
+   Target or in the collapsed last section (O3, L74).
 2. One service layer (PRD P16). An AST check of every surface module: the device page
    platforms and their base classes, the actions, the WebSocket commands, the triggers,
    the conditions and the Repairs fix flows. The rule is written out in `P16_RULE`.
@@ -457,27 +458,39 @@ def inputs_read_by(reader: Callable[[Mapping[str, Any]], Any]) -> set[str]:
     return found
 
 
-def test_the_form_shows_what_decompile_reads_and_folds_away_the_rest() -> None:
-    """Owner decision O3, proven against the compiler and the shipped blueprint.
+def test_the_form_shows_what_decompile_reads_and_marks_or_folds_away_the_rest() -> None:
+    """Owner decision O3 and decision L74, proven against the compiler and the blueprint.
 
-    The sections before the last hold exactly the inputs `decompile` reads, so a person
-    edits only what reaches the settings. The last section, collapsed, holds the rest in
-    `INPUT_KEYS` order: what Device Routines sets from the profile, derives from the
-    settings, or names as its own helpers (`refs_of` reads those, never `decompile`).
+    Every input `decompile` reads is in a section a person edits. What it never reads is
+    what Device Routines sets from the profile, derives from the settings, or names as its
+    own helpers (`refs_of` reads those): the inputs without a default stay in Target under
+    the device, each marked as set by Device Routines, because the core's form keeps a
+    section holding one open; the rest fill the last section, collapsed, in `INPUT_KEYS`
+    order, so it really collapses.
     """
     by_decompile = inputs_read_by(compiler.decompile)
     by_refs = inputs_read_by(compiler.refs_of)
-    *shown_sections, managed = SHIPPED.data["blueprint"]["input"].values()
-    shown = [key for section in shown_sections for key in section["input"]]
+    target, *edited_sections, managed = SHIPPED.data["blueprint"]["input"].values()
+    edited = [key for section in edited_sections for key in section["input"]]
+    marked = [key for key in target["input"] if key not in by_decompile]
 
-    assert set(shown) == by_decompile
-    assert set(shown) <= by_decompile | by_refs | {"target_entity"}
+    assert ["target_entity", *marked] == list(target["input"])
+    assert set(marked) == compiler.REQUIRED_KEYS - {"target_entity"}
+    assert tuple(marked) == mirror.SET_IN_TARGET
+    for key in marked:
+        assert SHIPPED.inputs[key]["description"].startswith("Set by Device Routines: "), key
+    assert {"target_entity", *edited} == by_decompile
     assert managed["collapsed"] is True
-    assert tuple(managed["input"]) == mirror.SET_BY_DEVICE_ROUTINES
+    assert tuple(managed["input"]) == mirror.SET_IN_MANAGED_SECTION
     assert tuple(managed["input"]) == tuple(
-        key for key in compiler.INPUT_KEYS if key not in by_decompile
+        key
+        for key in compiler.INPUT_KEYS
+        if key not in by_decompile and key not in compiler.REQUIRED_KEYS
     )
-    assert (*shown, *managed["input"]) == compiler.INPUT_KEYS
+    # The frontend expands a section, with no collapse control, while it holds an input
+    # without a default; the collapsed one holds none.
+    assert all("default" in SHIPPED.inputs[key] for key in managed["input"])
+    assert ("target_entity", *marked, *edited, *managed["input"]) == compiler.INPUT_KEYS
     assert by_refs == {item.name for item in fields(compiler.HelperRefs)}
     assert by_refs - by_decompile == {
         "device_id",
@@ -485,8 +498,8 @@ def test_the_form_shows_what_decompile_reads_and_folds_away_the_rest() -> None:
         "override_entity",
         "paused_until_entity",
     }
-    # The one helper the form shows is the weekly schedule a person may pick there.
-    assert {key for key in shown if key in by_refs} == {"schedule_entity"}
+    # The one helper a person edits in the form is the weekly schedule they may pick there.
+    assert {key for key in edited if key in by_refs} == {"schedule_entity"}
 
 
 @pytest.mark.parametrize(

@@ -85,12 +85,18 @@ MAX_LATE_START_MIN: Final = 180
 MAX_SUN_OFFSET_MIN: Final = 180
 
 # The blueprint's inputs in file order, which is the order the core flattens the form's
-# sections in: first the inputs `decompile` reads, which a person may change in the form
-# (Target, Schedule, Timers, Behavior, Advanced), then what Device Routines sets itself and
-# `decompile` never reads, in the collapsed last section (owner decision O3). The order is
+# sections in (owner decision O3, decision L74): Target holds the device and, marked as set
+# by Device Routines, the four inputs without a default (the core's form keeps a section
+# with one open); then the inputs `decompile` reads, which a person may change in the
+# form (Schedule, Timers, Behavior, Advanced); then the 11 other inputs Device Routines
+# sets itself and `decompile` never reads, in the collapsed last section. The order is
 # layout only: inputs are stored flat, and `decompile` reads them in any order.
 INPUT_KEYS: Final[tuple[str, ...]] = (
     "target_entity",
+    "on_action",
+    "off_action",
+    "inactive_state",
+    "device_id",
     "on_time_enabled",
     "on_time",
     "on_kind",
@@ -113,10 +119,6 @@ INPUT_KEYS: Final[tuple[str, ...]] = (
     "pulse_min_steady_min",
     "docked_guard",
     "extra_conditions",
-    "on_action",
-    "off_action",
-    "inactive_state",
-    "device_id",
     "on_at_sunrise",
     "on_at_sunset",
     "off_at_sunrise",
@@ -405,6 +407,10 @@ def compile(  # noqa: A001  # the contract name (plan Section 4.2)
     pulse = settings.pulse or Pulse(time())
     inputs: dict[str, Any] = {
         "target_entity": settings.target_entity,
+        "on_action": profile.on_action or profile.off_action,
+        "off_action": profile.off_action,
+        "inactive_state": profile.inactive_state,
+        "device_id": refs.device_id,
         "on_time_enabled": settings.on_time is not None,
         "on_time": UNUSED_TIME if settings.on_time is None else _clock(settings.on_time),
         "on_kind": settings.on_kind.value,
@@ -427,10 +433,6 @@ def compile(  # noqa: A001  # the contract name (plan Section 4.2)
         "pulse_min_steady_min": int(pulse.min_steady_min),
         "docked_guard": bool(settings.docked_guard),
         "extra_conditions": [dict(condition) for condition in settings.extra_conditions],
-        "on_action": profile.on_action or profile.off_action,
-        "off_action": profile.off_action,
-        "inactive_state": profile.inactive_state,
-        "device_id": refs.device_id,
         "on_at_sunrise": settings.on_kind is TimeKind.SUNRISE,
         "on_at_sunset": settings.on_kind is TimeKind.SUNSET,
         "off_at_sunrise": settings.off_kind is TimeKind.SUNRISE,
@@ -512,6 +514,10 @@ def _is_conditions(value: object) -> bool:
 
 _KINDS: Final[Mapping[str, Callable[[object], bool]]] = {
     "target_entity": _is_name,
+    "on_action": _is_name,
+    "off_action": _is_name,
+    "inactive_state": _is_text,
+    "device_id": _is_text,
     "on_time_enabled": _is_flag,
     "on_time": _is_time,
     "on_kind": _is_kind,
@@ -534,10 +540,6 @@ _KINDS: Final[Mapping[str, Callable[[object], bool]]] = {
     "pulse_min_steady_min": _is_minutes,
     "docked_guard": _is_flag,
     "extra_conditions": _is_conditions,
-    "on_action": _is_name,
-    "off_action": _is_name,
-    "inactive_state": _is_text,
-    "device_id": _is_text,
     "on_at_sunrise": _is_flag,
     "on_at_sunset": _is_flag,
     "off_at_sunrise": _is_flag,

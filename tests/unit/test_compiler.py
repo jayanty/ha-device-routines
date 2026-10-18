@@ -73,10 +73,15 @@ SUN_WINDOW = RoutineSettings(
 LIGHT = domains.PROFILES["light"]
 
 # Blueprint input schema 2 (plan Section 6.2.1), 38 inputs in the blueprint's file order
-# (TECH_SPEC 5.2): the inputs a person may change in the form, then the 15 Device Routines
-# sets itself in the collapsed last section (owner decision O3).
+# (TECH_SPEC 5.2, owner decision O3, decision L74): Target (the device and the four required
+# inputs Device Routines sets), the inputs a person may change in the form, then the 11
+# other inputs Device Routines sets, in the collapsed last section.
 SPEC_KEYS = (
     "target_entity",
+    "on_action",
+    "off_action",
+    "inactive_state",
+    "device_id",
     "on_time_enabled",
     "on_time",
     "on_kind",
@@ -99,10 +104,6 @@ SPEC_KEYS = (
     "pulse_min_steady_min",
     "docked_guard",
     "extra_conditions",
-    "on_action",
-    "off_action",
-    "inactive_state",
-    "device_id",
     "on_at_sunrise",
     "on_at_sunset",
     "off_at_sunrise",

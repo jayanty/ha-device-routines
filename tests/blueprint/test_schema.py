@@ -4,8 +4,8 @@ These tests read the file itself. The behavior of each rule is proven by the mat
 next to this file; here only the structure the spec and decisions L20, L22, L24, L60 and
 the A6 note pin is checked. The file is blueprint input schema 2 (plan Section 6.2.1): the
 29 inputs of schema 1 plus the nine of sun bounds, each new one defaulting to schema 1
-behavior. Its last section, collapsed, holds the inputs Device Routines sets itself (owner
-decision O3).
+behavior. Its last section, collapsed, holds the inputs Device Routines sets itself that
+have a default; the four without one stay in Target, marked (owner decision O3, L74).
 """
 
 from __future__ import annotations
@@ -34,6 +34,8 @@ from tests.blueprint.conftest import (
     SCHEMA_1_INPUT_KEYS,
     SCHEMA_2_NEW_KEYS,
     SET_BY_DEVICE_ROUTINES,
+    SET_IN_MANAGED_SECTION,
+    SET_IN_TARGET,
     TIMER,
     UNUSED_DATETIME,
     UNUSED_SCHEDULE,
@@ -239,27 +241,54 @@ def test_the_sections_follow_the_spec(blueprint: dict[str, Any]) -> None:
         assert section.get("description"), key
 
 
-def test_the_inputs_device_routines_sets_fill_one_collapsed_last_section(
+def test_the_inputs_device_routines_sets_are_marked_or_folded_away(
     blueprint: dict[str, Any],
 ) -> None:
-    """Owner decision O3: the form shows first what a person may change.
+    """Owner decision O3 and decision L74: the form shows first what a person may change.
 
-    Every input Device Routines sets itself (the profile's actions and off state, the
-    device id, the derived inputs, the helper entities), which `decompile` never reads, sits
-    in one section, the last one, collapsed; the sections before it hold only inputs a
-    person may edit. The contract tests prove the split against `decompile` itself.
+    Every input Device Routines sets itself, which `decompile` never reads, is apart from
+    what a person edits: the four without a default sit in Target under the device, each
+    description starting "Set by Device Routines:", and the rest fill the last section,
+    collapsed. The sections between hold only inputs a person may edit. The contract tests
+    prove the split against `decompile` itself.
     """
-    *shown_sections, (last, managed) = sections(blueprint).items()
-    shown = [key for _, section in shown_sections for key in section["input"]]
+    (first, target), *middle, (last, managed) = sections(blueprint).items()
+    edited = [key for _, section in middle for key in section["input"]]
 
+    assert first == "target"
+    assert tuple(target["input"]) == ("target_entity", *SET_IN_TARGET)
+    assert target["description"].startswith("Only the device is chosen here.")
+    for key in SET_IN_TARGET:
+        assert target["input"][key]["description"].startswith("Set by Device Routines: "), key
     assert last == "managed"
     assert managed["name"] == "Set by Device Routines (do not edit)"
     assert "Device Routines writes these itself" in managed["description"]
     assert "an edit here is undone or ignored" in managed["description"]
     assert managed["collapsed"] is True
-    assert tuple(managed["input"]) == SET_BY_DEVICE_ROUTINES
-    assert not set(shown) & set(SET_BY_DEVICE_ROUTINES)
-    assert (*shown, *SET_BY_DEVICE_ROUTINES) == INPUT_KEYS
+    assert tuple(managed["input"]) == SET_IN_MANAGED_SECTION
+    assert not set(edited) & set(SET_BY_DEVICE_ROUTINES)
+    assert ("target_entity", *SET_IN_TARGET, *edited, *SET_IN_MANAGED_SECTION) == INPUT_KEYS
+
+
+def test_every_collapsed_section_holds_only_inputs_with_a_default(
+    blueprint: dict[str, Any],
+) -> None:
+    """A section declared collapsed can collapse in the core's form.
+
+    The automation editor renders a blueprint section expanded, without a collapse control,
+    while any of its inputs has no default (`_renderSection` in the frontend's
+    `blueprint-generic-editor.ts`: `expanded = !section.collapsed || anyRequired`,
+    `noCollapse = anyRequired`). So the inputs without a default stay in Target, which the
+    form shows open anyway (decision L74).
+    """
+    found = sections(blueprint)
+    required = {key for key, definition in flat_inputs(blueprint) if "default" not in definition}
+
+    assert required == {"target_entity", *SET_IN_TARGET}
+    assert set(found["target"]["input"]) == required
+    for name, section in found.items():
+        if section.get("collapsed", False):
+            assert not required & set(section["input"]), name
 
 
 def test_every_input_has_a_name_a_description_and_a_selector(blueprint: dict[str, Any]) -> None:

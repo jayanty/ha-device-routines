@@ -13,20 +13,22 @@
 # day set. The four sun flags are derived from the kinds by Device Routines; with every new
 # input at its default the routine runs exactly as on schema 1.
 #
-# The form shows what a person may change in the sections Target to Advanced, and every
-# input Device Routines sets itself (the profile's actions and off state, the device id,
-# the derived inputs and the helper entities) in the last section, collapsed (owner
-# decision O3). Sections are layout only: the stored inputs are flat, so moving an input
-# from one section to another changes no routine and no schema.
+# The form shows what a person may change in the sections Target to Advanced, and the
+# inputs Device Routines sets itself apart (owner decision O3, decision L74): the derived
+# inputs and the helper entities in the last section, collapsed. The profile's actions and
+# off state and the device id have no default, and the core's form keeps a section with
+# such an input open, so they stay in Target under the device, each description starting
+# "Set by Device Routines:". Sections are layout only: the stored inputs are flat, so
+# moving an input from one section to another changes no routine and no schema.
 blueprint:
   name: Device routine (managed by Device Routines)
   description: >-
     The routine of one device: when it turns on and off, how long it may stay on or off,
     and what happens after a restart. Device Routines manages this automation from the
     device page, which is the main editor; this form is a second editor for the same
-    settings, and a change saved here shows up on the device page. The last section holds
-    what Device Routines sets itself. Home Assistant runs the routine on its own, with or
-    without the integration.
+    settings, and a change saved here shows up on the device page. The inputs marked Set by
+    Device Routines and the last section hold what Device Routines sets itself. Home
+    Assistant runs the routine on its own, with or without the integration.
   domain: automation
   author: Device Routines
   homeassistant:
@@ -34,7 +36,9 @@ blueprint:
   input:
     target:
       name: Target
-      description: The device entity this routine controls.
+      description: >-
+        Only the device is chosen here. The inputs below it are set by Device Routines;
+        leave them as they are.
       collapsed: false
       input:
         target_entity:
@@ -56,6 +60,26 @@ blueprint:
                     - cover
                     - lock
                     - valve
+        on_action:
+          name: Turn on action
+          description: "Set by Device Routines: the action that turns the device on, for example switch.turn_on."
+          selector:
+            text: {}
+        off_action:
+          name: Turn off action
+          description: "Set by Device Routines: the action that turns the device off, for example switch.turn_off."
+          selector:
+            text: {}
+        inactive_state:
+          name: Off state
+          description: "Set by Device Routines: the state the device is in when it is off (off, docked, closed or locked)."
+          selector:
+            text: {}
+        device_id:
+          name: Device id
+          description: "Set by Device Routines: the id of the device, carried in the events the routine fires."
+          selector:
+            text: {}
     schedule:
       name: Schedule
       description: When the device turns on and off.
@@ -255,31 +279,10 @@ blueprint:
     managed:
       name: Set by Device Routines (do not edit)
       description: >-
-        Device Routines writes these itself, from the settings above, the kind of device and
-        the helpers it keeps for the routine. Leave them as they are: an edit here is undone
-        or ignored.
+        Device Routines writes these itself, from the settings above and the helpers it
+        keeps for the routine. Leave them as they are: an edit here is undone or ignored.
       collapsed: true
       input:
-        on_action:
-          name: Turn on action
-          description: The action that turns the device on, for example switch.turn_on.
-          selector:
-            text: {}
-        off_action:
-          name: Turn off action
-          description: The action that turns the device off, for example switch.turn_off.
-          selector:
-            text: {}
-        inactive_state:
-          name: Off state
-          description: The state the device is in when it is off (off, docked, closed or locked).
-          selector:
-            text: {}
-        device_id:
-          name: Device id
-          description: The id of the device, carried in the events the routine fires.
-          selector:
-            text: {}
         on_at_sunrise:
           name: Turn on at sunrise
           description: On when Turn on at is sunrise; set from the kind.
