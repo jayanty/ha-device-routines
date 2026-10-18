@@ -85,7 +85,8 @@ DEVICE_CONDITION_TYPES: Final[frozenset[str]] = frozenset(
     {"is_on", "is_off", "is_open", "is_closed", "is_locked", "is_unlocked", "is_docked"}
 )
 
-# Purpose specific triggers the grammar reads, each with its phrase key.
+# Purpose specific triggers the grammar reads, each with its phrase key. A trigger reads
+# only for targets of its own domain (the part before the dot): the core ignores others.
 NAMED_TRIGGERS: Final[Mapping[str, str]] = {
     "schedule.block_started": "when_block_started",
     "schedule.block_ended": "when_block_ended",
@@ -93,9 +94,15 @@ NAMED_TRIGGERS: Final[Mapping[str, str]] = {
     "timer.finished": "when_timer_finished",
     "timer.cancelled": "when_timer_cancelled",
     "vacuum.started_cleaning": "when_vacuum_started",
-    "vacuum.docked": "when_vacuum_docked",
+    "vacuum.returned_to_dock": "when_vacuum_docked",
     "vacuum.errored": "when_vacuum_errored",
 }
+
+# The `behavior` option of a purpose specific trigger that the phrase states: any one
+# target is enough (`any` is the legacy name of `each`). `first` and `all` wait for the
+# first or the last of several targets, and a `for` option for a held duration: neither is
+# what the line says, so both are outside the grammar.
+NAMED_TRIGGER_BEHAVIORS: Final[frozenset[str]] = frozenset({"each", "any"})
 
 # Purpose specific conditions: `<domain>.is_<something>`, the shape core 2026.10 uses.
 NAMED_CONDITION: Final = re.compile(r"^[a-z_]+\.is_[a-z_]+$")

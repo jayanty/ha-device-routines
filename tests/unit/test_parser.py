@@ -321,6 +321,56 @@ def test_named_triggers() -> None:
     not_understood_trigger({"trigger": "timer.finished", "behavior": "any"})
 
 
+@pytest.mark.parametrize("behavior", ["each", "any"])
+def test_named_triggers_read_with_the_default_behavior(behavior: str) -> None:
+    """Any one target is enough: `each`, or its legacy name `any`, is what the line says."""
+    assert trigger_of(
+        {
+            "trigger": "timer.finished",
+            "target": {"entity_id": ["timer.a", "timer.b"]},
+            "options": {"behavior": behavior},
+        }
+    ) == NamedTrigger(name="timer.finished", entities=("timer.a", "timer.b"))
+    assert trigger_of(
+        {"trigger": "schedule.block_ended", "target": {"entity_id": "schedule.s"}, "options": {}}
+    ) == NamedTrigger(name="schedule.block_ended", entities=("schedule.s",))
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"behavior": "first"},
+        {"behavior": "all"},
+        {"behavior": "last"},
+        {"for": {"minutes": 5}},
+        {"behavior": "each", "for": "00:05:00"},
+        "each",
+    ],
+)
+def test_named_trigger_options_that_change_the_meaning_are_outside_the_grammar(
+    options: Any,
+) -> None:
+    """The first or all of several targets, or a held duration, is not what the line says."""
+    not_understood_trigger(
+        {"trigger": "timer.finished", "target": {"entity_id": "timer.a"}, "options": options}
+    )
+
+
+def test_named_triggers_read_only_entities_of_their_own_domain() -> None:
+    """The core filters a purpose specific trigger's targets to its domain; others never fire."""
+    not_understood_trigger({"trigger": "timer.finished", "target": {"entity_id": FAN}})
+    not_understood_trigger(
+        {"trigger": "schedule.block_started", "target": {"entity_id": ["schedule.s", "timer.t"]}}
+    )
+
+
+def test_the_vacuum_triggers_are_the_ones_the_core_has() -> None:
+    assert trigger_of(
+        {"trigger": "vacuum.returned_to_dock", "target": {"entity_id": "vacuum.robot"}}
+    ) == NamedTrigger(name="vacuum.returned_to_dock", entities=("vacuum.robot",))
+    not_understood_trigger({"trigger": "vacuum.docked", "target": {"entity_id": "vacuum.robot"}})
+
+
 @pytest.mark.parametrize(
     "node",
     [

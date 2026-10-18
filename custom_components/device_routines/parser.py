@@ -296,18 +296,31 @@ def _device_trigger(node: Mapping[str, Any], device: DeviceContext) -> list[Trig
     return [StateTrigger(entity=entity, to=states[0], from_state=states[1], duration=duration)]
 
 
+def _named_options(options: Any) -> bool:
+    """Tell whether a purpose specific trigger's options leave its phrase true."""
+    if options is None:
+        return True
+    if not isinstance(options, Mapping) or set(options) - {"behavior"}:
+        return False
+    return options.get("behavior", "each") in grammar.NAMED_TRIGGER_BEHAVIORS
+
+
 def _named_trigger(
     kind: str, node: Mapping[str, Any], device: DeviceContext
 ) -> list[Trigger] | None:
-    if not _only(node, {"target", "options"}):
+    if not _only(node, {"target", "options"}) or not _named_options(node.get("options")):
         return None
     target = node.get("target") or {}
     if not isinstance(target, Mapping) or set(target) - {"entity_id"}:
         return None
     entities = [_resolve(entity, device) for entity in _as_list(target.get("entity_id"))]
-    if None in entities:
+    domain = kind.partition(".")[0]
+    resolved = tuple(entity for entity in entities if entity is not None)
+    if len(resolved) != len(entities) or any(
+        entity.partition(".")[0] != domain for entity in resolved
+    ):
         return None
-    return [NamedTrigger(name=kind, entities=tuple(e for e in entities if e is not None))]
+    return [NamedTrigger(name=kind, entities=resolved)]
 
 
 def parse_trigger(node: Any, device: DeviceContext) -> list[Trigger] | None:
