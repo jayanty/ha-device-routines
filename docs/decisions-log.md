@@ -704,3 +704,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | Two lanes (22 carry overs, 23 publication) as plan 6.2.9 now lists them; the orchestrator lands them and does the exit. The tag `v1.0.0-beta.1` and the fast forward of `main` happen at the exit as planned; the hand deploy waits until live validation A has recorded Section 5.3 and `v0.3.0` is tagged on `efbf757` (L69), and the R2 request (O16) follows the deploy. `frontend` was added to the required checks of `main` (read before and after). The logo's text is set in a font whose license allows it (Pillow's bundled CC0 font), and the brand assets wait for the owner's approval under O10. |
 | Consequence | Plan 6.2.9 amended. The Status line names the lanes. |
 | PRD register entry | no |
+
+## 2026-10-18 L71: two live findings of validation A go to lane 22
+
+| Field | Content |
+| --- | --- |
+| Context | Live validation A (plan 5.3, on `efbf757`) found two faults the harness missed. F1: deleting a routine's automation through the config endpoint or the editor fires no `automation_reloaded` (the core's delete hook only removes the entity registry entry), so sync back never runs: a deleted detached routine keeps `detached_routine` and unavailable controls, and a deleted owned routine is not reset (PRD 8.2) until some later reload or restart; the harness modeled a delete as a rewrite plus a reload. F2: a device whose automations are all turned off reads the first disabled item's summary as its Schedule state ("5:00 PM: on"), which reads as planned; FR-S4 does not cover that case. |
+| Options | F1: listen for the registry removal, or poll; F2: no state, or a state that says so. |
+| Choice | Both go to lane 22 (it owns `manager.py` and `summary.py` in wave B3), harness test first (rule 12). F1: the removal of an `automation.` registry entry the manager knows as an owned or detached routine requests a sync, tested through the real config view. F2: such a device reads "Automation off" with one item and "Automations off" with several (phrases `state_automation_off`, `state_automations_off`); a routine that is off keeps "Routine off". Both are fixed for 1.0.0; the `v0.3.0` release notes list them with the midnight end of L69 as known faults. |
+| Consequence | The live session continues with a single id reload after a delete as a workaround. |
+| PRD register entry | no |
