@@ -2853,6 +2853,92 @@ class RoutineManager:
             )
         return tuple(rows)
 
+    # ----------------------------------------------------------------------------------
+    # Converting a hand written automation (Build B lane 20: PRD FR-M1 and 8.3, plan 6.2.5)
+    # ----------------------------------------------------------------------------------
+
+    # The settings a conversion carries (L61); the others come from the opt in's draft,
+    # which holds the global defaults.
+    _CONVERSION_FIELDS: Final = (
+        "target_entity",
+        "on_time",
+        "off_time",
+        "days",
+        "day_set",
+        "turn_off_after_min",
+    )
+    _SOURCE_CONVERSION: Final = "conversion"
+    # The label on the original, `markers.REPLACED_LABEL_ID` by its name (PRD 8.3).
+    _REPLACED_LABEL_NAME: Final = "Replaced by routine"
+    _REPLACED_LABEL_ICON: Final = "mdi:swap-horizontal"
+
+    async def async_convert_automation(self, automation_entity_id: str) -> RoutineView:
+        """Replace a hand written automation the summary offers with a routine (FR-M1).
+
+        Refused with `conversion_not_offered` while the summary does not offer it (any
+        more) and with `device_has_routine` once its device has a routine, owned or taken
+        over; a refusal changes nothing. Otherwise the device is opted in and the offer's
+        settings are applied over the global defaults, exactly as an opt in plus an update
+        does, and written at once. Only once the routine exists is the original turned off
+        with `automation.turn_off` and given the `Replaced by routine` label: its config is
+        never edited and no marker is added to it, so turning it back on is the undo. A
+        write that fails raises `conversion_failed` and leaves the original untouched.
+        """
+        offer = self.summary.offer_for(automation_entity_id)
+        if offer is None:
+            raise _invalid("conversion_not_offered", {"automation": automation_entity_id})
+        device_id = offer.device_id
+        if self._has_routine(device_id):
+            raise _invalid("device_has_routine", {"device": self._device_name(device_id)})
+        if not self._adapter.works(ha_adapter.CAPABILITY_WRITE):
+            raise _invalid("editing_unavailable")
+        await self.async_opt_in(device_id, self._SOURCE_CONVERSION)
+        patch = {name: getattr(offer.settings, name) for name in self._CONVERSION_FIELDS}
+        result = await self.async_update(device_id, patch, self._SOURCE_CONVERSION)
+        if result.problem is not None:
+            problem = result.problem
+            raise _invalid(
+                problem.translation_key, {"setting": problem.key, **problem.placeholders}
+            )
+        if not await self._async_write(self._routines[device_id]):
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="conversion_failed",
+                translation_placeholders={"alias": offer.alias, "device": offer.device_name},
+            )
+        _LOGGER.debug("%s replaced %s with a routine", device_id, automation_entity_id)
+        await self.hass.services.async_call(
+            "automation", "turn_off", {ATTR_ENTITY_ID: automation_entity_id}, blocking=True
+        )
+        self._label_replaced(automation_entity_id)
+        view = self.get(device_id)
+        assert view is not None  # noqa: S101  # opted in above
+        return view
+
+    def _has_routine(self, device_id: str) -> bool:
+        """Tell whether a device has a routine: an owned automation, or a detached one."""
+        routine = self._routines.get(device_id)
+        owned = any(record.device_id == device_id for record in self._store.data.owned.values())
+        return owned or (routine is not None and routine.detached)
+
+    def _label_replaced(self, automation_entity_id: str) -> None:
+        """Add the `Replaced by routine` label to the original's entity registry entry.
+
+        The label alone, never the `Routines` label (M6) or any other marker; an original
+        deleted meanwhile has nothing left to label.
+        """
+        label = ha_adapter.ensure_label(
+            self.hass,
+            markers.REPLACED_LABEL_ID,
+            self._REPLACED_LABEL_NAME,
+            self._REPLACED_LABEL_ICON,
+        )
+        entry = er.async_get(self.hass).async_get(automation_entity_id)
+        if entry is not None:
+            ha_adapter.async_update_registry_entity(
+                self.hass, automation_entity_id, labels={*entry.labels, label}
+            )
+
 
 # --------------------------------------------------------------------------------------
 # Small helpers

@@ -37,6 +37,18 @@ a cached answer in place of the custom logic line, marked `(AI)` and `source: ai
 change listener (`async_add_change_listener`) lets the hub Routines sensor follow every
 device's summary, and tells the manager after each view refresh that moved one, which
 it pushes to its listeners as one debounced `schedule_changed` (L49).
+
+Conversion offers (Build B lane 20, PRD FR-M1, decisions L61 and L65). While
+`offer_conversions` is on, every index rebuild asks `conversion.match` about each hand
+written automation (not owned, not detached) on each device it acts on, and keeps the
+matches whose settings `compiler.validate` accepts for the profile of the entity they
+drive, an entity a routine can drive (`domains.pick_targets`), of an automation with an
+entity registry entry (the `Replaced by routine` label lives there). Every view refresh
+turns the matches into offers (`conversion_offers`): only an automation that is on, only
+for a device without a routine (an owned automation in the index, or any routine the
+provider knows, a detached one included), one offer per automation. The offers raise
+and clear the `conversion_offer` Repairs issues, one per automation, and a change of the
+offers tells the change listeners, so the console hears it as `schedule_changed`.
 """
 
 from __future__ import annotations
@@ -70,11 +82,23 @@ from homeassistant.helpers.sun import get_astral_event_date
 from homeassistant.util import dt as dt_util
 import probatio as vol
 
-from . import ai_prompt, compiler, conflicts, ha_adapter, markers, nextrun, parser, repairs
+from . import (
+    ai_prompt,
+    compiler,
+    conflicts,
+    conversion,
+    ha_adapter,
+    markers,
+    nextrun,
+    parser,
+    repairs,
+)
+from .domains import Candidate, pick_targets, profile_for
 from .models import (
     PAUSING_STATUSES,
     Conflict,
     DeviceContext,
+    DomainProfile,
     EntityRef,
     Occurrence,
     ParsedLine,
@@ -233,6 +257,43 @@ class DeviceSummary:
 type AddSensors = Callable[[list[str]], None]
 
 
+@dataclass(frozen=True, slots=True)
+class ConversionOffer:
+    """A hand written automation a routine on its device can replace exactly (FR-M1).
+
+    `settings` are the routine's as `conversion.match` read them, before the manager adds
+    the global defaults; `original_sentence` is what the Schedule reads for the automation
+    on the device and `routine_sentence` what it would read for the routine, so the
+    Repairs issue and the console show both side by side.
+    """
+
+    automation_id: str
+    automation_entity_id: str
+    alias: str
+    device_id: str
+    device_name: str
+    settings: RoutineSettings
+    original_sentence: str
+    routine_sentence: str
+
+
+@dataclass(frozen=True, slots=True)
+class _Match:
+    """An exact match the index found: the automation, its device and the routine's settings.
+
+    `digest` is the hash of the config it was read from, so an offer of an automation
+    edited since the last rebuild is never taken (`offer_for`).
+    """
+
+    automation_entity: str
+    automation_id: str
+    digest: str
+    device_id: str
+    device_name: str
+    settings: RoutineSettings
+    lines: tuple[ParsedLine, ...]
+
+
 @dataclass(slots=True)
 class _Index:
     lines: dict[str, list[IndexedLine]] = field(default_factory=dict)
@@ -240,6 +301,8 @@ class _Index:
     routines: dict[str, _OwnedRoutine] = field(default_factory=dict)
     # The timer and weekly schedule helpers of the routines, whose states move the views.
     runtime_entities: frozenset[str] = frozenset()
+    # The exact conversion matches, while `offer_conversions` is on (FR-M1).
+    matches: tuple[_Match, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,6 +348,8 @@ class SummaryCoordinator:
         self._change_listeners: list[CALLBACK_TYPE] = []
         # The optional AI summary of the lines the parser cannot read (Build A lane 14).
         self.ai = AiSummaries(hass, settings, phrases, self._refresh_views)
+        # The conversion offers of the last view refresh, by automation entity (FR-M1).
+        self._offers: dict[str, ConversionOffer] = {}
 
     # ----------------------------------------------------------------------------------
     # Lifecycle
@@ -358,9 +423,12 @@ class SummaryCoordinator:
             summaries[device_id] = summary
         self.summaries = summaries
         self._reconcile_sensors()
+        writer = self._writer()
         async_sync_conflict_issues(
-            self.hass, summaries, self._writer(), enabled=self.settings.raise_conflict_repairs
+            self.hass, summaries, writer, enabled=self.settings.raise_conflict_repairs
         )
+        # A routine created or gone on the device takes its offers away or brings them back.
+        self._sync_offers(writer)
         if summary != previous:
             self._notify(device_id)
         self._schedule_next(now)
@@ -443,6 +511,7 @@ class SummaryCoordinator:
         contexts: dict[str, DeviceContext] = {}
         lines: dict[str, list[IndexedLine]] = {}
         routines: dict[str, _OwnedRoutine] = {}
+        matches: list[_Match] = []
         for refs in ha_adapter.automation_references(self.hass):
             config = _marked(refs)
             kind = _kind(config)
@@ -466,6 +535,8 @@ class SummaryCoordinator:
                     except ParseError:
                         _LOGGER.debug("%s is not an automation config", refs.entity_id)
                         break
+                    if kind == KIND_AUTOMATION and self.settings.offer_conversions:
+                        matches.extend(self._matches(refs, context, parsed))
                 lines.setdefault(device_id, []).extend(
                     IndexedLine(refs.entity_id, line, kind) for line in parsed
                 )
@@ -480,6 +551,7 @@ class SummaryCoordinator:
                 for entity in (owned.timer_entity, owned.settings.schedule_entity)
                 if entity is not None
             ),
+            matches=tuple(matches),
         )
 
     def _reachable_devices(self, refs: ha_adapter.AutomationRefs) -> set[str]:
@@ -594,6 +666,7 @@ class SummaryCoordinator:
         async_sync_conflict_issues(
             self.hass, summaries, writer, enabled=self.settings.raise_conflict_repairs
         )
+        self._sync_offers(writer)
         for device_id in changed:
             self._notify(device_id)
         self._schedule_next(now)
@@ -825,6 +898,129 @@ class SummaryCoordinator:
             self._add_sensors(new)
 
     # ----------------------------------------------------------------------------------
+    # Conversion offers (Build B lane 20: PRD FR-M1, decisions L61 and L65)
+    # ----------------------------------------------------------------------------------
+
+    def conversion_offers(self) -> tuple[ConversionOffer, ...]:
+        """Return the automations a routine can replace exactly, by device and alias."""
+        return tuple(
+            sorted(
+                self._offers.values(),
+                key=lambda offer: (offer.device_name, offer.alias, offer.automation_entity_id),
+            )
+        )
+
+    def offer_for(self, automation_entity_id: str) -> ConversionOffer | None:
+        """Return the offer of an automation while it still stands, or None.
+
+        Read again now: the automation is still on, its device still has no routine, and
+        its config is still the one the match was read from, so an edit inside the index
+        rebuild's debounce is never converted from what the automation used to do.
+        """
+        match = next(
+            (
+                found
+                for found in self._index.matches
+                if found.automation_entity == automation_entity_id
+            ),
+            None,
+        )
+        config = ha_adapter.automation_config(self.hass, automation_entity_id)
+        if match is None or config is None or markers.config_hash(config) != match.digest:
+            return None
+        return self._offer(match, self._writer())
+
+    def _matches(
+        self, refs: ha_adapter.AutomationRefs, context: DeviceContext, lines: list[ParsedLine]
+    ) -> list[_Match]:
+        """Return the automation's exact match on the device as a list of none or one.
+
+        A match counts when the routine could run it: its settings validate for the
+        profile of the entity it drives (the PRD 5.4 refusals included), the entity is one
+        a routine can drive, and the automation has a registry entry for the label.
+        """
+        settings = conversion.match(refs.config, context)
+        if (
+            settings is None
+            or not lines
+            or not _drivable(self.hass, context.device_id, settings.target_entity)
+        ):
+            return []
+        profile = _profile(self.hass, settings.target_entity)
+        registered = er.async_get(self.hass).async_get(refs.entity_id) is not None
+        if profile is None or compiler.validate(settings, profile) or not registered:
+            return []
+        device = dr.async_get(self.hass).async_get(context.device_id)
+        assert device is not None  # noqa: S101  # _reachable_devices checked it
+        return [
+            _Match(
+                automation_entity=refs.entity_id,
+                automation_id=str(refs.config.get("id", "")),
+                digest=markers.config_hash(refs.config),
+                device_id=context.device_id,
+                device_name=device.name_by_user or device.name or context.device_id,
+                settings=settings,
+                lines=tuple(lines),
+            )
+        ]
+
+    def _offer(self, match: _Match, writer: Writer) -> ConversionOffer | None:
+        """Return a match as an offer while the automation is on and the device has no routine."""
+        if not _is_on(self.hass.states.get(match.automation_entity)) or self._has_routine(
+            match.device_id
+        ):
+            return None
+        separator = writer.say("list_separator")
+        alias = match.lines[0].alias
+        routine = nextrun.routine_lines(match.settings, match.automation_id, alias)
+        return ConversionOffer(
+            automation_id=match.automation_id,
+            automation_entity_id=match.automation_entity,
+            alias=alias,
+            device_id=match.device_id,
+            device_name=match.device_name,
+            settings=match.settings,
+            original_sentence=separator.join(writer.line(line) for line in match.lines),
+            routine_sentence=separator.join(writer.line(line) for line in routine),
+        )
+
+    def _has_routine(self, device_id: str) -> bool:
+        """Tell whether a device has a routine: an owned automation, or one the manager knows."""
+        provided = self._provider.routine_summary(device_id) if self._provider else None
+        return device_id in self._index.routines or provided is not None
+
+    def _sync_offers(self, writer: Writer) -> None:
+        """Turn the matches into offers and keep the `conversion_offer` issues in line.
+
+        One issue per offered automation, its subject the automation entity's object id;
+        every other `conversion_offer` issue is cleared, all of them while
+        `offer_conversions` is off (the index then holds no match). A change of the offers
+        tells the change listeners.
+        """
+        offers: dict[str, ConversionOffer] = {}
+        for match in self._index.matches:
+            offer = None if match.automation_entity in offers else self._offer(match, writer)
+            if offer is not None:
+                offers[match.automation_entity] = offer
+        repairs.async_sync_issues(
+            self.hass,
+            repairs.CONVERSION_OFFER,
+            {
+                entity_id.partition(".")[2]: {
+                    "alias": offer.alias,
+                    "device": offer.device_name,
+                    "original": offer.original_sentence,
+                    "routine": offer.routine_sentence,
+                }
+                for entity_id, offer in offers.items()
+            },
+        )
+        changed = offers != self._offers
+        self._offers = offers
+        for update in list(self._change_listeners) if changed else ():
+            update()
+
+    # ----------------------------------------------------------------------------------
     # A day's planned actions: the console's Today view (Build A lane 12, decision L45)
     # ----------------------------------------------------------------------------------
 
@@ -836,7 +1032,8 @@ class SummaryCoordinator:
         is listed as planned; a routine action its pause skips (after now and before
         Paused until) and every action of an automation that is off are left out. Each
         action is one item per device, its `conflict` set when it takes part in an FR-S6
-        conflict in its own minute.
+        conflict in its own minute, with the device's name, the alias of the automation or
+        routine and the number of conditions that gate it (FR-R9's Today flag, plan 6.2.5).
         """
         start = dt_util.start_of_local_day(day)
         end = dt_util.start_of_local_day(day + timedelta(days=1))
@@ -849,7 +1046,7 @@ class SummaryCoordinator:
             if device is None:
                 continue
             rows = self._day_rows(device_id, start, end, now, lookups)
-            found.extend(_day_items(device_id, device.area_id, rows, start, end))
+            found.extend(_day_items(device, rows, start, end))
         return sorted(found, key=lambda item: (item.time, item.device_id, item.automation))
 
     def _day_rows(
@@ -891,6 +1088,8 @@ class SummaryCoordinator:
                     entry.automation_entity,
                     entry.line.entity_ids,
                     tuple(run for run in runs if run.at < end),
+                    alias=entry.line.alias,
+                    conditions=entry.line.condition_count,
                 )
             )
         return rows
@@ -913,7 +1112,7 @@ class SummaryCoordinator:
                 runs: tuple[Occurrence, ...] = (
                     (Occurrence(item.next_run, None),) if item.next_run else ()
                 )
-                rows.append(_DayRow(item.kind, item.automation_entity, (), runs))
+                rows.append(_DayRow(item.kind, item.automation_entity, (), runs, alias=item.alias))
             elif routine.status in _RUNNING_STATUSES and _is_on(
                 self.hass.states.get(owned.automation_entity)
             ):
@@ -926,11 +1125,16 @@ class SummaryCoordinator:
                 settings = owned.settings
                 rows.append(
                     _DayRow(
-                        item.kind, item.automation_entity, (settings.target_entity,), runs, settings
+                        item.kind,
+                        item.automation_entity,
+                        (settings.target_entity,),
+                        runs,
+                        settings,
+                        alias=item.alias,
                     )
                 )
             else:
-                rows.append(_DayRow(item.kind, item.automation_entity, (), ()))
+                rows.append(_DayRow(item.kind, item.automation_entity, (), (), alias=item.alias))
         return rows
 
 
@@ -1250,6 +1454,31 @@ def _is_on(state: State | None) -> bool:
     return state is not None and state.state == "on"
 
 
+def _device_class(hass: HomeAssistant, entity_id: str) -> str | None:
+    """Return an entity's device class from its registry entry, else from its state."""
+    entry = er.async_get(hass).async_get(entity_id)
+    if entry is not None and (entry.device_class or entry.original_device_class):
+        return entry.device_class or entry.original_device_class
+    state = hass.states.get(entity_id)
+    device_class = state.attributes.get("device_class") if state else None
+    return device_class if isinstance(device_class, str) else None
+
+
+def _profile(hass: HomeAssistant, entity_id: str) -> DomainProfile | None:
+    """Return the profile of the entity a routine would drive, as the manager reads it."""
+    return profile_for(entity_id.partition(".")[0], _device_class(hass, entity_id))
+
+
+def _drivable(hass: HomeAssistant, device_id: str, entity_id: str) -> bool:
+    """Tell whether a routine of the device could drive the entity (`domains.pick_targets`)."""
+    entry = er.async_get(hass).async_get(entity_id)
+    return (
+        entry is not None
+        and entry.device_id == device_id
+        and bool(pick_targets([Candidate(entry.entity_id, entry.entity_category, entry.disabled)]))
+    )
+
+
 def _row_order(row: _Row) -> tuple[Any, ...]:
     """Routines first (PRD FR-S4); then timed lines by time, read lines, custom logic."""
     item = row.item
@@ -1430,7 +1659,11 @@ class DayItem:
     """One action planned for a local day: an item of the console's Today view.
 
     `action` is None when it is not known (a routine whose automation is not indexed yet);
-    `kind` and `automation` are those of the Schedule item it belongs to.
+    `kind` and `automation` are those of the Schedule item it belongs to. `device_name` is
+    the device's name, `alias` the automation's or the routine's, and `conditions` the
+    number of conditions that gate the action (FR-R9's Today flag): a routine's Only when
+    conditions on its on actions, which the blueprint gates (L64), a parsed line's
+    `condition_count`.
     """
 
     time: datetime
@@ -1440,21 +1673,30 @@ class DayItem:
     kind: str
     automation: str
     conflict: bool = False
+    device_name: str | None = None
+    alias: str | None = None
+    conditions: int = 0
 
 
 @dataclass(frozen=True, slots=True)
 class _DayRow:
-    """One Schedule item of a device with its runs; `routine` is set while a routine runs."""
+    """One Schedule item of a device with its runs; `routine` is set while a routine runs.
+
+    `conditions` gate every run of a parsed line; a running routine's come from its
+    settings, on its on actions only (`_gating`).
+    """
 
     kind: str
     automation: str
     entity_ids: tuple[str, ...]
     runs: tuple[Occurrence, ...]
     routine: RoutineSettings | None = None
+    alias: str | None = None
+    conditions: int = 0
 
 
 def _day_items(
-    device_id: str, area_id: str | None, rows: Sequence[_DayRow], start: datetime, end: datetime
+    device: dr.AnyDeviceEntry, rows: Sequence[_DayRow], start: datetime, end: datetime
 ) -> list[DayItem]:
     """Return a device's runs inside the day as items, each once, with its conflict flag.
 
@@ -1476,10 +1718,32 @@ def _day_items(
             key = (run.at, run.verb, row.kind, row.automation)
             earlier = items.get(key)
             conflict = (index, _minute_of(run.at)) in marked or bool(earlier and earlier.conflict)
+            gating = max(_gating(row, run), earlier.conditions if earlier else 0)
             items[key] = DayItem(
-                run.at, device_id, area_id, run.verb, row.kind, row.automation, conflict
+                run.at,
+                device.id,
+                device.area_id,
+                run.verb,
+                row.kind,
+                row.automation,
+                conflict,
+                device_name=device.name_by_user or device.name,
+                alias=row.alias,
+                conditions=gating,
             )
     return list(items.values())
+
+
+def _gating(row: _DayRow, run: Occurrence) -> int:
+    """Return the number of conditions gating one run of a row.
+
+    A running routine's Only when conditions gate its on actions only, as the blueprint
+    gates them (L64); every other row counts its line's conditions on every run.
+    """
+    if row.routine is None:
+        return row.conditions
+    on_verb = nextrun.routine_verbs(row.routine.target_entity)[0]
+    return len(row.routine.extra_conditions) if run.verb is on_verb else 0
 
 
 def _minute_of(moment: datetime) -> datetime:

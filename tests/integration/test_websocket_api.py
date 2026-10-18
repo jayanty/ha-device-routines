@@ -519,6 +519,9 @@ async def test_schedule_today_lists_routines_and_automations_with_conflicts(
             "kind": "automation",
             "automation": "automation.morning_lamp",
             "conflict": False,
+            "device_name": "Desk lamp",
+            "alias": "Morning lamp",
+            "conditions": 0,
         },
         {
             "time": "2026-10-19T17:00:00-07:00",
@@ -528,6 +531,9 @@ async def test_schedule_today_lists_routines_and_automations_with_conflicts(
             "kind": "routine",
             "automation": ROUTINE,
             "conflict": False,
+            "device_name": "Living room fan",
+            "alias": "Routine: Living room fan",
+            "conditions": 0,
         },
         {
             "time": "2026-10-19T23:00:00-07:00",
@@ -537,6 +543,9 @@ async def test_schedule_today_lists_routines_and_automations_with_conflicts(
             "kind": "automation",
             "automation": "automation.late_fan_on",
             "conflict": True,
+            "device_name": "Living room fan",
+            "alias": "Late fan on",
+            "conditions": 0,
         },
         {
             "time": "2026-10-19T23:00:00-07:00",
@@ -546,6 +555,9 @@ async def test_schedule_today_lists_routines_and_automations_with_conflicts(
             "kind": "routine",
             "automation": ROUTINE,
             "conflict": True,
+            "device_name": "Living room fan",
+            "alias": "Routine: Living room fan",
+            "conditions": 0,
         },
     ]
     assert tuesday["date"] == "2026-10-20"
@@ -553,6 +565,132 @@ async def test_schedule_today_lists_routines_and_automations_with_conflicts(
     assert times == ["07:00", "17:00", "23:00", "23:00"]
     invalid = await refusal(client, {"type": f"{PREFIX}/schedule/today", "date": "someday"})
     assert invalid["code"] == "invalid_format"
+
+
+# --------------------------------------------------------------------------------------
+# conversions/list and conversions/convert (Build B lane 20: PRD FR-M1)
+# --------------------------------------------------------------------------------------
+
+
+def exact_window(key: str, on_at: str, off_at: str, service: str, entity_id: str) -> dict[str, Any]:
+    """A hand written automation a routine can replace exactly (FR-R1, L61)."""
+    return {
+        "id": key,
+        "alias": key.replace("_", " ").capitalize(),
+        "triggers": [
+            {"trigger": "time", "at": on_at, "id": "start"},
+            {"trigger": "time", "at": off_at, "id": "stop"},
+        ],
+        "actions": [
+            {
+                "choose": [
+                    {
+                        "conditions": [{"condition": "trigger", "id": "start"}],
+                        "sequence": [
+                            {"action": f"{service}.turn_on", "target": {"entity_id": entity_id}}
+                        ],
+                    },
+                    {
+                        "conditions": [{"condition": "trigger", "id": "stop"}],
+                        "sequence": [
+                            {"action": f"{service}.turn_off", "target": {"entity_id": entity_id}}
+                        ],
+                    },
+                ]
+            }
+        ],
+    }
+
+
+async def test_conversions_list_and_convert_over_websocket(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    at_four: Clock,
+    freezer: Any,
+    hass_ws_client: Any,
+    hass_read_only_access_token: str,
+    routines: MockConfigEntry,
+) -> None:
+    await add_automations(
+        hass,
+        freezer,
+        exact_window("lamp_evening", "18:00", "22:30", "light", LAMP),
+        timed("late_fan_on", "23:00", "switch.turn_on", FAN),
+    )
+    client = await hass_ws_client(hass)
+
+    listed = await call(client, {"type": f"{PREFIX}/conversions/list"})
+
+    summary = routines.runtime_data.summary
+    assert listed == {"offers": plain(summary.conversion_offers())}
+    assert listed["offers"] == [
+        {
+            "automation_id": "lamp_evening",
+            "automation_entity_id": "automation.lamp_evening",
+            "alias": "Lamp evening",
+            "device_id": home.lamp,
+            "device_name": "Desk lamp",
+            "settings": {
+                "target_entity": LAMP,
+                "on_time": "18:00:00",
+                "off_time": "22:30:00",
+                "days": "every_day",
+                "day_set": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+                "schedule_entity": None,
+                "turn_off_after_min": 0,
+                "turn_back_on_after_min": 0,
+                "catch_up": True,
+                "late_start_window_min": 15,
+                "respect_manual": True,
+                "pulse": None,
+                "extra_conditions": [],
+                "docked_guard": True,
+                "on_kind": "time",
+                "on_sun_offset_min": 0,
+                "off_kind": "time",
+                "off_sun_offset_min": 0,
+            },
+            "original_sentence": "6:00 PM: on, 10:30 PM: off",
+            "routine_sentence": "6:00 PM: on, 10:30 PM: off",
+        }
+    ]
+
+    # Converting answers the device's new routine; the offer is gone afterwards.
+    view = await call(
+        client,
+        {
+            "type": f"{PREFIX}/conversions/convert",
+            "automation_entity_id": "automation.lamp_evening",
+        },
+    )
+    assert view == plain(manager.get(home.lamp))
+    assert view["settings"]["on_time"] == "18:00:00"
+    assert view["automation_entity_id"] == "automation.routine_desk_lamp"
+    assert await call(client, {"type": f"{PREFIX}/conversions/list"}) == {"offers": []}
+
+    # An automation that is not offered is refused with its translation; one of another
+    # domain is not an automation at all.
+    refused = await refusal(
+        client,
+        {"type": f"{PREFIX}/conversions/convert", "automation_entity_id": "automation.late_fan_on"},
+    )
+    assert without_message(refused) == translated(
+        "conversion_not_offered", automation="automation.late_fan_on"
+    )
+    wrong = await refusal(
+        client, {"type": f"{PREFIX}/conversions/convert", "automation_entity_id": LAMP}
+    )
+    assert wrong["code"] == "invalid_format"
+
+    # Listing needs no administrator; converting does.
+    reader = await hass_ws_client(hass, hass_read_only_access_token)
+    assert await call(reader, {"type": f"{PREFIX}/conversions/list"}) == {"offers": []}
+    unauthorized = await refusal(
+        reader,
+        {"type": f"{PREFIX}/conversions/convert", "automation_entity_id": "automation.x"},
+    )
+    assert unauthorized["code"] == "unauthorized"
 
 
 # --------------------------------------------------------------------------------------
@@ -723,10 +861,12 @@ WRITING: list[dict[str, Any]] = [
     {"type": f"{PREFIX}/devices/opt", "op": "list"},
     {"type": f"{PREFIX}/settings/set", "settings": {}},
     {"type": f"{PREFIX}/maintenance", "action": "refresh_summaries", "dry_run": True},
+    {"type": f"{PREFIX}/conversions/convert", "automation_entity_id": "automation.any"},
 ]
 READING: list[dict[str, Any]] = [
     {"type": f"{PREFIX}/routines/list"},
     {"type": f"{PREFIX}/schedule/today"},
+    {"type": f"{PREFIX}/conversions/list"},
     {"type": f"{PREFIX}/settings/get"},
     {"type": f"{PREFIX}/subscribe"},
 ]

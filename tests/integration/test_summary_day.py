@@ -9,6 +9,7 @@ fake provider that stands in for the manager. Every name is generic.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime
 from typing import Any
 
@@ -27,6 +28,8 @@ from custom_components.device_routines.summary import (
 from tests.integration import test_summary
 from tests.integration.test_summary import (
     FAN,
+    LAMP,
+    NIGHTLY,
     ROUTINE_ALIAS,
     ROUTINE_ENTITY,
     WINDOW,
@@ -233,4 +236,54 @@ async def test_day_items_are_plain_values(hass: HomeAssistant, home: dict[str, A
         kind=KIND_AUTOMATION,
         automation="automation.fan_window",
         conflict=False,
+        device_name="Living room fan",
+        alias="Fan Window",
+        conditions=0,
     )
+
+
+DOOR_CLOSED = {"condition": "state", "entity_id": "binary_sensor.door", "state": "off"}
+
+
+async def test_day_items_carry_device_name_alias_and_conditions(
+    hass: HomeAssistant, home: dict[str, Any], routine_blueprint: None
+) -> None:
+    """Plan 6.2.5: the device's name, the alias, and the conditions gating each action.
+
+    FR-R9's Today flag: a hand written line counts its conditions on every run; a
+    routine's Only when conditions gate its on actions only, as the blueprint gates them.
+    """
+    fan, lamp = home["fan"].id, home["lamp"].id
+    guarded = automation(
+        "guarded_lamp",
+        [at("06:30")],
+        [action("light.turn_on", {"entity_id": LAMP})],
+        conditions=[DOOR_CLOSED],
+    )
+    only_when = replace(NIGHTLY, extra_conditions=(DOOR_CLOSED, DOOR_CLOSED))
+    entry = await start(hass, [routine_config(fan, only_when), guarded])
+    provider = FakeProvider()
+    provider.summaries[fan] = routine_summary()
+    summary = await with_provider(entry, provider)
+
+    def read() -> list[tuple[Any, ...]]:
+        return [
+            (item.time, item.device_name, item.alias, item.action, item.conditions)
+            for item in summary.day_schedule(MONDAY)
+        ]
+
+    assert read() == [
+        (local(19, 6, 30), "Desk lamp", "Guarded Lamp", Verb.ON, 1),
+        (local(19, 9), "Living room fan", ROUTINE_ALIAS, Verb.OFF, 0),
+        (local(19, 17), "Living room fan", ROUTINE_ALIAS, Verb.ON, 2),
+    ]
+
+    # The name a person gave the device wins; a routine whose automation is not indexed
+    # names its item's alias and counts no condition, its action being unknown.
+    dr.async_get(hass).async_update_device(lamp, name_by_user="Reading lamp")
+    provider.summaries[lamp] = routine_summary(items=(routine_item(next_run=local(19, 21)),))
+    summary.async_refresh_device(lamp)
+    assert [row for row in read() if row[1] == "Reading lamp"] == [
+        (local(19, 6, 30), "Reading lamp", "Guarded Lamp", Verb.ON, 1),
+        (local(19, 21), "Reading lamp", ROUTINE_ALIAS, None, 0),
+    ]

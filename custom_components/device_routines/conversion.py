@@ -17,6 +17,12 @@ which leave out every action that is not on the device (decision L61). Two shape
   exactly one off action on that entity; no condition. Only for the domains whose state
   is on or off, where `to: "on"` is every turn on, as the routine's countdown reads it.
 
+An action names its entity once, in any of the places the core and the parser read it
+from (decision L65): `target.entity_id`, `entity_id` on the step, or `entity_id` in
+`data`. An empty `target`, `data` or `metadata` carries nothing (the automation editor
+writes `data: {}` and `metadata: {}` on every step it creates); anything else in them is
+data the routine would drop.
+
 Everything else is None: a template, variables, a second entity or device, any other
 action (a delay, a notification, a scene, a toggle), a disabled trigger, condition or
 action, an action carrying data (a brightness), seconds, an entity held time, any other
@@ -76,7 +82,11 @@ _TRIGGER_CONDITION_KEYS: Final = frozenset({"condition", "alias", "enabled", "id
 _CHOOSE_KEYS: Final = frozenset({"choose", "alias", "enabled"})
 _OPTION_KEYS: Final = frozenset({"conditions", "sequence", "alias"})
 _IF_KEYS: Final = frozenset({"if", "then", "else", "alias", "enabled"})
-_SERVICE_KEYS: Final = frozenset({"action", "service", "target", "alias", "enabled"})
+_SERVICE_KEYS: Final = frozenset(
+    {"action", "service", "target", "data", "metadata", "entity_id", "alias", "enabled"}
+)
+# The mappings an action step may carry: its target, its data and the editor's metadata.
+_HOLDERS: Final = ("target", "data", "metadata")
 
 # Domains whose state is only on or off, so `to: "on"` is every turn on (FR-R3).
 _ON_OFF_DOMAINS: Final = frozenset({"switch", "light", "fan", "input_boolean", "humidifier"})
@@ -328,18 +338,22 @@ def _single(value: Any) -> Any:
 
 
 def _service(step: Any, device: DeviceContext) -> tuple[str, str] | None:
-    """Return the action and the one device entity of a step that carries only a target."""
+    """Return the action and the one device entity of a step that carries only a target.
+
+    The entity is named once: on the step, in `target` or in `data` (see the module
+    docstring); `target` and `data` hold nothing else and `metadata` is empty.
+    """
     if not _plain(step, _SERVICE_KEYS) or ("action" in step) == ("service" in step):
         return None
     action = step.get("action", step.get("service"))
-    target = step.get("target")
-    if (
-        not isinstance(action, str)
-        or not isinstance(target, Mapping)
-        or set(target) != {"entity_id"}
-    ):
+    holders = [step.get(key, {}) for key in _HOLDERS]
+    if not isinstance(action, str) or not all(isinstance(held, Mapping) for held in holders):
         return None
-    entity = _entity(target["entity_id"], device)
+    target, data, metadata = holders
+    named = [held["entity_id"] for held in (step, target, data) if "entity_id" in held]
+    if metadata or set(target) - {"entity_id"} or set(data) - {"entity_id"} or len(named) != 1:
+        return None
+    entity = _entity(named[0], device)
     return None if entity is None else (action, entity)
 
 

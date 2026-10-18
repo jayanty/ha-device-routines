@@ -121,6 +121,7 @@ def conflict_issues(hass: HomeAssistant) -> list[str]:
 
 
 def test_every_fixable_issue_has_a_one_step_fix_flow_and_the_others_a_description() -> None:
+    """One confirm step per fix; a conversion offer shows both sentences first (FR-M1)."""
     issues = json.loads(STRINGS.read_text(encoding="utf-8"))["issues"]
 
     for issue_id in repairs.CATALOG:
@@ -130,22 +131,27 @@ def test_every_fixable_issue_has_a_one_step_fix_flow_and_the_others_a_descriptio
             # hassfest takes a description or a fix flow per issue, never both.
             assert "description" not in strings, issue_id
             flow = strings["fix_flow"]
-            assert set(flow["step"]) == {"confirm"}, issue_id
-            assert flow["step"]["confirm"]["title"]
-            assert flow["step"]["confirm"]["description"]
+            steps = {"compare", "confirm"} if issue_id == "conversion_offer" else {"confirm"}
+            assert set(flow["step"]) == steps, issue_id
+            for step in steps:
+                assert flow["step"][step]["title"]
+                assert flow["step"][step]["description"]
             assert set(flow["abort"]) >= {repairs.ABORT_NOT_LOADED, repairs.ABORT_NOT_FIXED}
         else:
             assert "fix_flow" not in strings, issue_id
             assert strings["description"]
     assert "no_valid_settings" in issues["invalid_inputs"]["fix_flow"]["abort"]
-    for issue_id in repairs.FIXABLE - {repairs.BLUEPRINT_MODIFIED}:
+    for issue_id in repairs.FIXABLE - {repairs.BLUEPRINT_MODIFIED, repairs.CONVERSION_OFFER}:
         assert "unknown_routine" in issues[issue_id]["fix_flow"]["abort"], issue_id
+    # Every refusal of a conversion aborts `not_fixed`, so it needs no other reason.
+    assert set(issues["conversion_offer"]["fix_flow"]["abort"]) == {"not_loaded", "not_fixed"}
     assert {
         "blueprint_modified",
         "invalid_inputs",
         "detached_routine",
         "write_conflict",
         "automation_load_failed",
+        "conversion_offer",
     } == repairs.FIXABLE
 
 

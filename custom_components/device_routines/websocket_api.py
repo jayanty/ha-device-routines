@@ -358,6 +358,39 @@ async def ws_maintenance(
 
 
 # --------------------------------------------------------------------------------------
+# Conversion offers (Build B lane 20: PRD FR-M1)
+# --------------------------------------------------------------------------------------
+
+
+@websocket_command({vol.Required("type"): f"{DOMAIN}/conversions/list"})
+@async_response
+@_refusals
+async def ws_conversions_list(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Return the hand written automations a routine can replace exactly, from the summary."""
+    summary = _loaded(hass).runtime_data.summary
+    connection.send_result(msg["id"], {"offers": as_json(summary.conversion_offers())})
+
+
+@require_admin
+@websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/conversions/convert",
+        vol.Required("automation_entity_id"): cv.entity_domain("automation"),
+    }
+)
+@async_response
+@_refusals
+async def ws_conversions_convert(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Convert one offered automation, as `RoutineManager.async_convert_automation`."""
+    view = await _manager(hass).async_convert_automation(msg["automation_entity_id"])
+    connection.send_result(msg["id"], as_json(view))
+
+
+# --------------------------------------------------------------------------------------
 # subscribe
 # --------------------------------------------------------------------------------------
 
@@ -419,5 +452,7 @@ COMMANDS: Final[tuple[WebSocketCommandHandler, ...]] = (
     ws_settings_get,
     ws_settings_set,
     ws_maintenance,
+    ws_conversions_list,
+    ws_conversions_convert,
     ws_subscribe,
 )

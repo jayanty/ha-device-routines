@@ -26,6 +26,8 @@ turns the fan on at 11:00 PM. The clock reads Monday 2026-10-19, 4:00 PM, in Los
 | [`device_routines/settings/get`](#settingsget) | No | none | GlobalSettings |
 | [`device_routines/settings/set`](#settingsset) | Yes | `settings` | GlobalSettings |
 | [`device_routines/maintenance`](#maintenance) | Yes | `action`, `dry_run` | MaintenanceReport |
+| [`device_routines/conversions/list`](#conversionslist) | No | none | `offers`: list of ConversionOffer |
+| [`device_routines/conversions/convert`](#conversionsconvert) | Yes | `automation_entity_id` | RoutineView |
 | [`device_routines/subscribe`](#subscribe) | No | none | `null`, then events |
 
 The commands exist once the integration has been set up. They speak Home Assistant's own
@@ -141,6 +143,39 @@ A SummaryItem is one Schedule item: `kind` (`routine`, `automation` or
 (`parser`, `ai` or `none`), `enabled`, `custom_logic` and `parts` (the routine's lines).
 A Conflict names two item indexes `a` and `b`, a `reason_key` (`opposite_same_minute`,
 `off_in_on_window` or `on_in_off_window`) and the moment `at`.
+
+### DayItem
+
+One action planned for a day, an item of [schedule/today](#scheduletoday).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `time` | datetime | When the action runs, local |
+| `device_id` | string | The device it acts on |
+| `area_id` | string or null | The device's area |
+| `action` | string or null | The verb (see Occurrence), null while not known yet |
+| `kind` | string | `routine`, `automation` or `detached_routine`, as the Schedule item |
+| `automation` | string | The automation entity of the Schedule item |
+| `conflict` | bool | The action takes part in an FR-S6 conflict in its own minute |
+| `device_name` | string or null | The device's name, as the user named it |
+| `alias` | string or null | The alias of the automation, or of the routine |
+| `conditions` | integer | How many conditions gate the action: the conditions of a hand written automation's line, or a routine's Only when conditions on its on actions (FR-R9); 0 for none |
+
+### ConversionOffer
+
+A hand written automation that a routine on its device can replace exactly (PRD FR-M1),
+listed by [conversions/list](#conversionslist).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `automation_id` | string | The automation's id |
+| `automation_entity_id` | string | Its entity id, what [conversions/convert](#conversionsconvert) takes |
+| `alias` | string | Its alias |
+| `device_id` | string | The device the routine would belong to |
+| `device_name` | string | Its name, as the user named it |
+| `settings` | RoutineSettings | The routine's settings as read from the automation; converting applies them over the global defaults (catch up, manual changes, late start window) |
+| `original_sentence` | string | What the Schedule reads for the automation on the device |
+| `routine_sentence` | string | What it would read for the routine |
 
 ## routines/list
 
@@ -427,7 +462,10 @@ automations alike, for the console's Today view (PRD 4.5).
       "action": "on",
       "kind": "automation",
       "automation": "automation.morning_lamp",
-      "conflict": false
+      "conflict": false,
+      "device_name": "Desk lamp",
+      "alias": "Morning lamp",
+      "conditions": 0
     },
     {
       "time": "2026-10-19T17:00:00-07:00",
@@ -436,7 +474,10 @@ automations alike, for the console's Today view (PRD 4.5).
       "action": "on",
       "kind": "routine",
       "automation": "automation.routine_living_room_fan",
-      "conflict": false
+      "conflict": false,
+      "device_name": "Living room fan",
+      "alias": "Routine: Living room fan",
+      "conditions": 0
     },
     {
       "time": "2026-10-19T23:00:00-07:00",
@@ -445,7 +486,10 @@ automations alike, for the console's Today view (PRD 4.5).
       "action": "on",
       "kind": "automation",
       "automation": "automation.late_fan_on",
-      "conflict": true
+      "conflict": true,
+      "device_name": "Living room fan",
+      "alias": "Late fan on",
+      "conditions": 0
     },
     {
       "time": "2026-10-19T23:00:00-07:00",
@@ -454,20 +498,28 @@ automations alike, for the console's Today view (PRD 4.5).
       "action": "off",
       "kind": "routine",
       "automation": "automation.routine_living_room_fan",
-      "conflict": true
+      "conflict": true,
+      "device_name": "Living room fan",
+      "alias": "Routine: Living room fan",
+      "conditions": 0
     }
   ]
 }
 ```
 
-Items are sorted by time, then device and automation. The day reads the schedule as it
-stands now: an action earlier in the day is listed as planned (here the 7:00 AM lamp),
+Each item is a [DayItem](#dayitem). Items are sorted by time, then device and automation.
+The day reads the schedule as it stands now: an action earlier in the day is listed as planned (here the 7:00 AM lamp),
 a routine action its pause skips (after now and before Paused until) and every action of
 an automation that is turned off are left out. `action` is null when it is not known yet
 (a routine whose automation is not loaded). `area_id` is the device's area. `conflict`
 marks an action that takes part in an FR-S6 conflict in its own minute: two opposite
 actions on the device in one minute, or an automation action against the routine's
-window (both apply to the 11:00 PM pair above). An unreadable `date` is `invalid_format`.
+window (both apply to the 11:00 PM pair above). `device_name` and `alias` name the device
+and the automation or routine, so a timeline needs no other lookup; `conditions` counts
+the conditions that gate the action (FR-R9), so the Today view can flag an action that
+may not run: a hand written line's conditions on every run, a routine's Only when
+conditions on its on actions only, because the blueprint gates only those. An unreadable
+`date` is `invalid_format`.
 
 ## settings/get
 
@@ -551,6 +603,118 @@ With `dry_run` nothing changes and `would_change` lists what would; without it `
 lists what changed. The entries are device ids (`clean_up_now`, `refresh_summaries`),
 automation ids (`rebuild_index`) or the blueprint path (`reinstall_blueprint`).
 
+## conversions/list
+
+The hand written automations that a routine on their device can replace exactly (PRD
+FR-M1), each once, by device name and alias: the same offers as the `conversion_offer`
+Repairs issues. Only an automation that is turned on is offered, only for a device
+without a routine, and only while the global setting `offer_conversions` is on; the list
+changes with `schedule_changed` (see [subscribe](#subscribe)).
+
+With one more hand written automation in the home, `automation.lamp_evening`, which turns
+the desk lamp on at 6:00 PM and off at 10:30 PM every day:
+
+```json
+{"id": 21, "type": "device_routines/conversions/list"}
+```
+
+```json
+{
+  "offers": [
+    {
+      "automation_id": "lamp_evening",
+      "automation_entity_id": "automation.lamp_evening",
+      "alias": "Lamp evening",
+      "device_id": "dev_desk_lamp",
+      "device_name": "Desk lamp",
+      "settings": {
+        "target_entity": "light.desk_lamp",
+        "on_time": "18:00:00",
+        "off_time": "22:30:00",
+        "days": "every_day",
+        "day_set": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+        "schedule_entity": null,
+        "turn_off_after_min": 0,
+        "turn_back_on_after_min": 0,
+        "catch_up": true,
+        "late_start_window_min": 15,
+        "respect_manual": true,
+        "pulse": null,
+        "extra_conditions": [],
+        "docked_guard": true,
+        "on_kind": "time",
+        "on_sun_offset_min": 0,
+        "off_kind": "time",
+        "off_sun_offset_min": 0
+      },
+      "original_sentence": "6:00 PM: on, 10:30 PM: off",
+      "routine_sentence": "6:00 PM: on, 10:30 PM: off"
+    }
+  ]
+}
+```
+
+`settings` are those the automation reads as, with the other fields at their defaults;
+converting applies them over the global defaults. The two sentences are the ones the
+Repairs issue shows side by side.
+
+## conversions/convert
+
+Converts one offered automation, exactly as confirming its Repairs issue does (PRD 8.3):
+the device is opted in if it was not, the routine is created with the offer's settings
+over the global defaults and written at once, then the original is turned off and given
+the label `Replaced by routine` (`replaced_by_routine`). The original's config is never
+edited and no routine marker is added to it, so turning it back on is the undo.
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `automation_entity_id` | entity id of an automation | yes |
+
+```json
+{
+  "id": 22,
+  "type": "device_routines/conversions/convert",
+  "automation_entity_id": "automation.lamp_evening"
+}
+```
+
+```json
+{
+  "device_id": "dev_desk_lamp",
+  "device_name": "Desk lamp",
+  "area_id": "living_room",
+  "automation_id": "device_routines_9a40d27e18c5",
+  "automation_entity_id": "automation.routine_desk_lamp",
+  "settings": {"target_entity": "light.desk_lamp", "on_time": "18:00:00", "off_time": "22:30:00"},
+  "status": "active",
+  "enabled": true,
+  "next_action": {"at": "2026-10-19T18:00:00-07:00", "verb": "on"}
+}
+```
+
+(The view is shortened here; it is a full RoutineView.) Afterwards `conversions/list`
+answers `{"offers": []}`: the device has a routine now. Errors:
+
+| Code | Placeholders | When |
+| --- | --- | --- |
+| `conversion_not_offered` | `automation` | The automation is not offered (any more): it is not an exact match, it is turned off, it changed since it was offered, its device has a routine, or `offer_conversions` is off |
+| `device_has_routine` | `device` | The device got a routine after the offer was made |
+| `editing_unavailable` | none | The adapter cannot write on this Home Assistant version |
+| `home_assistant_error` with the translation key `conversion_failed` | `alias`, `device` | The routine could not be written; the original was left as it was |
+| a refusal of [devices/opt](#devicesopt) or [routines/set](#routinesset) | as listed there | The device changed since the offer was made, for example its entity's device class |
+
+An entity id of another domain is `invalid_format`.
+
+```json
+{
+  "code": "conversion_not_offered",
+  "message": "automation.late_fan_on is not offered as a routine: it does not match a routine exactly, it is turned off, or its device has a routine already",
+  "translation_key": "conversion_not_offered",
+  "translation_placeholders": {"automation": "automation.late_fan_on"},
+  "translation_domain": "device_routines"
+}
+```
+
 ## subscribe
 
 Pushes what the console needs to refresh. The result is `null`; events follow with the
@@ -572,7 +736,7 @@ the connection.
 | `kind` | `device_id` | When |
 | --- | --- | --- |
 | `routine_changed` | the device | Any change of a routine: settings, status, pause, skip, override, opt in or out. `reason` is `opted_in`, `opted_out` or `device_routines_action_skipped` when known; with the last, `data` carries the blueprint event's data |
-| `schedule_changed` | null | The manager reconciled or refreshed every summary: re read the Today view |
+| `schedule_changed` | null | The manager reconciled or refreshed every summary, or the conversion offers changed: re read the Today view and the conversion offers |
 | `settings_changed` | null | The entry was set up again with other global settings |
 | `health_changed` | null | Health inputs changed (reconcile, blueprint reinstall) |
 

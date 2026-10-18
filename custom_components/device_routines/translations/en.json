@@ -624,6 +624,25 @@
     "conflict": {
       "title": "Two automations drive {device} in opposite directions",
       "description": "{first} and {second} change {device} in opposite directions at {time}. Change one of them; this issue clears when they no longer collide."
+    },
+    "conversion_offer": {
+      "title": "{alias} can become a routine on {device}",
+      "fix_flow": {
+        "step": {
+          "compare": {
+            "title": "Compare {alias} with a routine",
+            "description": "{alias} does exactly what a routine on {device} would do, so a routine can take its place and show on the device page of {device}.\n\nThe automation: {original}\n\nThe routine: {routine}\n\nSubmit to continue. Nothing changes until you confirm on the next step."
+          },
+          "confirm": {
+            "title": "Convert {alias} into a routine",
+            "description": "Submit to create the routine on {device}, turn {alias} off and add the label Replaced by routine to it. {alias} is not edited or deleted: to undo, turn it back on. The routine of {device} stays until you clear its settings on the device page."
+          }
+        },
+        "abort": {
+          "not_loaded": "Device Routines is not loaded. Enable it in Settings, Devices and services, then try again.",
+          "not_fixed": "Nothing was converted and {alias} was not changed. Either the offer ended ({alias} changed or was turned off, or {device} has a routine now), or the routine could not be saved, and then the Home Assistant log names the reason."
+        }
+      }
     }
   },
   "exceptions": {
@@ -728,6 +747,15 @@
     },
     "maintenance_failed": {
       "message": "The maintenance action {action} could not finish: {error}. Check the Home Assistant log and run it again."
+    },
+    "conversion_not_offered": {
+      "message": "{automation} is not offered as a routine: it does not match a routine exactly, it is turned off, or its device has a routine already."
+    },
+    "device_has_routine": {
+      "message": "{device} has a routine already, so the automation was not converted."
+    },
+    "conversion_failed": {
+      "message": "The routine that replaces {alias} on {device} could not be saved, so {alias} was left as it was. Check the Home Assistant log and try again."
     }
   },
   "triggers": {

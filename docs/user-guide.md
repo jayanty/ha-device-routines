@@ -24,6 +24,7 @@ version 0.1.0 has the Schedule sensor only.
 - [Weekly schedules](#weekly-schedules)
 - [Turn back on after](#turn-back-on-after)
 - [Pulse](#pulse)
+- [Converting automations](#converting-automations)
 - [What the managed automation looks like](#what-the-managed-automation-looks-like)
 - [If you edit the automation yourself](#if-you-edit-the-automation-yourself)
 - [When the integration is off](#when-the-integration-is-off)
@@ -340,6 +341,58 @@ default; a device that changed more recently is left alone). A pulse is skipped 
 routine is paused. If Home Assistant restarts during the pulse, its second half is lost;
 a routine with a window puts the device back to the window's state at startup.
 
+## Converting automations
+
+A hand written automation that does exactly what a routine does can become one. Device
+Routines finds them by itself and offers each one once, in Repairs ("Fan evening can
+become a routine on Living room fan") and in the console's Routines view. The offer shows
+both summaries side by side, for example "5:00 PM: on, 11:00 PM: off" for the automation
+and the same line for the routine.
+
+Two shapes are exact:
+
+- **Scheduled times.** Two time triggers at whole minutes, one turning one entity of the
+  device on and the other turning it off (a choose or an if on the trigger ids, as the
+  automation editor builds it), with no condition or only weekdays. A window across
+  midnight counts only every day, because a routine ends a window the day after each start
+  day while the automation would end it on its own weekdays.
+- **Turn off after.** One state trigger on a switch, light, fan, input boolean or
+  humidifier, to on (from off, or with no from), held a whole number of minutes from 1 to
+  1440, no condition, and one action that turns the same entity off.
+
+The action may name its entity as its target, on the step or in its data; the empty
+`data: {}` and `metadata: {}` the editor adds are fine, anything else in them is not.
+
+Nothing else is offered, so a routine never drops what an automation does. No offer for
+an automation that also notifies, sets a scene, waits, sets a brightness, uses a template
+or variables, runs at seconds or at an entity's time, uses sun times, has other
+conditions, catches up at start, or acts on a second device; none for an automation that
+is turned off; none for a device that already has a routine, its own or one taken over;
+none for an action a routine refuses, such as opening a garage door; none for an
+automation without an id.
+
+**Converting.** Open the issue in Settings, System, Repairs. The first step shows the two
+summaries; submit, then confirm. Confirming:
+
+1. Gives the device routine controls if it had none (the `Routines` label) and creates its
+   routine with the automation's times or duration, and with your defaults for catch up,
+   manual changes and the late start window.
+2. Turns the original automation off.
+3. Adds the label **Replaced by routine** to the original.
+
+The original is never edited or deleted, and it gets none of the routine markers. If the
+offer ended before you confirmed (you turned the automation off or changed it, or the
+device got a routine), or the routine could not be saved, nothing is converted and the
+original stays as it was.
+
+**Undo.** Turn the original back on. The routine stays on the device until you clear its
+settings on the device page or remove the device's `Routines` label; while the device has
+a routine, the offer does not come back.
+
+Like every Repairs issue, an offer turns the hub's Problem sensor on. Ignore it in Repairs
+to keep the automation as it is, or turn **Offer to convert matching automations** off in
+the settings, which clears every offer.
+
 ## What the managed automation looks like
 
 Each routine is one automation, and you can tell it apart from your own at a glance:
@@ -611,7 +664,7 @@ created afterwards; changing one never rewrites existing routines.
 | On removal | Keep, delete | Keep |
 | AI summary entity | An AI Task entity of yours, or none | None |
 | AI calls per hour | 1 to 100 | 20 |
-| Offer to convert matching automations | On, off (conversions arrive in a later version) | On |
+| Offer to convert matching automations | On, off (see [Converting automations](#converting-automations)) | On |
 | Raise Repairs issues for conflicts | On, off | On |
 
 **AI summary.** Off by default. When you pick one of your own AI Task entities, only the
@@ -673,8 +726,9 @@ between.
 Device Routines repairs what it can on its own and raises an issue only when a person has
 to decide. The hub's **Problem** sensor is on while any of these is open.
 
-Each fixable issue opens one confirmation step that does exactly one thing. If the fix
-does not take, the step says why and the issue stays open.
+Each fixable issue opens one confirmation step that does exactly one thing; a conversion
+offer shows both summaries first. If the fix does not take, the step says why and the
+issue stays open.
 
 | Issue | When | Fix |
 | --- | --- | --- |
@@ -686,6 +740,7 @@ does not take, the step says why and the issue stays open.
 | A change to the routine of a device was not saved | Something else changed `automations.yaml` twice while the routine was being saved. | Save the change again. |
 | The routine of a device does not load | Its automation did not load even after one regeneration. | Regenerate it from the last valid settings, or read the Home Assistant log for the reason. |
 | Two automations drive a device in opposite directions | A routine and another automation act on the same device in opposite directions in the same minute. One issue per routine, only while Raise Repairs issues for conflicts is on. | Change one of them; the issue clears when they no longer collide. |
+| An automation can become a routine on a device | A hand written automation that is turned on does exactly what a routine on a device without one would do. One issue per automation, only while Offer to convert matching automations is on. | Convert it: the routine is created, the automation is turned off and labeled Replaced by routine (see [Converting automations](#converting-automations)). Ignore the issue to keep the automation. |
 
 Situations that heal on their own, with no issue: a missing blueprint is reinstalled, a
 missing timer helper is created again, a deleted `Routines` label is created again and

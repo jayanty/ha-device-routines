@@ -585,6 +585,8 @@ SUMMARY_READ_API: Final = frozenset(
         "async_add_change_listener",
         "async_set_sensor_adder",
         "day_schedule",
+        # The conversion offers the console lists (Build B lane 20, plan 6.2.5).
+        "conversion_offers",
     }
 )
 WRITE_METHODS: Final = frozenset(

@@ -195,6 +195,44 @@ def test_scheduled_times_in_the_forms_the_core_accepts() -> None:
     )
 
 
+def test_scheduled_times_as_the_automation_editor_saves_them() -> None:
+    """The editor writes `metadata: {}` and `data: {}` on every action step it creates."""
+    config = scheduled()
+    for option in config["actions"][0]["choose"]:
+        option["sequence"] = [{"metadata": {}, "data": {}, **option["sequence"][0]}]
+    assert conversion.match(config, DEVICE) == MORNING
+
+
+ENTITY_FORMS: dict[str, Callable[[str, str], Config]] = {
+    "on the step": lambda action, entity: {"action": action, "entity_id": entity},
+    "on a legacy service step": lambda action, entity: {"service": action, "entity_id": [entity]},
+    "in data": lambda action, entity: {"action": action, "data": {"entity_id": entity}},
+    "in data beside an empty target": lambda action, entity: {
+        "action": action,
+        "target": {},
+        "data": {"entity_id": [entity]},
+    },
+    "beside the editor's empty metadata": lambda action, entity: {
+        "action": action,
+        "metadata": {},
+        "entity_id": entity,
+    },
+}
+
+
+@pytest.mark.parametrize("form", list(ENTITY_FORMS))
+def test_an_action_names_its_entity_where_the_parser_reads_it(form: str) -> None:
+    """`target.entity_id`, `entity_id` on the step or in `data`: the forms of L65."""
+    step = ENTITY_FORMS[form]
+    config = scheduled()
+    config["actions"][0]["choose"][0]["sequence"] = [step("switch.turn_on", SWITCH)]
+    config["actions"][0]["choose"][1]["sequence"] = [step("switch.turn_off", SWITCH)]
+    assert conversion.match(config, DEVICE) == MORNING
+    held = turned_off_after()
+    held["actions"] = [step("fan.turn_off", FAN)]
+    assert conversion.match(held, DEVICE) == RoutineSettings(FAN, turn_off_after_min=60)
+
+
 def test_scheduled_times_across_midnight_every_day() -> None:
     assert conversion.match(scheduled("17:00", "09:00"), DEVICE) == RoutineSettings(
         SWITCH, on_time=time(17), off_time=time(9)
@@ -367,6 +405,13 @@ SCHEDULE_EXCLUSIONS: list[tuple[str, Change]] = [
     ("both trigger and platform", set_in(("triggers", 0, "platform"), "time")),
     ("both triggers and trigger", set_in(("trigger",), [])),
     ("action and service", set_in((*START_STEP, "service"), "switch.turn_on")),
+    ("the entity twice", set_in((*START_STEP, "data"), {"entity_id": SWITCH})),
+    ("the entity on the step too", set_in((*START_STEP, "entity_id"), SWITCH)),
+    ("no entity", set_in((*START_STEP, "target"), {})),
+    ("data beside the entity", set_in((*START_STEP, "data"), {"entity_id": SWITCH, "x": 1})),
+    ("data that is no mapping", set_in((*START_STEP, "data"), "on")),
+    ("a target that is no mapping", set_in((*START_STEP, "target"), SWITCH)),
+    ("metadata that is not empty", set_in((*START_STEP, "metadata"), {"source": "x"})),
     ("a blueprint", set_in(("use_blueprint",), {"path": "x.yaml"})),
 ]
 
@@ -553,6 +598,8 @@ KEYS = st.sampled_from(
         "else",
         "service",
         "target",
+        "data",
+        "metadata",
         "enabled",
         "alias",
         "minutes",

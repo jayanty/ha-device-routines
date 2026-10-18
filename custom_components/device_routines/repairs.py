@@ -4,11 +4,18 @@ Rule: self heal first, raise only when a person must decide, and make every issu
 or point at the exact place to act. The hub Problem sensor lists what is open here.
 
 The manager raises and clears the issues in their situations (decision L41); the
-`conflict` issue follows the Schedule summary (`summary.async_sync_conflict_issues`).
-Every fixable issue has a fix flow with one confirm step that makes exactly one call into
-the service layer and finishes (PRD P16): the flow decides nothing itself. A call that
-fails, or leaves the issue open because the situation did not end, aborts with a
-translated reason, so the issue stays for the next try.
+`conflict` and `conversion_offer` issues follow the Schedule summary
+(`summary.async_sync_conflict_issues`, `SummaryCoordinator` for the offers). Every fixable
+issue has a fix flow with one confirm step that makes exactly one call into the service
+layer and finishes (PRD P16): the flow decides nothing itself. A call that fails, or
+leaves the issue open because the situation did not end, aborts with a translated reason,
+so the issue stays for the next try.
+
+`conversion_offer` (Build B lane 20, PRD FR-M1) has two steps: the first shows what the
+automation does and what the routine would do, the second confirms and converts. Every
+refusal of a conversion means the offer no longer stands (the automation changed or was
+turned off, or the device has a routine now), so each one aborts `not_fixed` (L48), with
+the placeholders the first step showed: the summary clears the issue as the offer ends.
 """
 
 from __future__ import annotations
@@ -39,8 +46,9 @@ SCHEDULE_BLOCKS_NEEDED: Final = "schedule_blocks_needed"
 WRITE_CONFLICT: Final = "write_conflict"
 AUTOMATION_LOAD_FAILED: Final = "automation_load_failed"
 CONFLICT: Final = "conflict"
+CONVERSION_OFFER: Final = "conversion_offer"
 
-# The Build A catalog (TECH_SPEC 4.8) and which issues offer a fix flow.
+# The catalog (TECH_SPEC 4.8) and which issues offer a fix flow.
 CATALOG: Final = frozenset(
     {
         ADAPTER_INCOMPATIBLE,
@@ -51,10 +59,18 @@ CATALOG: Final = frozenset(
         WRITE_CONFLICT,
         AUTOMATION_LOAD_FAILED,
         CONFLICT,
+        CONVERSION_OFFER,
     }
 )
 FIXABLE: Final = frozenset(
-    {BLUEPRINT_MODIFIED, INVALID_INPUTS, DETACHED_ROUTINE, WRITE_CONFLICT, AUTOMATION_LOAD_FAILED}
+    {
+        BLUEPRINT_MODIFIED,
+        INVALID_INPUTS,
+        DETACHED_ROUTINE,
+        WRITE_CONFLICT,
+        AUTOMATION_LOAD_FAILED,
+        CONVERSION_OFFER,
+    }
 )
 _ERRORS: Final = frozenset({ADAPTER_INCOMPATIBLE, AUTOMATION_LOAD_FAILED})
 
@@ -80,6 +96,8 @@ _PERSISTENT: Final = frozenset({SCHEDULE_BLOCKS_NEEDED})
 ABORT_NOT_LOADED: Final = "not_loaded"
 ABORT_NOT_FIXED: Final = "not_fixed"
 STEP_CONFIRM: Final = "confirm"
+# The first step of `conversion_offer`: both sentences side by side.
+STEP_COMPARE: Final = "compare"
 _UNKNOWN_ROUTINE: Final = "unknown_routine"
 
 
@@ -195,6 +213,9 @@ class FixTarget(maintenance.MaintenanceTarget, Protocol):
     async def async_create_new_routine(self, device_id: str) -> None:
         """Give a device whose routine was detached a new routine under a new id."""
 
+    async def async_convert_automation(self, automation_entity_id: str) -> RoutineView:
+        """Replace an offered hand written automation with a routine (FR-M1)."""
+
     def list(self) -> tuple[RoutineView, ...]:
         """Return every routine the manager knows."""
 
@@ -238,15 +259,22 @@ async def _regenerate(_hass: HomeAssistant, manager: FixTarget, subject: str) ->
     await manager.async_regenerate(subject)
 
 
+async def _convert(_hass: HomeAssistant, manager: FixTarget, subject: str) -> None:
+    """`conversion_offer`: a routine replaces the automation; the subject is its object id."""
+    await manager.async_convert_automation(f"automation.{subject}")
+
+
 _FIXES: Final[Mapping[str, _Fix]] = {
     BLUEPRINT_MODIFIED: _reinstall_blueprint,
     INVALID_INPUTS: _restore_last_valid,
     DETACHED_ROUTINE: _create_new_routine,
     WRITE_CONFLICT: _retry_write,
     AUTOMATION_LOAD_FAILED: _regenerate,
+    CONVERSION_OFFER: _convert,
 }
-# A step ended the situation only when the manager cleared the issue, except a blueprint
-# reinstall: once it returns, the shipped file is in place, even when it already was.
+# A step ended the situation only when the service layer cleared the issue (the manager,
+# or the summary as an offer ends), except a blueprint reinstall: once it returns, the
+# shipped file is in place, even when it already was.
 _CLEARED_BY_THE_MANAGER: Final = frozenset(_FIXES) - {BLUEPRINT_MODIFIED}
 
 
@@ -257,6 +285,8 @@ class FixFlow(RepairsFlow):
         """Remember which catalog issue this is and which routine it is about."""
         self._catalog_id = catalog_id
         self._subject = subject or ""
+        # The placeholders of the issue as last seen, for a step after it was cleared.
+        self._seen: dict[str, str] = {}
 
     async def async_step_init(
         self,
@@ -283,7 +313,7 @@ class FixFlow(RepairsFlow):
             await _FIXES[self._catalog_id](self.hass, manager, self._subject)
         except ServiceValidationError as err:
             return self.async_abort(
-                reason=err.translation_key or ABORT_NOT_FIXED,
+                reason=self._refused(err),
                 description_placeholders={**placeholders, **(err.translation_placeholders or {})},
             )
         except HomeAssistantError, AdapterError, OSError:
@@ -293,12 +323,55 @@ class FixFlow(RepairsFlow):
             return self.async_abort(reason=ABORT_NOT_FIXED, description_placeholders=placeholders)
         return self.async_create_entry(data={})
 
+    def _refused(self, err: ServiceValidationError) -> str:
+        """Return the abort reason of a refusal: the manager's translation key."""
+        return err.translation_key or ABORT_NOT_FIXED
+
     def _issue(self) -> ir.IssueEntry | None:
         return ir.async_get(self.hass).async_get_issue(DOMAIN, self.issue_id)
 
     def _placeholders(self) -> dict[str, str]:
+        """Return the issue's placeholders, or the last ones seen once it is cleared."""
         issue = self._issue()
-        return dict(issue.translation_placeholders or {}) if issue is not None else {}
+        if issue is not None:
+            self._seen = dict(issue.translation_placeholders or {})
+        return dict(self._seen)
+
+
+class ConversionFlow(FixFlow):
+    """`conversion_offer`: both sentences first, then the confirm step that converts.
+
+    The summary clears the issue the moment the offer ends, so a later step and an abort
+    show the placeholders the first step showed; every refusal is `not_fixed`.
+    """
+
+    async def async_step_init(
+        self,
+        user_input: dict[str, str] | None = None,  # noqa: ARG002  # the core's signature
+    ) -> RepairsFlowResult:
+        """Show what the automation does and what the routine would do."""
+        return await self.async_step_compare()
+
+    async def async_step_compare(
+        self, user_input: dict[str, str] | None = None
+    ) -> RepairsFlowResult:
+        """Show both sentences side by side; on submit, ask for the confirmation."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id=STEP_COMPARE,
+                data_schema=vol.Schema({}),
+                description_placeholders=self._placeholders(),
+            )
+        return await self.async_step_confirm()
+
+    def _refused(self, err: ServiceValidationError) -> str:
+        """Every refusal of a conversion means the offer no longer stands (L48)."""
+        _LOGGER.debug("%s was not converted: %s", self._subject, err.translation_key)
+        return ABORT_NOT_FIXED
+
+
+# The fix flow of each catalog id that does not take the one step `FixFlow`.
+_FLOWS: Final[Mapping[str, type[FixFlow]]] = {CONVERSION_OFFER: ConversionFlow}
 
 
 def _loaded_manager(hass: HomeAssistant) -> FixTarget | None:
@@ -318,11 +391,12 @@ async def async_create_fix_flow(
     """Return the fix flow of a fixable issue (the Repairs platform entry point).
 
     `issue_id` is the registry id. A per routine issue's `data` names its catalog id and
-    its subject, the routine's automation id (decision L41); a global issue's registry id
-    is its catalog id.
+    its subject, the routine's automation id (decision L41), or for `conversion_offer` the
+    object id of the automation offered; a global issue's registry id is its catalog id.
     """
     catalog_id = str(data["issue_id"]) if data and "issue_id" in data else issue_id
     if catalog_id not in _FIXES:
         raise ValueError(f"{issue_id} has no fix flow")
     subject = data.get("subject") if data else None
-    return FixFlow(catalog_id, None if subject is None else str(subject))
+    flow = _FLOWS.get(catalog_id, FixFlow)
+    return flow(catalog_id, None if subject is None else str(subject))
