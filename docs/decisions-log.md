@@ -250,7 +250,7 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | --- | --- |
 | Context | Stage 0 V9 (A10): core 2026.10 gives every device record a single config entry and makes identifiers unique per entry. An entity whose `DeviceInfo` copies the user's device identifiers now lands on a new record of this integration carrying those identifiers, which the core lists as a linked device of the user's device; setting the entity's `device_id` to the user's device directly is undone whenever the platform adds the entity. |
 | Options | (a) The registry `device_id` path, which does not survive a load; (b) `DeviceInfo` with the identifiers and name copied verbatim from the registry entry (the ha-device-links approach), accepting the linked record; (c) a child device under the user's device (`async_get_or_create_child`), which shows as a separate sub device. |
-| Choice | (b), pending the live look C4 at how the device page presents a linked record. The name is copied too, or the record and entity ids are named after the config entry. |
+| Choice | (b), confirmed by the live look C4 on 2026-10-17: the device page shows the linked record's sensor in the user's device Sensors card. The name is copied too, or the record and entity ids are named after the config entry. |
 | Consequence | TECH_SPEC 4.2 attach row rewritten; the manager removes this integration's linked record when the user's device goes (the registry keeps it otherwise), as part of the PRD 3.1 device removal row. If C4 shows the entities off the user's page, the owner decides between (c) and a dedicated design. |
 | PRD register entry | no |
 
