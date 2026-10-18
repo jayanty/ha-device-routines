@@ -79,6 +79,296 @@
         "name": "Routines",
         "unit_of_measurement": "routines"
       }
+    },
+    "switch": {
+      "routine": {
+        "name": "Routine",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "catch_up": {
+        "name": "Catch up after restart",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "respect_manual": {
+        "name": "Respect manual changes",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "manual_override": {
+        "name": "Manual override",
+        "state_attributes": {
+          "last_change_source": {
+            "name": "Last change source",
+            "state": {
+              "automation": "Automation",
+              "user": "Person",
+              "device": "Device"
+            }
+          },
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      }
+    },
+    "time": {
+      "on_time": {
+        "name": "Turn on at",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "off_time": {
+        "name": "Turn off at",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "turn_on_at": {
+        "name": "Turn on at",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "turn_off_at": {
+        "name": "Turn off at",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "start_at": {
+        "name": "Start at",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "return_to_dock_at": {
+        "name": "Return to dock at",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "open_at": {
+        "name": "Open at",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "close_at": {
+        "name": "Close at",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "lock_at": {
+        "name": "Lock at",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      }
+    },
+    "select": {
+      "days": {
+        "name": "Days",
+        "state": {
+          "every_day": "Every day",
+          "weekdays": "Weekdays",
+          "weekends": "Weekends",
+          "some_days": "Some days",
+          "weekly_schedule": "Weekly schedule"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "target": {
+        "name": "Routine controls",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      }
+    },
+    "number": {
+      "turn_off_after": {
+        "name": "Turn off after",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "turn_back_on_after": {
+        "name": "Turn back on after",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      }
+    },
+    "button": {
+      "skip_next": {
+        "name": "Skip next",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "resume": {
+        "name": "Resume",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "hub_cleanup_now": {
+        "name": "Clean up now"
+      }
+    },
+    "datetime": {
+      "paused_until": {
+        "name": "Paused until",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      }
     }
   },
   "options": {

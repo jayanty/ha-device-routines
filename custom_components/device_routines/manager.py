@@ -67,6 +67,7 @@ from .attribution import Attributor, OverrideSink, RoutineLookup, RoutineRuntime
 from .const import (
     CONF_SYSTEM_USER_ID,
     DOMAIN,
+    ENTITY_PLATFORMS,
     EVENT_PAUSED,
     EVENT_RESUMED,
     KEY_MANUAL_OVERRIDE,
@@ -81,6 +82,7 @@ from .models import (
     FollowUp,
     NamedTrigger,
     Occurrence,
+    Option,
     ParsedLine,
     Problem,
     Pulse,
@@ -145,6 +147,31 @@ ENTITY_KEYS: Final[tuple[str, ...]] = tuple(
 )
 _SCHEDULE_KEY: Final = "schedule"
 _UNIQUE_PREFIX: Final = f"{DOMAIN}_"
+
+# The device page controls every opted in device shows (TECH_SPEC 4.5, PRD 4.2), the ones
+# a routine option of the domain profile adds (the Option value is the key; Pulse has no
+# control, FR-R8), and the one a device with several drivable entities adds.
+_EVERY_PAGE_KEYS: Final = frozenset(
+    {
+        "routine",
+        "catch_up",
+        "respect_manual",
+        "skip_next",
+        "resume",
+        KEY_PAUSED_UNTIL,
+        KEY_MANUAL_OVERRIDE,
+    }
+)
+_PAGE_OPTIONS: Final = frozenset(
+    {Option.ON_TIME, Option.OFF_TIME, Option.DAYS, Option.TURN_OFF_AFTER, Option.TURN_BACK_ON_AFTER}
+)
+_TARGET_KEY: Final = "target"
+# The config category controls: the ones that change settings, unavailable while the
+# adapter cannot write (TECH_SPEC 4.2). The runtime controls stay, so the blueprint keeps
+# reading Paused until and the Manual override and still clears the override.
+_CONFIG_KEYS: Final = frozenset(
+    {"routine", "catch_up", "respect_manual", _TARGET_KEY, *(o.value for o in _PAGE_OPTIONS)}
+)
 
 # Why the manager turned an automation off, so it turns it back on when that ends.
 _OFF_INVALID: Final = "invalid"
@@ -799,13 +826,16 @@ class RoutineManager:
         """Return the devices with routine controls, for the platforms to add entities."""
         return tuple(sorted(self._store.data.opted_in))
 
-    def unavailable_reason(self, device_id: str) -> str | None:
+    def unavailable_reason(self, device_id: str, key: str | None = None) -> str | None:
         """Return why a device's routine controls are unavailable, or None.
 
         `adapter_incompatible`, `detached` or `missing_target` (TECH_SPEC 4.5); the
-        platforms show the entity unavailable with this `reason` attribute.
+        platforms show the entity unavailable with this `reason` attribute. With a `key`
+        the answer is for that control: an adapter that cannot write takes away the
+        config controls only (TECH_SPEC 4.2); without one it is for the device.
         """
-        if not self._adapter.works(ha_adapter.CAPABILITY_WRITE):
+        editing = key is None or key in _CONFIG_KEYS
+        if editing and not self._adapter.works(ha_adapter.CAPABILITY_WRITE):
             return "adapter_incompatible"
         routine = self._routines.get(device_id)
         if routine is not None and routine.detached:
@@ -814,10 +844,28 @@ class RoutineManager:
             return "missing_target"
         return None
 
+    def page_keys(self, device_id: str) -> frozenset[str]:
+        """Return the keys of the controls a device page shows (TECH_SPEC 4.5, PRD 4.2).
+
+        Empty for a device that is not opted in or no longer exists. The option controls
+        follow the profile of the entity the routine drives (no start time for a media
+        player or a lock, Turn off after only where the domain has it); Routine controls
+        appear only when the device has several entities a routine can drive.
+        """
+        if device_id not in self._store.data.opted_in or self._device(device_id) is None:
+            return frozenset()
+        profile = self.profile(device_id)
+        options = profile.options & _PAGE_OPTIONS if profile is not None else frozenset()
+        keys = _EVERY_PAGE_KEYS | {option.value for option in options}
+        return keys | {_TARGET_KEY} if len(self.candidates(device_id)) > 1 else keys
+
     def entity_id_for(self, device_id: str, key: str) -> str | None:
         """Return the entity id of one of a device's page entities, if registered."""
+        platform = ENTITY_PLATFORMS.get(key)
+        if platform is None:
+            return None
         return er.async_get(self.hass).async_get_entity_id(
-            _platform_of(key), DOMAIN, f"{_UNIQUE_PREFIX}{device_id}_{key}"
+            platform, DOMAIN, f"{_UNIQUE_PREFIX}{device_id}_{key}"
         )
 
     def eligible_devices(self) -> tuple[DeviceChoice, ...]:
@@ -2436,8 +2484,8 @@ def _invalid(key: str, placeholders: Mapping[str, str] | None = None) -> Service
 
 
 def _platform_of(key: str) -> str:
-    """Return the platform of the two page entities the blueprint reads."""
-    return "switch" if key == KEY_MANUAL_OVERRIDE else "datetime"
+    """Return the platform of a device page entity key."""
+    return ENTITY_PLATFORMS[key]
 
 
 def _refs(inputs: Mapping[str, Any] | None) -> compiler.HelperRefs | None:

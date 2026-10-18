@@ -204,7 +204,16 @@ def test_json_files_hold_no_duplicate_keys(path: Path) -> None:
 def translation_keys_in_source() -> set[tuple[str, str]]:
     """Return (platform, key) for every translation key an entity module assigns."""
     found: set[tuple[str, str]] = set()
-    platforms = {"sensor", "binary_sensor", "switch", "button", "select", "number", "time"}
+    platforms = {
+        "sensor",
+        "binary_sensor",
+        "switch",
+        "button",
+        "select",
+        "number",
+        "time",
+        "datetime",
+    }
     for path in COMPONENT.glob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):

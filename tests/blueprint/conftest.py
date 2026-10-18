@@ -40,6 +40,7 @@ from homeassistant.components.vacuum.const import VacuumActivity, VacuumEntityFe
 from homeassistant.components.websocket_api.connection import ActiveConnection
 from homeassistant.config import AUTOMATION_CONFIG_PATH
 from homeassistant.core import CoreState, Event, HomeAssistant, State
+from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -362,7 +363,11 @@ async def async_add_sandbox_entities(hass: HomeAssistant, domain: str, *entities
             f"{_SANDBOX}.{domain}",
             MockPlatform(async_setup_platform=async_setup_platform),
         )
-        assert await async_setup_component(hass, domain, {domain: {"platform": _SANDBOX}})
+        if domain in hass.config.components:
+            # The integration's own platforms set the component up already.
+            await async_load_platform(hass, domain, _SANDBOX, {}, {})
+        else:
+            assert await async_setup_component(hass, domain, {domain: {"platform": _SANDBOX}})
         await hass.async_block_till_done()
     adders[domain](list(entities))
     await hass.async_block_till_done()

@@ -19,6 +19,87 @@
       "hub_routines": {
         "default": "mdi:calendar-check"
       }
+    },
+    "switch": {
+      "routine": {
+        "default": "mdi:calendar-clock",
+        "state": {
+          "off": "mdi:calendar-remove"
+        }
+      },
+      "catch_up": {
+        "default": "mdi:history"
+      },
+      "respect_manual": {
+        "default": "mdi:account-check"
+      },
+      "manual_override": {
+        "default": "mdi:account-cog",
+        "state": {
+          "off": "mdi:account-cog-outline"
+        }
+      }
+    },
+    "time": {
+      "on_time": {
+        "default": "mdi:clock-start"
+      },
+      "turn_on_at": {
+        "default": "mdi:clock-start"
+      },
+      "start_at": {
+        "default": "mdi:clock-start"
+      },
+      "open_at": {
+        "default": "mdi:clock-start"
+      },
+      "off_time": {
+        "default": "mdi:clock-end"
+      },
+      "turn_off_at": {
+        "default": "mdi:clock-end"
+      },
+      "return_to_dock_at": {
+        "default": "mdi:clock-end"
+      },
+      "close_at": {
+        "default": "mdi:clock-end"
+      },
+      "lock_at": {
+        "default": "mdi:clock-end"
+      }
+    },
+    "select": {
+      "days": {
+        "default": "mdi:calendar-week"
+      },
+      "target": {
+        "default": "mdi:target"
+      }
+    },
+    "number": {
+      "turn_off_after": {
+        "default": "mdi:timer-off-outline"
+      },
+      "turn_back_on_after": {
+        "default": "mdi:timer-refresh-outline"
+      }
+    },
+    "button": {
+      "skip_next": {
+        "default": "mdi:skip-next"
+      },
+      "resume": {
+        "default": "mdi:play"
+      },
+      "hub_cleanup_now": {
+        "default": "mdi:broom"
+      }
+    },
+    "datetime": {
+      "paused_until": {
+        "default": "mdi:pause-circle-outline"
+      }
     }
   },
   "triggers": {

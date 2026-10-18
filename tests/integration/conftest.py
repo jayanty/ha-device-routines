@@ -7,29 +7,24 @@ can drive, in a living room on a ground floor. `manager` loads the config entry 
 home with the real blueprint, which the manager installs itself, and returns the loaded
 entry's `RoutineManager`.
 
-The device page platforms arrive with Build A lane 8. Until then a small shim stands in
-for the two entities the blueprint reads, the Manual override switch and the Paused until
-datetime: they claim the registry entries the manager creates at opt in (same platform,
-same unique ids), render the manager's runtime state and call the manager back, exactly
-the contract lane 8 implements. Wave A4's contract tests prove the real chain.
+The device page platforms (Build A lane 8) are the real ones: the Manual override switch
+and the Paused until datetime claim the registry entries the manager creates at opt in,
+render the manager's runtime state and call the manager back, so the blueprint reads the
+integration's own entities.
 
 Every name is generic and every id synthetic (CLAUDE.md Section 6).
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from homeassistant.components.datetime import DateTimeEntity
-from homeassistant.components.switch import SwitchEntity
 from homeassistant.config import AUTOMATION_CONFIG_PATH
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import (
     area_registry as ar,
     device_registry as dr,
@@ -37,34 +32,15 @@ from homeassistant.helpers import (
     floor_registry as fr,
     issue_registry as ir,
 )
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 from homeassistant.util.yaml import dump, parse_yaml
 import pytest
-from pytest_homeassistant_custom_component.common import (
-    MockConfigEntry,
-    MockPlatform,
-    async_fire_time_changed,
-    mock_platform,
-)
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
-import custom_components.device_routines as integration
 from custom_components.device_routines import markers
 from custom_components.device_routines.config_flow import DeviceRoutinesConfigFlow
-from custom_components.device_routines.const import (
-    DOMAIN,
-    INTEGRATION_TITLE,
-    KEY_MANUAL_OVERRIDE,
-    KEY_PAUSED_UNTIL,
-    PLATFORMS,
-)
-from custom_components.device_routines.manager import (
-    DEBOUNCE_SECONDS,
-    REASON_OPTED_IN,
-    ManagerEvent,
-    RoutineManager,
-)
+from custom_components.device_routines.const import DOMAIN, INTEGRATION_TITLE
+from custom_components.device_routines.manager import DEBOUNCE_SECONDS, RoutineManager
 from custom_components.device_routines.summary import DEBOUNCE_SECONDS as SUMMARY_DEBOUNCE
 from tests.blueprint.conftest import (  # noqa: F401  # fixtures re exported for this folder
     Clock,
@@ -161,92 +137,6 @@ async def home(
     return Home(fan.id, lamp, garage, door, area.id, floor.floor_id, sandbox_switch, source)
 
 
-# --------------------------------------------------------------------------------------
-# The shim for the two entities the blueprint reads (Build A lane 8 replaces it)
-# --------------------------------------------------------------------------------------
-
-
-class _ShimEntity:
-    """Renders the manager's runtime state of one device and follows its events."""
-
-    _attr_should_poll = False
-    _attr_unique_id: str | None = None
-
-    def __init__(self, manager: RoutineManager, device_id: str, key: str) -> None:
-        self.manager = manager
-        self.device_id = device_id
-        self._attr_unique_id = f"{DOMAIN}_{device_id}_{key}"
-
-    async def async_added_to_hass(self) -> None:
-        self.async_on_remove(self.manager.async_add_listener(self._heard))  # type: ignore[attr-defined]
-
-    @callback
-    def _heard(self, event: ManagerEvent) -> None:
-        if event.device_id == self.device_id:
-            self.async_write_ha_state()  # type: ignore[attr-defined]
-
-
-class ShimOverride(_ShimEntity, SwitchEntity):
-    """The Manual override switch: the manager's `override`, turned off by a person."""
-
-    def __init__(self, manager: RoutineManager, device_id: str) -> None:
-        super().__init__(manager, device_id, KEY_MANUAL_OVERRIDE)
-
-    @property
-    def is_on(self) -> bool:
-        view = self.manager.get(self.device_id)
-        return bool(view and view.override)
-
-    async def async_turn_on(self, **kwargs: Any) -> None:  # noqa: ARG002  # the core's signature
-        await self.manager.async_set_manual_override(self.device_id, on=True)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:  # noqa: ARG002  # the core's signature
-        await self.manager.async_set_manual_override(self.device_id, on=False)
-
-
-class ShimPausedUntil(_ShimEntity, DateTimeEntity):
-    """The Paused until datetime: the manager's `paused_until`, set through `async_pause`."""
-
-    def __init__(self, manager: RoutineManager, device_id: str) -> None:
-        super().__init__(manager, device_id, KEY_PAUSED_UNTIL)
-
-    @property
-    def native_value(self) -> datetime | None:
-        view = self.manager.get(self.device_id)
-        return view.paused_until if view else None
-
-    async def async_set_value(self, value: datetime) -> None:
-        await self.manager.async_pause(self.device_id, until=value)
-
-
-def _shim_platform(
-    factory: Callable[[RoutineManager, str], _ShimEntity], key: str
-) -> Callable[[HomeAssistant, ConfigEntry, AddEntitiesCallback], Awaitable[None]]:
-    async def async_setup_entry(
-        hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
-    ) -> None:
-        manager: RoutineManager = entry.runtime_data.manager
-
-        @callback
-        def add(device_ids: Iterator[str] | tuple[str, ...]) -> None:
-            new = []
-            for device_id in device_ids:
-                entity_id = manager.entity_id_for(device_id, key)
-                if entity_id is not None and hass.states.get(entity_id) is None:
-                    new.append(factory(manager, device_id))
-            async_add_entities(new)  # type: ignore[arg-type]
-
-        @callback
-        def heard(event: ManagerEvent) -> None:
-            if event.reason == REASON_OPTED_IN and event.device_id is not None:
-                add((event.device_id,))
-
-        add(manager.opted_in_devices())
-        entry.async_on_unload(manager.async_add_listener(heard))
-
-    return async_setup_entry
-
-
 @pytest.fixture
 def options() -> dict[str, Any]:
     """The entry's options; a test overrides the fixture to change a setting."""
@@ -254,25 +144,8 @@ def options() -> dict[str, Any]:
 
 
 @pytest.fixture
-async def routines(
-    hass: HomeAssistant, home: Home, options: dict[str, Any], monkeypatch: pytest.MonkeyPatch
-) -> MockConfigEntry:
-    """Load the config entry in the home, with the shim platforms; return the entry."""
-    # The real platforms load first: a platform import loads every name it is asked for,
-    # so the two shims must be the only ones not yet cached.
-    loaded = await async_get_integration(hass, DOMAIN)
-    await loaded.async_get_platforms(PLATFORMS)
-    mock_platform(
-        hass,
-        f"{DOMAIN}.switch",
-        MockPlatform(async_setup_entry=_shim_platform(ShimOverride, KEY_MANUAL_OVERRIDE)),
-    )
-    mock_platform(
-        hass,
-        f"{DOMAIN}.datetime",
-        MockPlatform(async_setup_entry=_shim_platform(ShimPausedUntil, KEY_PAUSED_UNTIL)),
-    )
-    monkeypatch.setattr(integration, "PLATFORMS", [*PLATFORMS, Platform.SWITCH, Platform.DATETIME])
+async def routines(hass: HomeAssistant, home: Home, options: dict[str, Any]) -> MockConfigEntry:
+    """Load the config entry in the home with every platform; return the entry."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title=INTEGRATION_TITLE,

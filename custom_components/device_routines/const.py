@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Final
 
 from homeassistant.const import Platform
@@ -15,7 +16,16 @@ HUB_MODEL: Final = "Hub"
 
 # Platforms forwarded to the config entry, in setup order. Later phases append their
 # platforms here.
-PLATFORMS: Final[list[Platform]] = [Platform.BINARY_SENSOR, Platform.SENSOR]
+PLATFORMS: Final[list[Platform]] = [
+    Platform.BINARY_SENSOR,
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.TIME,
+    Platform.SELECT,
+    Platform.NUMBER,
+    Platform.BUTTON,
+    Platform.DATETIME,
+]
 
 # Health sensor states (TECH_SPEC 10.3).
 HEALTH_OK: Final = "ok"
@@ -41,3 +51,25 @@ EVENT_RESUMED: Final = "device_routines_resumed"
 # manager registers both at opt in, before the platforms add the entities.
 KEY_MANUAL_OVERRIDE: Final = "manual_override"
 KEY_PAUSED_UNTIL: Final = "paused_until"
+
+# The platform of every device page entity key (TECH_SPEC 4.5), so a key and a device id
+# name one registry entry.
+ENTITY_PLATFORMS: Final[Mapping[str, str]] = {
+    "schedule": Platform.SENSOR,
+    "routine": Platform.SWITCH,
+    "on_time": Platform.TIME,
+    "off_time": Platform.TIME,
+    "days": Platform.SELECT,
+    "turn_off_after": Platform.NUMBER,
+    "turn_back_on_after": Platform.NUMBER,
+    "catch_up": Platform.SWITCH,
+    "respect_manual": Platform.SWITCH,
+    "skip_next": Platform.BUTTON,
+    "resume": Platform.BUTTON,
+    KEY_PAUSED_UNTIL: Platform.DATETIME,
+    KEY_MANUAL_OVERRIDE: Platform.SWITCH,
+    "target": Platform.SELECT,
+}
+
+# The attribute naming why a device page control is unavailable (TECH_SPEC 4.5).
+ATTR_REASON: Final = "reason"
