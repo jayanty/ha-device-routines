@@ -289,7 +289,10 @@
               "action": "on",
               "kind": "automation",
               "automation": "automation.morning_lamp",
-              "conflict": false
+              "conflict": false,
+              "device_name": "Desk lamp",
+              "alias": "Morning lamp",
+              "conditions": 0
             },
             {
               "time": "2026-10-19T17:00:00-07:00",
@@ -298,7 +301,10 @@
               "action": "on",
               "kind": "routine",
               "automation": "automation.routine_living_room_fan",
-              "conflict": false
+              "conflict": false,
+              "device_name": "Living room fan",
+              "alias": "Routine: Living room fan",
+              "conditions": 0
             },
             {
               "time": "2026-10-19T23:00:00-07:00",
@@ -307,7 +313,10 @@
               "action": "on",
               "kind": "automation",
               "automation": "automation.late_fan_on",
-              "conflict": true
+              "conflict": true,
+              "device_name": "Living room fan",
+              "alias": "Late fan on",
+              "conditions": 0
             },
             {
               "time": "2026-10-19T23:00:00-07:00",
@@ -316,7 +325,10 @@
               "action": "off",
               "kind": "routine",
               "automation": "automation.routine_living_room_fan",
-              "conflict": true
+              "conflict": true,
+              "device_name": "Living room fan",
+              "alias": "Routine: Living room fan",
+              "conditions": 0
             }
           ]
         }
@@ -397,6 +409,100 @@
       }
     ],
     "errors": [],
+    "events": []
+  },
+  "conversions/list": {
+    "examples": [
+      {
+        "request": {
+          "id": 21,
+          "type": "device_routines/conversions/list"
+        },
+        "response": {
+          "offers": [
+            {
+              "automation_id": "lamp_evening",
+              "automation_entity_id": "automation.lamp_evening",
+              "alias": "Lamp evening",
+              "device_id": "dev_desk_lamp",
+              "device_name": "Desk lamp",
+              "settings": {
+                "target_entity": "light.desk_lamp",
+                "on_time": "18:00:00",
+                "off_time": "22:30:00",
+                "days": "every_day",
+                "day_set": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu",
+                  "fri",
+                  "sat",
+                  "sun"
+                ],
+                "schedule_entity": null,
+                "turn_off_after_min": 0,
+                "turn_back_on_after_min": 0,
+                "catch_up": true,
+                "late_start_window_min": 15,
+                "respect_manual": true,
+                "pulse": null,
+                "extra_conditions": [],
+                "docked_guard": true,
+                "on_kind": "time",
+                "on_sun_offset_min": 0,
+                "off_kind": "time",
+                "off_sun_offset_min": 0
+              },
+              "original_sentence": "6:00 PM: on, 10:30 PM: off",
+              "routine_sentence": "6:00 PM: on, 10:30 PM: off"
+            }
+          ]
+        }
+      }
+    ],
+    "errors": [],
+    "events": []
+  },
+  "conversions/convert": {
+    "examples": [
+      {
+        "request": {
+          "id": 22,
+          "type": "device_routines/conversions/convert",
+          "automation_entity_id": "automation.lamp_evening"
+        },
+        "response": {
+          "device_id": "dev_desk_lamp",
+          "device_name": "Desk lamp",
+          "area_id": "living_room",
+          "automation_id": "device_routines_9a40d27e18c5",
+          "automation_entity_id": "automation.routine_desk_lamp",
+          "settings": {
+            "target_entity": "light.desk_lamp",
+            "on_time": "18:00:00",
+            "off_time": "22:30:00"
+          },
+          "status": "active",
+          "enabled": true,
+          "next_action": {
+            "at": "2026-10-19T18:00:00-07:00",
+            "verb": "on"
+          }
+        }
+      }
+    ],
+    "errors": [
+      {
+        "code": "conversion_not_offered",
+        "message": "automation.late_fan_on is not offered as a routine: it does not match a routine exactly, it is turned off, or its device has a routine already",
+        "translation_key": "conversion_not_offered",
+        "translation_placeholders": {
+          "automation": "automation.late_fan_on"
+        },
+        "translation_domain": "device_routines"
+      }
+    ],
     "events": []
   },
   "subscribe": {
