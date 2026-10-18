@@ -1703,11 +1703,7 @@ class RoutineManager:
         self, device_id: str, *, until: datetime | None = None, duration: timedelta | None = None
     ) -> ActionResult:
         """Pause until a moment or for a duration, exactly one of them (FR-R12)."""
-        if (until is None) == (duration is None):
-            raise _invalid("pause_until_or_for")
-        moment = until if until is not None else dt_util.utcnow() + (duration or timedelta())
-        if moment <= dt_util.utcnow():
-            raise _invalid("paused_until_in_past")
+        moment = _pause_end(until, duration)
         routine = self._require_automation(device_id)
         if routine.override_by_skip:
             routine.override = routine.override_by_skip = False
@@ -1800,10 +1796,12 @@ class RoutineManager:
 
         Devices without a routine are listed as ignored; no routine device at all raises
         `no_routine_targets`. A device the action cannot apply to (nothing to skip) is
-        ignored with that reason.
+        ignored with that reason. A pause that would end now or earlier is refused before
+        the targets are looked at (FR-R12), and every paused device ends at the same moment.
         """
-        if action == "pause" and (until is None) == (duration is None):
-            raise _invalid("pause_until_or_for")
+        moment: datetime | None = None
+        if action == "pause":
+            moment = _pause_end(until, duration)
         resolved = self.resolve_targets(target)
         if not resolved.device_ids:
             raise _invalid("no_routine_targets")
@@ -1811,10 +1809,8 @@ class RoutineManager:
         ignored = list(resolved.ignored)
         for device_id in resolved.device_ids:
             try:
-                if action == "pause":
-                    results.append(
-                        await self.async_pause(device_id, until=until, duration=duration)
-                    )
+                if moment is not None:
+                    results.append(await self.async_pause(device_id, until=moment))
                 else:
                     results.append(await getattr(self, f"async_{action}")(device_id))
             except ServiceValidationError as err:
@@ -2751,6 +2747,20 @@ def _filled(state: State | None) -> bool:
 def _has_blocks(event_data: Mapping[str, Any]) -> bool:
     """Filter state changes down to schedule helpers that have blocks."""
     return _filled(event_data.get("new_state"))
+
+
+def _pause_end(until: datetime | None, duration: timedelta | None) -> datetime:
+    """Return when a pause ends: `until`, or `duration` from now; exactly one is given.
+
+    Raises the translated `pause_until_or_for` without exactly one, and
+    `paused_until_in_past` for an end that is not in the future (FR-R12).
+    """
+    if (until is None) == (duration is None):
+        raise _invalid("pause_until_or_for")
+    moment = until if until is not None else dt_util.utcnow() + (duration or timedelta())
+    if moment <= dt_util.utcnow():
+        raise _invalid("paused_until_in_past")
+    return moment
 
 
 def _invalid(key: str, placeholders: Mapping[str, str] | None = None) -> ServiceValidationError:

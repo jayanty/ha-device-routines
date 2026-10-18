@@ -284,26 +284,21 @@ async def test_pause_takes_exactly_one_of_until_and_for(
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=pytest.fail.Exception,
-    reason=(
-        "manager gap (lane 9 report): async_run_action checks paused_until_in_past per "
-        "device and lists every device as ignored instead of raising, as FR-R12 asks"
-    ),
-)
 async def test_a_pause_that_ends_now_or_in_the_past_is_rejected_with_a_translated_error(
     hass: HomeAssistant, home: Home, manager: RoutineManager, clock: Clock, freezer: Any
 ) -> None:
     clock.set(clock.at(0, "15:00"))
     await give_routine(hass, manager, home.fan, freezer, on_time=time(17), off_time=time(23))
 
+    paused = manager.get(home.fan)
     for data in ({"until": clock.at(0, "14:00").isoformat()}, {"for": "00:00:00"}):
-        with pytest.raises(ServiceValidationError) as raised:
-            await hass.services.async_call(
-                DOMAIN, "pause", data, target={"device_id": home.fan}, blocking=True
-            )
-        assert raised.value.translation_key == "paused_until_in_past"
+        # Refused before the targets are resolved (FR-R12): a target without a routine
+        # gets the same answer, and the routine is left as it was.
+        for target in ({"device_id": home.fan}, {"device_id": home.garage}):
+            with pytest.raises(ServiceValidationError) as raised:
+                await hass.services.async_call(DOMAIN, "pause", data, target=target, blocking=True)
+            assert raised.value.translation_key == "paused_until_in_past"
+    assert manager.get(home.fan) == paused
 
 
 # --------------------------------------------------------------------------------------
