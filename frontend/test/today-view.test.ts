@@ -60,8 +60,9 @@ describe("schedule/today", () => {
     const fan = "Living room fan";
     expect(living.map((cells) => cells[1])).toEqual(["Desk lamp", fan, fan, fan]);
     expect(living[0]?.[2]).toBe("On");
-    expect(living[0]?.[3]).toBe("Automation automation.morning_lamp");
-    expect(living[1]?.[3]).toBe("Routine automation.routine_living_room_fan");
+    expect(living[0]?.[3]).toBe("Automation Morning lamp");
+    // A routine's alias repeats the device, which the row already names.
+    expect(living[1]?.[3]).toBe("Routine");
     const porch = rows(one(root, '[data-area=""]'));
     expect(porch[0]?.[1]).toBe("dev_porch_light");
     expect(porch[0]?.[2]).toBe("Not known yet");
@@ -156,7 +157,7 @@ describe("Build B fields", () => {
     const cells = rows(one(root, '[data-area="living_room"]'));
     expect(cells.map((row) => [row[1], row[3]])).toEqual([
       ["Reading lamp", "Automation Morning lamp"],
-      ["Living room fan", "Routine automation.routine_living_room_fan"],
+      ["Living room fan", "Routine"],
     ]);
     const source = one(root, "tr[data-item] .muted");
     expect(source.getAttribute("title")).toBe("automation.morning_lamp");

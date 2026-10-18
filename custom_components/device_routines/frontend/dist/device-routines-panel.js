@@ -2481,7 +2481,7 @@ var jt = class extends I {
       </td>
       <td>
         ${ft(t, e.kind)}
-        <span class="muted" title=${e.automation}>${e.alias ?? e.automation}</span>
+        ${e.kind === "routine" ? k : D`<span class="muted" title=${e.automation}>${e.alias ?? e.automation}</span>`}
       </td>
     </tr>`;
 	}

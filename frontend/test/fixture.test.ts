@@ -18,6 +18,8 @@ const COMMANDS = [
   "settings/get",
   "settings/set",
   "maintenance",
+  "conversions/list",
+  "conversions/convert",
   "subscribe",
 ];
 

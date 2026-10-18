@@ -196,7 +196,9 @@ export class DrTodayView extends LitElement {
       </td>
       <td>
         ${kindText(hass, item.kind)}
-        <span class="muted" title=${item.automation}>${item.alias ?? item.automation}</span>
+        ${item.kind === "routine"
+          ? nothing
+          : html`<span class="muted" title=${item.automation}>${item.alias ?? item.automation}</span>`}
       </td>
     </tr>`;
   }

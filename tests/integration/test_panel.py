@@ -30,7 +30,13 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.device_routines import panel
 from custom_components.device_routines.manager import RoutineManager
 from tests.integration.conftest import FAN, LAMP, Clock, Home
-from tests.integration.test_websocket_api import add_automations, events_before, timed, window
+from tests.integration.test_websocket_api import (
+    add_automations,
+    events_before,
+    exact_window,
+    timed,
+    window,
+)
 
 pytestmark = pytest.mark.parametrize("expected_lingering_timers", [True])
 
@@ -263,9 +269,18 @@ async def lamp_waits_for_cleanup(seeded: Seeded) -> None:
     await seeded.manager.async_opt_out(seeded.home.lamp)
 
 
+async def lamp_evening_is_offered(seeded: Seeded) -> None:
+    """The conversion examples add one exact match: the desk lamp from 6:00 PM to 10:30 PM."""
+    await add_automations(
+        seeded.hass, seeded.freezer, exact_window("lamp_evening", "18:00", "22:30", "light", LAMP)
+    )
+
+
 # What a section's examples need beyond the home docs/api.md describes.
 SEEDS: dict[str, Callable[[Seeded], Awaitable[None]]] = {
     "maintenance": lamp_waits_for_cleanup,
+    "conversions/list": lamp_evening_is_offered,
+    "conversions/convert": lamp_evening_is_offered,
 }
 
 
