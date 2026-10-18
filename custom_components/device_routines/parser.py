@@ -321,19 +321,29 @@ def _device_trigger(node: Mapping[str, Any], device: DeviceContext) -> list[Trig
     return [StateTrigger(entity=entity, to=states[0], from_state=states[1], duration=duration)]
 
 
-def _named_options(options: Any) -> bool:
-    """Tell whether a purpose specific trigger's options leave its phrase true."""
-    if options is None:
-        return True
-    if not isinstance(options, Mapping) or set(options) - {"behavior"}:
-        return False
-    return options.get("behavior", "each") in grammar.NAMED_TRIGGER_BEHAVIORS
+def _named_options(kind: str, options: Any) -> tuple[str, ...] | None:
+    """Return the values a purpose specific trigger waits for, once each.
+
+    Empty for a trigger without values; None when the options change what its phrase says.
+    """
+    options = {} if options is None else options
+    if not isinstance(options, Mapping):
+        return None
+    if (key := grammar.NAMED_TRIGGER_VALUES.get(kind)) is not None:
+        values = _as_list(options.get(key))
+        if set(options) != {key} or not values or not all(isinstance(v, str) for v in values):
+            return None
+        return tuple(dict.fromkeys(values))
+    if set(options) - {"behavior"}:
+        return None
+    return () if options.get("behavior", "each") in grammar.NAMED_TRIGGER_BEHAVIORS else None
 
 
 def _named_trigger(
     kind: str, node: Mapping[str, Any], device: DeviceContext
 ) -> list[Trigger] | None:
-    if not _only(node, {"target", "options"}) or not _named_options(node.get("options")):
+    values = _named_options(kind, node.get("options"))
+    if not _only(node, {"target", "options"}) or values is None:
         return None
     target = node.get("target") or {}
     if not isinstance(target, Mapping) or set(target) - {"entity_id"}:
@@ -345,7 +355,7 @@ def _named_trigger(
         entity.partition(".")[0] != domain for entity in resolved
     ):
         return None
-    return [NamedTrigger(name=kind, entities=resolved)]
+    return [NamedTrigger(name=kind, entities=resolved, values=values)]
 
 
 def _event_trigger(node: Mapping[str, Any]) -> list[Trigger] | None:

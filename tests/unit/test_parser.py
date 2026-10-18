@@ -459,6 +459,45 @@ def test_the_vacuum_triggers_are_the_ones_the_core_has() -> None:
     not_understood_trigger({"trigger": "vacuum.docked", "target": {"entity_id": "vacuum.robot"}})
 
 
+def test_event_received_reads_with_its_event_types() -> None:
+    assert trigger_of(
+        {
+            "trigger": "event.received",
+            "target": {"entity_id": "event.button"},
+            "options": {"event_type": ["multi_press_1", "long_press", "multi_press_1"]},
+        }
+    ) == NamedTrigger(
+        name="event.received", entities=("event.button",), values=("multi_press_1", "long_press")
+    )
+    assert trigger_of(
+        {
+            "trigger": "event.received",
+            "target": {"entity_id": ["event.a", "event.b"]},
+            "options": {"event_type": "single"},
+        }
+    ) == NamedTrigger(name="event.received", entities=("event.a", "event.b"), values=("single",))
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {},
+        {"options": {}},
+        {"options": {"event_type": []}},
+        {"options": {"event_type": ["single", 3]}},
+        {"options": {"event_type": ["single"], "behavior": "each"}},
+        {"options": ["single"]},
+        {"target": {"entity_id": FAN}, "options": {"event_type": ["single"]}},
+    ],
+)
+def test_event_received_without_exactly_its_event_types_is_outside_the_grammar(
+    extra: dict[str, Any],
+) -> None:
+    not_understood_trigger(
+        {"trigger": "event.received", "target": {"entity_id": "event.button"}, **extra}
+    )
+
+
 def test_a_timer_event_for_one_timer_reads_as_the_timer_trigger() -> None:
     """The timer fires its event and records the same transition together."""
     assert trigger_of(

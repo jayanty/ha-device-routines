@@ -96,7 +96,13 @@ NAMED_TRIGGERS: Final[Mapping[str, str]] = {
     "vacuum.started_cleaning": "when_vacuum_started",
     "vacuum.returned_to_dock": "when_vacuum_docked",
     "vacuum.errored": "when_vacuum_errored",
+    "event.received": "when_event_received",
 }
+
+# Purpose specific triggers that wait for one of several values, and the one option that
+# lists them (the core allows no other option on these): `event.received` fires when an
+# event entity receives one of the listed event types.
+NAMED_TRIGGER_VALUES: Final[Mapping[str, str]] = {"event.received": "event_type"}
 
 # Event triggers on an integration's own events, as the purpose specific trigger each one
 # equals. A timer fires its event and records the same transition (`last_transition`, which

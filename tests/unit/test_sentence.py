@@ -237,6 +237,14 @@ LINE_CASES = [
         "When timer.a or timer.b finishes: off",
     ),
     (line(NamedTrigger("schedule.block_started")), "When a block of any target starts: off"),
+    (
+        line(NamedTrigger("event.received", ("event.button",), ("single",))),
+        "When event.button receives single: off",
+    ),
+    (
+        line(NamedTrigger("event.received", ("event.a", "event.b"), ("single", "double", "long"))),
+        "When event.a or event.b receives single, double or long: off",
+    ),
     (line(StateTrigger(entity=DOOR, from_state="on")), "When Front door changes from on: off"),
     (line(StateTrigger(entity=DOOR)), "When Front door changes: off"),
     (line(StateTrigger(entity=DOOR, to="off", from_state="on")), "When Front door turns off: off"),

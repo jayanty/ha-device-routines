@@ -277,7 +277,8 @@ class Writer:
         if isinstance(trigger, NamedTrigger):
             subjects = [self.subject(entity, line) for entity in trigger.entities]
             subject = self.say("or_separator").join(subjects) or self.say("subject_any")
-            return self.say(NAMED_TRIGGERS[trigger.name], subject=subject)
+            values = self.subjects(trigger.values) if trigger.values else ""
+            return self.say(NAMED_TRIGGERS[trigger.name], subject=subject, values=values)
         return None
 
     def _numeric(self, trigger: NumericTrigger, line: ParsedLine) -> str:

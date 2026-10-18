@@ -301,10 +301,15 @@ class CalendarTrigger:
 
 @dataclass(frozen=True, slots=True)
 class NamedTrigger:
-    """A purpose specific trigger the grammar lists, such as `timer.finished`."""
+    """A purpose specific trigger the grammar lists, such as `timer.finished`.
+
+    `values` holds what a trigger that waits for one of several values names, such as the
+    event types of `event.received`; empty for the others.
+    """
 
     name: str
     entities: tuple[str, ...] = ()
+    values: tuple[str, ...] = ()
 
 
 type Trigger = (

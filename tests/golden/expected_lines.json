@@ -178,24 +178,24 @@
   "automation_29": {
     "vacuum.example_vacuum_1": [
       {
-        "line": "Automation: Automation 29 (custom logic)",
-        "source": "none"
+        "line": "When event.example_event_1 receives multi_press_1 or long_press: return to dock (if 1 condition passes)",
+        "source": "parser"
       }
     ]
   },
   "automation_30": {
     "vacuum.example_vacuum_1": [
       {
-        "line": "Automation: Automation 30 (custom logic)",
-        "source": "none"
+        "line": "When event.example_event_2 receives multi_press_1 or long_press: start (if 1 condition passes)",
+        "source": "parser"
       },
       {
-        "line": "Automation: Automation 30 (custom logic)",
-        "source": "none"
+        "line": "When event.example_event_2 receives multi_press_1 or long_press: pause (if 1 condition passes)",
+        "source": "parser"
       },
       {
-        "line": "Automation: Automation 30 (custom logic)",
-        "source": "none"
+        "line": "When event.example_event_2 receives multi_press_1 or long_press: start (if 1 condition passes)",
+        "source": "parser"
       }
     ]
   },

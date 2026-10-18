@@ -95,6 +95,7 @@
   "when_vacuum_started": "when {subject} starts cleaning",
   "when_vacuum_docked": "when {subject} docks",
   "when_vacuum_errored": "when {subject} reports an error",
+  "when_event_received": "when {subject} receives {values}",
   "subject_any": "any target",
   "routine_alias": "Routine: {device}",
   "routine_description": "Managed by Device Routines. Change it on the {device} device page or in this form. Take control to turn it into a normal automation.",
