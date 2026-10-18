@@ -314,3 +314,23 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Consequence | A unit test in `tests/unit/test_sentence.py`; the golden corpus changed in exactly the two lines of that shape, reviewed in the diff. |
 | PRD register entry | no |
 
+
+## 2026-10-18 L32: two restarts for everything that is left: builds, lanes, restart bundles, the owner log
+
+| Field | Content |
+| --- | --- |
+| Context | The plan asked for one phase at a time with live validation and a restart per phase, plus a restart each for S3, S4, S5 and S12: at least seven more owner restarts after the five of the first five days, on a production instance, with sessions stopping at every one and at every owner question. Every live capability the routines need was already probed on the instance in Stage 0 (V3, V5 to V9, V13), and the harness runs the same core with cold starts over restore state. |
+| Options | (a) Keep the phase by phase loop; (b) build Phases 2 and 3 together in the harness as one build with parallel lanes, then one restart; Phase 4 as a second build with a second restart; stage every restart dependent scenario before a restart that happens anyway; defer every owner item to a log with a default; keep the instance's auto deploy switch off while a build is open so an incidental restart loads nothing unvalidated. |
+| Choice | (b). IMPLEMENTATION_PLAN Section 0.1 is the operating model; Sections 4 to 6 are the builds; `docs/owner-log.md` is the register; rules 12 to 15 were added and rules 4, 5, 7 and 10 amended. Live validation confirms what the harness proved and never discovers; a live finding becomes a harness test first. The restart halves of S3, S4, S5 and S12 are staged by the clock on whichever restart comes (R1, R2 or an owner's own), and stand on their harness rows otherwise. |
+| Consequence | Phase 2 and Phase 3 exits are harness exits recorded in `docs/validation/phase-2.md` and `phase-3.md`; their live rows are filled after R1. Owner time is batched into two sessions (plan 8.1). CLAUDE.md rules 4, 5 and 8 point at the model. Auto deploy is toggled by the session with a read before and after under L26. |
+| PRD register entry | no (process; PRD 13.3's phase scope is unchanged, only the restart cadence) |
+
+## 2026-10-18 L33: v0.2.0 is skipped; beta tags at harness exits, full tags after live validation
+
+| Field | Content |
+| --- | --- |
+| Context | PRD 13.3 names v0.2.0 for Phase 2 and v0.3.0 for Phase 3. With L32 both ship in one build, and the release workflow already treats `-beta.N` tags as pre releases. |
+| Options | (a) Tag v0.2.0 and v0.3.0 on the same commit; (b) skip v0.2.0, tag `v0.3.0-beta.1` at the harness exit so the deploy tool has a named ref and HACS users opting into pre releases can test, and tag `v0.3.0` after live validation A; the same for `v1.0.0-beta.1` and `v1.0.0`. |
+| Choice | (b). A full tag always follows a live validation record; a beta tag follows a harness record. |
+| Consequence | `CHANGELOG.md` goes from 0.1.0 to 0.3.0; `manifest.json` carries 0.3.0 at the Build A exit (the release workflow checks the tag's version against it, and `0.3.0-beta.1` is compared as `0.3.0`, which the workflow must strip; task A4.5 adjusts `release.yml` so a `-beta.N` suffix is ignored in that comparison). The sandbox instance runs the beta between the two tags. |
+| PRD register entry | no |

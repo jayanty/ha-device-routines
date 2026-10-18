@@ -18,10 +18,13 @@ backed by real, clearly marked automations built from a blueprint it ships. Home
 runs the routines; the integration configures them and reads every automation to write
 the summaries. The PRD's Section 1 says why, Section 14 lists the decisions.
 
-Delivery: Phase 0 (repository, pipeline, skeleton), Stage 0 (validation probes), then
-Phases 1 to 4 (summary, routines, P1 features and the WebSocket API, console and
-publication). The Status line at the top of `docs/IMPLEMENTATION_PLAN.md` says where we
-are; the plan's Section 8.3 is the prompt for every later session.
+Delivery: Phase 0 (repository, pipeline, skeleton), Stage 0 (validation probes), Phase 1
+(the summary, released as v0.1.0), then two builds (decision L32): Build A is Phases 2 and
+3 together (routines, P1 features and the WebSocket API) with one restart, Build B is
+Phase 4 (console and publication) with a second restart. The plan's Section 0.1 is the
+operating model (parallel lanes, restart bundles, the owner log). The Status line at the
+top of `docs/IMPLEMENTATION_PLAN.md` says where we are; the plan's Section 8.3 is the
+prompt for every later session.
 
 ## 2. Rules that override everything else
 
@@ -40,11 +43,13 @@ are; the plan's Section 8.3 is the prompt for every later session.
    commit privacy check must pass; never bypass hooks.
 4. Proceed on the PRD decision defaults without asking. Record every choice the PRD and
    the spec do not cover in `docs/decisions-log.md` (template in the plan, Section 9.4).
-   Ask the owner only for the Needs Jayant items of the current phase, or when a default
-   would be unsafe.
+   Anything that needs the owner goes to `docs/owner-log.md` with the default taken
+   meanwhile (plan Section 0.1.4); ask in chat only when a default would be unsafe. Owner
+   items never stop the work.
 5. Work on `dev`. Conventional commits. Push when the local gates pass. Merge `dev` into
-   `main` only at a phase exit with green CI. One phase at a time, in order; inside a
-   phase, tasks in order unless a dependency says otherwise.
+   `main` only at a build exit with green CI, as a fast forward (no merge commits). One
+   build at a time; inside a build, lanes run in parallel against the interface contracts
+   the plan pins (Section 4.2), each in its own worktree and branch (Section 0.1.2).
 6. Tests ship in the same commit as the code they cover. Coverage never drops below 95
    percent. `ruff` (every rule) and `mypy --strict` are clean before every commit. Every
    user facing string has a translation key. `CHANGELOG.md` stays current under
@@ -54,7 +59,12 @@ are; the plan's Section 8.3 is the prompt for every later session.
    and continue with it unless it touches a hard constraint (PRD Section 3), in which case
    ask.
 8. End every working session with the session report of the plan's Section 9.3 in chat
-   and update the Status line of `docs/IMPLEMENTATION_PLAN.md`.
+   and update the Status line of `docs/IMPLEMENTATION_PLAN.md` in every commit that
+   completes a task.
+9. Harness first, one restart per build (plan rules 12 and 13): every behavior is proven
+   in the harness before it is deployed; the instance's auto deploy switch is off while a
+   build is open; the finished build is deployed by hand from its tag; scenarios that need
+   a restart are staged before a restart that happens anyway and never get their own.
 
 ## 3. Architecture invariants
 
@@ -134,6 +144,7 @@ nothing.
 | Module boundaries, blueprint, storage, pipeline, test matrix | `docs/TECH_SPEC.md` |
 | Build order, validation steps, exit criteria, session report template | `docs/IMPLEMENTATION_PLAN.md` |
 | Choices made during implementation | `docs/decisions-log.md` |
+| What waits for the owner, with the default applied meanwhile | `docs/owner-log.md` |
 | What a phase proved, with evidence | `docs/validation/phase-N.md` |
 | Stage 0 findings and fixtures | `docs/stage0-report.md` |
 | The development channel package and its bootstrap | `tools/ha_package/README.md` |
