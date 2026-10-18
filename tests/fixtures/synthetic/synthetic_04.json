@@ -1,0 +1,32 @@
+{
+  "config": {
+    "id": "synthetic_04",
+    "alias": "Pulse",
+    "triggers": [
+      {
+        "trigger": "time",
+        "at": "08:00"
+      }
+    ],
+    "actions": [
+      {
+        "action": "fan.turn_off",
+        "target": {
+          "entity_id": "fan.example_fan"
+        }
+      },
+      {
+        "delay": {
+          "minutes": 3
+        }
+      },
+      {
+        "action": "fan.turn_on",
+        "target": {
+          "entity_id": "fan.example_fan"
+        }
+      }
+    ],
+    "mode": "single"
+  }
+}

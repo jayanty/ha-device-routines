@@ -1,0 +1,21 @@
+{
+  "config": {
+    "id": "synthetic_09",
+    "alias": "Scripted",
+    "triggers": [
+      {
+        "trigger": "event",
+        "event_type": "custom_event"
+      }
+    ],
+    "actions": [
+      {
+        "action": "fan.turn_on",
+        "target": {
+          "entity_id": "fan.example_fan"
+        }
+      }
+    ],
+    "mode": "single"
+  }
+}

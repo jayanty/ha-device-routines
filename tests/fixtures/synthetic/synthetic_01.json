@@ -1,0 +1,57 @@
+{
+  "config": {
+    "id": "synthetic_01",
+    "alias": "Window crossing midnight",
+    "triggers": [
+      {
+        "trigger": "time",
+        "at": "17:00",
+        "id": "on"
+      },
+      {
+        "trigger": "time",
+        "at": "09:00",
+        "id": "off"
+      }
+    ],
+    "actions": [
+      {
+        "choose": [
+          {
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "on"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "fan.turn_on",
+                "target": {
+                  "entity_id": "fan.example_fan"
+                }
+              }
+            ]
+          },
+          {
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "off"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "fan.turn_off",
+                "target": {
+                  "entity_id": "fan.example_fan"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "mode": "single"
+  }
+}

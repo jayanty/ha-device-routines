@@ -1,0 +1,22 @@
+{
+  "config": {
+    "id": "synthetic_05",
+    "alias": "Sunset blinds",
+    "triggers": [
+      {
+        "trigger": "sun",
+        "event": "sunset",
+        "offset": "-00:15:00"
+      }
+    ],
+    "actions": [
+      {
+        "action": "cover.close_cover",
+        "target": {
+          "entity_id": "cover.example_cover"
+        }
+      }
+    ],
+    "mode": "single"
+  }
+}

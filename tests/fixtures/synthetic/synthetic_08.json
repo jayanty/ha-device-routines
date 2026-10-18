@@ -1,0 +1,27 @@
+{
+  "config": {
+    "id": "synthetic_08",
+    "alias": "Template guard",
+    "triggers": [
+      {
+        "trigger": "time",
+        "at": "06:00"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "template",
+        "value_template": "{{ is_state('input_boolean.guest','off') }}"
+      }
+    ],
+    "actions": [
+      {
+        "action": "fan.turn_on",
+        "target": {
+          "entity_id": "fan.example_fan"
+        }
+      }
+    ],
+    "mode": "single"
+  }
+}

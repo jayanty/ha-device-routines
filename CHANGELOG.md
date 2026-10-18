@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The golden corpus now pins the exact summary lines for the 39 captured automations and 12
+  synthetic ones covering the grammar.
 - Hub entities Routines (count of active routines, 0 until routines ship) and Problem
   (on while a Device Routines Repairs issue is open), a settings page in the options
   (Schedule sensor scope, time format), the Repairs issue raised when the running Home

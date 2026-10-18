@@ -1,0 +1,28 @@
+{
+  "config": {
+    "id": "synthetic_10",
+    "alias": "Restart catch up",
+    "triggers": [
+      {
+        "trigger": "homeassistant",
+        "event": "start"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "time",
+        "after": "17:00",
+        "before": "09:00"
+      }
+    ],
+    "actions": [
+      {
+        "action": "fan.turn_on",
+        "target": {
+          "entity_id": "fan.example_fan"
+        }
+      }
+    ],
+    "mode": "single"
+  }
+}

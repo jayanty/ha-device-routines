@@ -1,0 +1,25 @@
+{
+  "config": {
+    "id": "synthetic_06",
+    "alias": "Weekend mornings",
+    "triggers": [
+      {
+        "trigger": "time",
+        "at": "07:30",
+        "weekday": [
+          "sat",
+          "sun"
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "action": "cover.open_cover",
+        "target": {
+          "entity_id": "cover.example_cover"
+        }
+      }
+    ],
+    "mode": "single"
+  }
+}

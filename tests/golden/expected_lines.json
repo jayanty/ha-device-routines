@@ -1,0 +1,394 @@
+{
+  "automation_01": {
+    "vacuum.example_vacuum_1": [
+      {
+        "line": "Weekdays 9:45 AM, 10:00 AM: start (if 6 conditions pass), plus custom logic",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_02": {},
+  "automation_03": {},
+  "automation_04": {},
+  "automation_05": {},
+  "automation_06": {
+    "switch.example_switch_2": [
+      {
+        "line": "When sensor.example_sensor_4 rises above 28 for 3 min or when sensor.example_sensor_4 drops below 26 for 1 min: on (if 1 condition passes), plus custom logic",
+        "source": "parser"
+      },
+      {
+        "line": "When sensor.example_sensor_4 rises above 28 for 3 min or when sensor.example_sensor_4 drops below 26 for 1 min: off (if 1 condition passes), plus custom logic",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_07": {
+    "switch.example_switch_3": [
+      {
+        "line": "When sensor.example_sensor_5 changes to battery or when sensor.example_sensor_6 drops below 85: off (if 2 conditions pass), plus custom logic",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_08": {
+    "switch.example_switch_3": [
+      {
+        "line": "When sensor.example_sensor_5 changes to utility: on (if 1 condition passes)",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_09": {},
+  "automation_10": {},
+  "automation_11": {},
+  "automation_12": {
+    "input_boolean.example_input_boolean_1": [
+      {
+        "line": "When switch.example_switch_4 turns off: on, plus custom logic",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_13": {},
+  "automation_14": {
+    "switch.example_switch_4": [
+      {
+        "line": "Automation: Automation 14 (custom logic)",
+        "source": "none"
+      }
+    ]
+  },
+  "automation_15": {
+    "switch.example_switch_4": [
+      {
+        "line": "When binary_sensor.example_binary_sensor_4 is on for 5 min: on (if 2 conditions pass), plus custom logic",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_16": {
+    "switch.example_switch_4": [
+      {
+        "line": "Off 60 min after it turns on",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_17": {
+    "input_boolean.example_input_boolean_1": [
+      {
+        "line": "When binary_sensor.example_binary_sensor_4 is on for 5 s: off (if 1 condition passes), plus custom logic",
+        "source": "parser"
+      }
+    ],
+    "input_boolean.example_input_boolean_2": [
+      {
+        "line": "When binary_sensor.example_binary_sensor_4 is on for 5 s: off (if 1 condition passes), plus custom logic",
+        "source": "parser"
+      }
+    ],
+    "input_boolean.example_input_boolean_3": [
+      {
+        "line": "When binary_sensor.example_binary_sensor_4 is on for 5 s: off (if 1 condition passes), plus custom logic",
+        "source": "parser"
+      }
+    ],
+    "switch.example_switch_4": [
+      {
+        "line": "When binary_sensor.example_binary_sensor_4 is on for 5 s: on (if 3 conditions pass), plus custom logic",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_18": {
+    "switch.example_switch_5": [
+      {
+        "line": "Automation: Automation 18 (custom logic)",
+        "source": "none"
+      },
+      {
+        "line": "Automation: Automation 18 (custom logic)",
+        "source": "none"
+      },
+      {
+        "line": "Automation: Automation 18 (custom logic)",
+        "source": "none"
+      }
+    ]
+  },
+  "automation_19": {
+    "light.example_light_1": [
+      {
+        "line": "When it is on for 60 min or when binary_sensor.example_binary_sensor_4 is off for 5 min: off (if 2 conditions pass)",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_20": {},
+  "automation_21": {},
+  "automation_22": {},
+  "automation_23": {
+    "light.example_light_2": [
+      {
+        "line": "Off 60 min after it turns on",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_24": {
+    "input_boolean.example_input_boolean_3": [
+      {
+        "line": "When light.example_light_2 turns off: on, plus custom logic",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_25": {
+    "light.example_light_2": [
+      {
+        "line": "When binary_sensor.example_binary_sensor_4 turns off: off (if 1 condition passes), plus custom logic",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_26": {
+    "light.example_light_2": [
+      {
+        "line": "When binary_sensor.example_binary_sensor_4 is on for 5 s: on (if 1 condition passes), plus custom logic",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_27": {
+    "input_boolean.example_input_boolean_2": [
+      {
+        "line": "When binary_sensor.example_binary_sensor_6 turns on: on",
+        "source": "parser"
+      }
+    ],
+    "switch.example_switch_4": [
+      {
+        "line": "When binary_sensor.example_binary_sensor_6 turns on: on (if 1 condition passes), plus custom logic",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_28": {},
+  "automation_29": {
+    "vacuum.example_vacuum_1": [
+      {
+        "line": "Automation: Automation 29 (custom logic)",
+        "source": "none"
+      }
+    ]
+  },
+  "automation_30": {
+    "vacuum.example_vacuum_1": [
+      {
+        "line": "Automation: Automation 30 (custom logic)",
+        "source": "none"
+      },
+      {
+        "line": "Automation: Automation 30 (custom logic)",
+        "source": "none"
+      },
+      {
+        "line": "Automation: Automation 30 (custom logic)",
+        "source": "none"
+      }
+    ]
+  },
+  "automation_31": {
+    "switch.example_switch_6": [
+      {
+        "line": "8:00 AM: off for 3 min, then on (if 1 condition passes)",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_32": {},
+  "automation_33": {},
+  "automation_34": {},
+  "automation_35": {
+    "input_boolean.example_input_boolean_5": [
+      {
+        "line": "When timer.example_timer_5 finishes: off (if 1 condition passes)",
+        "source": "parser"
+      },
+      {
+        "line": "Every 5 min or when sensor.example_sensor_7 rises above 0.4 or when sensor.example_sensor_7 rises above 1.49 or when sensor.example_sensor_7 rises above 0.99 for 1 min 5 s or when sensor.example_sensor_7 drops below 0.4 for 1 min 5 s or when sensor.example_sensor_8 rises above 104.9 or when sensor.example_sensor_8 drops below 95 or when timer.example_timer_4 finishes or when timer.example_timer_5 finishes or when input_datetime.example_input_datetime_2 changes or when binary_sensor.example_binary_sensor_6 turns on or when a block of schedule.example_schedule_1 starts or when a block of schedule.example_schedule_1 ends or when Home Assistant starts: off (if 4 conditions pass), plus custom logic",
+        "source": "parser"
+      }
+    ],
+    "input_boolean.example_input_boolean_6": [
+      {
+        "line": "When timer.example_timer_5 finishes: off (if 1 condition passes)",
+        "source": "parser"
+      },
+      {
+        "line": "Every 5 min or when sensor.example_sensor_7 rises above 0.4 or when sensor.example_sensor_7 rises above 1.49 or when sensor.example_sensor_7 rises above 0.99 for 1 min 5 s or when sensor.example_sensor_7 drops below 0.4 for 1 min 5 s or when sensor.example_sensor_8 rises above 104.9 or when sensor.example_sensor_8 drops below 95 or when timer.example_timer_4 finishes or when timer.example_timer_5 finishes or when input_datetime.example_input_datetime_2 changes or when binary_sensor.example_binary_sensor_6 turns on or when a block of schedule.example_schedule_1 starts or when a block of schedule.example_schedule_1 ends or when Home Assistant starts: off (if 2 conditions pass), plus custom logic",
+        "source": "parser"
+      },
+      {
+        "line": "Every 5 min or when sensor.example_sensor_7 rises above 0.4 or when sensor.example_sensor_7 rises above 1.49 or when sensor.example_sensor_7 rises above 0.99 for 1 min 5 s or when sensor.example_sensor_7 drops below 0.4 for 1 min 5 s or when sensor.example_sensor_8 rises above 104.9 or when sensor.example_sensor_8 drops below 95 or when timer.example_timer_4 finishes or when timer.example_timer_5 finishes or when input_datetime.example_input_datetime_2 changes or when binary_sensor.example_binary_sensor_6 turns on or when a block of schedule.example_schedule_1 starts or when a block of schedule.example_schedule_1 ends or when Home Assistant starts: on (if 6 conditions pass), plus custom logic",
+        "source": "parser"
+      }
+    ],
+    "input_boolean.example_input_boolean_7": [
+      {
+        "line": "Automation: Automation 35 (custom logic)",
+        "source": "none"
+      },
+      {
+        "line": "Automation: Automation 35 (custom logic)",
+        "source": "none"
+      }
+    ]
+  },
+  "automation_36": {
+    "switch.example_switch_5": [
+      {
+        "line": "Every 2 min or when input_boolean.example_input_boolean_5 changes or when input_boolean.example_input_boolean_6 changes or when timer.example_timer_7 changes or when schedule.example_schedule_1 changes or when binary_sensor.example_binary_sensor_8 changes or when Home Assistant starts: on (if 2 conditions pass)",
+        "source": "parser"
+      },
+      {
+        "line": "Every 2 min or when input_boolean.example_input_boolean_5 changes or when input_boolean.example_input_boolean_6 changes or when timer.example_timer_7 changes or when schedule.example_schedule_1 changes or when binary_sensor.example_binary_sensor_8 changes or when Home Assistant starts: off (if 2 conditions pass)",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_37": {
+    "input_boolean.example_input_boolean_8": [
+      {
+        "line": "When a block of schedule.example_schedule_1 ends: off (if 1 condition passes)",
+        "source": "parser"
+      },
+      {
+        "line": "When timer.example_timer_8 finishes: off, plus custom logic",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_38": {
+    "switch.example_switch_7": [
+      {
+        "line": "5:00 PM: on",
+        "source": "parser"
+      },
+      {
+        "line": "9:00 AM: off",
+        "source": "parser"
+      },
+      {
+        "line": "When Home Assistant starts or when it has not been unavailable for 10 s, between 5:00 PM and 9:00 AM: on",
+        "source": "parser"
+      },
+      {
+        "line": "When Home Assistant starts or when it has not been unavailable for 10 s: off (if 1 condition passes)",
+        "source": "parser"
+      }
+    ]
+  },
+  "automation_39": {},
+  "synthetic_01": {
+    "fan.example_fan": [
+      {
+        "line": "5:00 PM: on",
+        "source": "parser"
+      },
+      {
+        "line": "9:00 AM: off",
+        "source": "parser"
+      }
+    ]
+  },
+  "synthetic_02": {
+    "vacuum.example_vacuum": [
+      {
+        "line": "Weekdays 9:45 AM: start (if 1 condition passes)",
+        "source": "parser"
+      }
+    ]
+  },
+  "synthetic_03": {
+    "fan.example_fan": [
+      {
+        "line": "Off 30 min after it turns on",
+        "source": "parser"
+      }
+    ]
+  },
+  "synthetic_04": {
+    "fan.example_fan": [
+      {
+        "line": "8:00 AM: off for 3 min, then on",
+        "source": "parser"
+      }
+    ]
+  },
+  "synthetic_05": {
+    "cover.example_cover": [
+      {
+        "line": "Sunset - 15 min: close",
+        "source": "parser"
+      }
+    ]
+  },
+  "synthetic_06": {
+    "cover.example_cover": [
+      {
+        "line": "Weekends 7:30 AM: open",
+        "source": "parser"
+      }
+    ]
+  },
+  "synthetic_07": {
+    "fan.example_fan": [
+      {
+        "line": "Every 15 min, between 10:00 PM and 6:00 AM: toggle",
+        "source": "parser"
+      }
+    ]
+  },
+  "synthetic_08": {
+    "fan.example_fan": [
+      {
+        "line": "6:00 AM: on, plus custom logic",
+        "source": "parser"
+      }
+    ]
+  },
+  "synthetic_09": {
+    "fan.example_fan": [
+      {
+        "line": "Automation: Scripted (custom logic)",
+        "source": "none"
+      }
+    ]
+  },
+  "synthetic_10": {
+    "fan.example_fan": [
+      {
+        "line": "When Home Assistant starts, between 5:00 PM and 9:00 AM: on",
+        "source": "parser"
+      }
+    ]
+  },
+  "synthetic_11": {
+    "fan.example_fan": [
+      {
+        "line": "12:00 PM: toggle, plus custom logic",
+        "source": "parser"
+      }
+    ]
+  },
+  "synthetic_12": {
+    "fan.example_fan": [
+      {
+        "line": "At the start of calendar.example_calendar events - 10 min: on",
+        "source": "parser"
+      }
+    ]
+  }
+}

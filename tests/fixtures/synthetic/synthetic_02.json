@@ -1,0 +1,39 @@
+{
+  "config": {
+    "id": "synthetic_02",
+    "alias": "Weekday vacuum",
+    "triggers": [
+      {
+        "trigger": "time",
+        "at": "09:45"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "time",
+        "weekday": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri"
+        ]
+      },
+      {
+        "condition": "vacuum.is_docked",
+        "target": {
+          "entity_id": "vacuum.example_vacuum"
+        }
+      }
+    ],
+    "actions": [
+      {
+        "action": "vacuum.start",
+        "target": {
+          "entity_id": "vacuum.example_vacuum"
+        }
+      }
+    ],
+    "mode": "single"
+  }
+}

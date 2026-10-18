@@ -1,0 +1,25 @@
+{
+  "config": {
+    "id": "synthetic_03",
+    "alias": "Run timer",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "fan.example_fan",
+        "to": "on",
+        "for": {
+          "minutes": 30
+        }
+      }
+    ],
+    "actions": [
+      {
+        "action": "fan.turn_off",
+        "target": {
+          "entity_id": "fan.example_fan"
+        }
+      }
+    ],
+    "mode": "single"
+  }
+}

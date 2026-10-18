@@ -18,6 +18,7 @@ import pytest
 
 CORPUS = Path(__file__).resolve().parents[1] / "fixtures" / "automations"
 FILES = sorted(CORPUS.glob("automation_*.json"))
+SYNTHETIC = sorted((CORPUS.parent / "synthetic").glob("synthetic_*.json"))
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -56,7 +57,7 @@ def test_the_corpus_is_complete() -> None:
         assert record["config"]["id"] == path.stem
 
 
-@pytest.mark.parametrize("path", FILES, ids=[path.stem for path in FILES])
+@pytest.mark.parametrize("path", FILES + SYNTHETIC, ids=[path.stem for path in FILES + SYNTHETIC])
 async def test_each_automation_validates_against_the_core(hass: HomeAssistant, path: Path) -> None:
     config = load(path)["config"]
     if uses_device_automation(config):

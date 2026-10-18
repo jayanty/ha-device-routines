@@ -1,0 +1,23 @@
+{
+  "config": {
+    "id": "synthetic_12",
+    "alias": "Calendar",
+    "triggers": [
+      {
+        "trigger": "calendar",
+        "entity_id": "calendar.example_calendar",
+        "event": "start",
+        "offset": "-00:10:00"
+      }
+    ],
+    "actions": [
+      {
+        "action": "fan.turn_on",
+        "target": {
+          "entity_id": "fan.example_fan"
+        }
+      }
+    ],
+    "mode": "single"
+  }
+}

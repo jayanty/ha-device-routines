@@ -1,0 +1,28 @@
+{
+  "config": {
+    "id": "synthetic_07",
+    "alias": "Every 15 minutes at night",
+    "triggers": [
+      {
+        "trigger": "time_pattern",
+        "minutes": "/15"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "time",
+        "after": "22:00",
+        "before": "06:00"
+      }
+    ],
+    "actions": [
+      {
+        "action": "fan.toggle",
+        "target": {
+          "entity_id": "fan.example_fan"
+        }
+      }
+    ],
+    "mode": "single"
+  }
+}
