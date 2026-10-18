@@ -176,6 +176,55 @@ async def test_every_routine_action_takes_device_entity_area_floor_and_label_tar
         assert status_of(manager, home.fan) is status, action
 
 
+def linked_record(hass: HomeAssistant, routines: MockConfigEntry, home: Home) -> str:
+    """The record of this config entry that carries the fan's identifiers (L25)."""
+    record = dr.async_get(hass).async_get_device_by_identifier(
+        ("sandbox", "fan"), routines.entry_id
+    )
+    assert record is not None
+    assert record.id != home.fan
+    return record.id
+
+
+async def test_a_linked_record_stands_for_the_users_device_in_every_target(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    routines: MockConfigEntry,
+    clock: Clock,
+    freezer: Any,
+) -> None:
+    """Plan A4.0 item 4 (L25, L46): the device picker offers the linked record too.
+
+    It carries the routine controls and the user's device name, so a person picks it
+    as often as the device itself; as a device, in an area or under a label it means
+    the user's device, while the hub record means nothing.
+    """
+    clock.set(clock.at(0, "15:00"))
+    await give_routine(hass, manager, home.fan, freezer, on_time=time(17), off_time=time(23))
+    record = linked_record(hass, routines, home)
+    devices = dr.async_get(hass)
+    devices.async_update_device(record, area_id=home.area)
+    hub = devices.async_get_device_by_identifier((DOMAIN, "hub"), routines.entry_id)
+    assert hub is not None
+    tagged = label_devices(hass, "Linked", record, hub.id)
+
+    for target in ({"device_id": record}, {"device_id": [record, home.fan]}):
+        response = await call(hass, "skip_next", target)
+        assert [item["device_id"] for item in response["results"]] == [home.fan], target
+        assert response["ignored"] == [], target
+        await call(hass, "resume", target)
+    response = await call(hass, "pause", {"label_id": tagged}, **{"for": {"hours": 1}})
+    assert [item["device_id"] for item in response["results"]] == [home.fan]
+    assert response["ignored"] == []
+    resolved = manager.resolve_targets({"area_id": home.area, "device_id": hub.id})
+    assert resolved.device_ids == (home.fan,)
+    assert [(item.target, item.reason) for item in resolved.ignored] == [
+        (hub.id, "no_routine"),
+        (home.lamp, "no_routine"),
+    ]
+
+
 async def test_skip_next_on_a_label_skips_the_routine_and_lists_the_plain_device(
     hass: HomeAssistant, home: Home, manager: RoutineManager, clock: Clock, freezer: Any
 ) -> None:

@@ -1872,12 +1872,29 @@ class RoutineManager:
             return self._device_of_automation(entry.unique_id)
         return entry.device_id
 
+    def _user_device(self, device_id: str) -> str | None:
+        """Return the device a target means by a device id (decision L25).
+
+        This entry's linked record of a user's device (it carries that device's
+        identifiers and name, and the routine controls) means the user's device; the hub
+        means none; any other device means itself.
+        """
+        device = self._device(device_id)
+        if device is None or device.config_entry_id != self.entry.entry_id:
+            return device_id
+        same = dr.async_get(self.hass).async_get_devices(
+            identifiers=set(device.identifiers), connections=set(device.connections)
+        )
+        return next((other.id for other in same if not self._ours(other.id)), None)
+
     def resolve_targets(self, target: Mapping[str, Any]) -> TargetResolution:
         """Turn a native target into routine devices plus the ignored list (S13).
 
         `device_id`, `entity_id`, `area_id`, `floor_id` and `label_id` (each a string or a
         list). An area, floor or label expands to its devices, and each device it covers
         without a routine is ignored by name; a target naming nothing is ignored itself.
+        This entry's linked record of a user's device stands for that device wherever it
+        is named (L25): the device picker offers it under the device's own name.
         """
         found: dict[str, None] = {}
         ignored: builtins.list[IgnoredTarget] = []
@@ -1889,12 +1906,12 @@ class RoutineManager:
                 ignored.append(IgnoredTarget(device_id, "device", reason))
 
         for device_id in _ids(target.get("device_id")):
-            consider(device_id)
+            consider(self._user_device(device_id) or device_id)
         for entity_id in _ids(target.get("entity_id")):
             if (owner := self._device_of_entity(entity_id)) is None:
                 ignored.append(IgnoredTarget(entity_id, "entity", "no_routine"))
             else:
-                consider(owner)
+                consider(self._user_device(owner) or owner)
         areas = {kind: list(_ids(target.get(f"{kind}_id"))) for kind in ("area", "floor", "label")}
         for floor_id in areas["floor"]:
             on_floor = [
@@ -1938,7 +1955,7 @@ class RoutineManager:
                 for entry in er.async_entries_for_area(entities, area_id)
                 if entry.device_id
             ]
-        return [device_id for device_id in found if not self._ours(device_id)]
+        return self._users_devices(found)
 
     def _label_devices(self, label_id: str) -> builtins.list[str]:
         found = [
@@ -1949,7 +1966,11 @@ class RoutineManager:
             for entry in er.async_entries_for_label(er.async_get(self.hass), label_id)
             if entry.device_id
         ]
-        return [device_id for device_id in found if not self._ours(device_id)]
+        return self._users_devices(found)
+
+    def _users_devices(self, device_ids: Iterable[str]) -> builtins.list[str]:
+        """Map this entry's linked records to the user's devices; leave the hub out."""
+        return [user for device_id in device_ids if (user := self._user_device(device_id))]
 
     # ----------------------------------------------------------------------------------
     # Sync back (PRD 7.3 and 8.2)

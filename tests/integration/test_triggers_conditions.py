@@ -493,6 +493,34 @@ async def test_conditions_hold_in_an_automation_for_each_target_kind(
     assert await ask() == ["when_paused"]
 
 
+async def test_a_linked_record_target_fires_and_holds_for_the_users_device(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    routines: MockConfigEntry,
+    clock: Clock,
+    freezer: Any,
+    calls: list[ServiceCall],
+) -> None:
+    """Plan A4.0 item 4 (L25, L47): the editor's device picker offers the linked record."""
+    clock.set(clock.at(0, "12:00"))
+    await give_routine(hass, manager, home.fan, freezer, on_time=time(17))
+    record = dr.async_get(hass).async_get_device_by_identifier(
+        ("sandbox", "fan"), routines.entry_id
+    )
+    assert record is not None
+    target = {"device_id": record.id}
+    await add_automation(hass, reacting("routines", [on("paused", target)]))
+    assert await check(hass, "is_paused", target) is False
+    assert await check(hass, "is_active", target) is True
+
+    await manager.async_pause(home.fan, duration=timedelta(hours=1))
+    await hass.async_block_till_done()
+
+    assert pairs(calls) == [("paused", home.fan)]
+    assert await check(hass, "is_paused", target) is True
+
+
 async def test_is_paused_and_is_active_with_any_and_all(
     hass: HomeAssistant,
     home: Home,
