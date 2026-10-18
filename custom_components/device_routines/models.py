@@ -222,6 +222,8 @@ class DomainProfile:
     off_label_key: str
     options: frozenset[Option]
     refused_device_classes: frozenset[str] = frozenset()
+    # The words of Turn off after for the domain: Close after, Lock after (PRD 5.3).
+    off_after_label_key: str = "turn_off_after"
 
 
 @dataclass(frozen=True, slots=True)

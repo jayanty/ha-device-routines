@@ -310,6 +310,32 @@
           }
         }
       },
+      "close_after": {
+        "name": "Close after",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "lock_after": {
+        "name": "Lock after",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
       "turn_back_on_after": {
         "name": "Turn back on after",
         "state_attributes": {

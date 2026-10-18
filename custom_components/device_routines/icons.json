@@ -81,6 +81,12 @@
       "turn_off_after": {
         "default": "mdi:timer-off-outline"
       },
+      "close_after": {
+        "default": "mdi:timer-off-outline"
+      },
+      "lock_after": {
+        "default": "mdi:timer-lock-outline"
+      },
       "turn_back_on_after": {
         "default": "mdi:timer-refresh-outline"
       }

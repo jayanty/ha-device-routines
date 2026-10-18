@@ -70,6 +70,7 @@ PROFILES: Mapping[str, DomainProfile] = {
         off_label_key="close_at",
         options=_TIMES_DAYS | {Option.TURN_OFF_AFTER},
         refused_device_classes=frozenset({"garage", "gate", "door"}),
+        off_after_label_key="close_after",
     ),
     "lock": DomainProfile(
         domain="lock",
@@ -79,6 +80,7 @@ PROFILES: Mapping[str, DomainProfile] = {
         on_label_key=None,
         off_label_key="lock_at",
         options=_OFF_DAYS_AFTER,
+        off_after_label_key="lock_after",
     ),
     "valve": DomainProfile(
         domain="valve",
@@ -89,6 +91,7 @@ PROFILES: Mapping[str, DomainProfile] = {
         off_label_key="close_at",
         options=_TIMES_DAYS | {Option.TURN_OFF_AFTER},
         refused_device_classes=frozenset({"gas"}),
+        off_after_label_key="close_after",
     ),
 }
 

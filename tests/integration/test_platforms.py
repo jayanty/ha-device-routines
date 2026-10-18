@@ -214,6 +214,48 @@ async def test_each_domain_profile_gets_exactly_its_controls_with_its_own_words(
         assert on.attributes["friendly_name"] == f"{name} {on_name}"
 
 
+@pytest.mark.parametrize(
+    ("entity_id", "state", "device_class", "duration_name"),
+    [
+        ("switch.sandbox_heater", "off", None, "Turn off after"),
+        ("climate.sandbox_thermostat", "off", None, "Turn off after"),
+        ("media_player.sandbox_speaker", "off", None, "Turn off after"),
+        ("cover.sandbox_blind", "closed", None, "Close after"),
+        ("cover.sandbox_gate", "closed", "gate", "Close after"),
+        ("lock.sandbox_lock", "locked", None, "Lock after"),
+        ("valve.sandbox_valve", "closed", None, "Close after"),
+        ("valve.sandbox_gas", "closed", "gas", "Close after"),
+    ],
+)
+async def test_turn_off_after_takes_the_words_of_the_domain(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    entity_id: str,
+    state: str,
+    device_class: str | None,
+    duration_name: str,
+) -> None:
+    """Plan A4.0 item 10 (PRD 5.3, L52): Close after and Lock after, as the times do."""
+    object_id = entity_id.partition(".")[2]
+    name = object_id.replace("_", " ").capitalize()
+    device_id = add_device(
+        hass, home.source, object_id, name, entity_id, state, device_class=device_class
+    )
+
+    await manager.async_opt_in(device_id)
+    await hass.async_block_till_done()
+
+    entry = page(hass, device_id)["turn_off_after"]
+    assert entry.unique_id == f"{DOMAIN}_{device_id}_turn_off_after"
+    label = duration_name.lower().replace(" ", "_")
+    assert entry.translation_key == label
+    assert shown(hass, entry.entity_id).attributes["friendly_name"] == f"{name} {duration_name}"
+    profile = manager.profile(device_id)
+    assert profile is not None
+    assert profile.off_after_label_key == label
+
+
 async def test_categories_and_enabled_defaults_follow_the_table(
     hass: HomeAssistant, home: Home, manager: RoutineManager, routines: MockConfigEntry
 ) -> None:
