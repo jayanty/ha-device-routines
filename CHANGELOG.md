@@ -6,15 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Build A (Phases 2 and 3) is in progress; the entries below grow with it.
+## [0.3.0] - 2026-10-18
+
+Routines (Phases 2 and 3), first published as the pre release `v0.3.0-beta.1`. Version
+0.2.0 is skipped: both phases ship together. Existing Phase 1 settings and stored data
+migrate on the first start.
 
 ### Added
 
 - Routine controls on every opted in device page: Routine, Turn on at and Turn off at
-  (worded for the device: Start at, Open at, Lock at), Days, Turn off after, Turn back on
-  after, Catch up after restart, Respect manual changes, Skip next, Paused until, Resume,
-  Manual override, and Routine controls when a device has several entities; a Clean up now
-  button on the hub.
+  (worded for the device: Start at, Open at, Lock at), Days, Turn off after (Close after on
+  a blind or a valve, Lock after on a lock), Turn back on after, Catch up after restart,
+  Respect manual changes, Skip next, Paused until, Resume, Manual override, and Routine
+  controls when a device has several entities; a Clean up now button on the hub. Each
+  routine is a normal automation built from the shipped blueprint, which Home Assistant
+  runs with or without the integration.
 - Every Schedule sensor carries two more attributes, `paused_until` and `skipped_action`
   (empty until a device has a routine), and a device's routine line sorts first.
 - The integration installs its routine blueprint
