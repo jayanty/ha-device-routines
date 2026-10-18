@@ -29,12 +29,21 @@ markers, never from the provider:
   after Paused until), so the state names the action Skip next would skip.
 - A detached routine (M1 without M2, Stage 0 V8) is parsed like any automation with the
   kind `detached_routine`; a line the parser cannot read is the translated kind phrase.
+
+The optional AI path (Build A lane 14, PRD FR-S5) lives in `AiSummaries`: after every
+index rebuild it queues the hand written automations with a line the parser could not
+fully read, asks the chosen AI Task entity about them one at a time, and the views show
+a cached answer in place of the custom logic line, marked `(AI)` and `source: ai`. A
+change listener (`async_add_change_listener`) lets the hub Routines sensor follow every
+device's summary.
 """
 
 from __future__ import annotations
 
+import asyncio
+from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
 import logging
 from typing import Any, Final, Protocol
@@ -45,6 +54,7 @@ from homeassistant.const import (
     EVENT_STATE_CHANGED,
 )
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, State, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import (
     area_registry as ar,
     device_registry as dr,
@@ -53,11 +63,12 @@ from homeassistant.helpers import (
     label_registry as lr,
 )
 from homeassistant.helpers.debounce import Debouncer
-from homeassistant.helpers.event import async_track_point_in_time
+from homeassistant.helpers.event import async_track_point_in_time, async_track_point_in_utc_time
 from homeassistant.helpers.sun import get_astral_event_date
 from homeassistant.util import dt as dt_util
+import probatio as vol
 
-from . import compiler, conflicts, ha_adapter, markers, nextrun, parser, repairs
+from . import ai_prompt, compiler, conflicts, ha_adapter, markers, nextrun, parser, repairs
 from .models import (
     Conflict,
     DeviceContext,
@@ -74,6 +85,7 @@ from .models import (
 )
 from .sentence import Phrases, Writer
 from .settings import GlobalSettings, ScheduleScope
+from .store import AiCacheEntry, RoutineStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,6 +98,14 @@ KIND_ROUTINE: Final = "routine"
 KIND_DETACHED: Final = "detached_routine"
 SOURCE_PARSER: Final = "parser"
 SOURCE_NONE: Final = "none"
+SOURCE_AI: Final = "ai"
+
+# The AI path (PRD FR-S5): never in the first five minutes after a start, and at most
+# `ai_calls_per_hour` calls in any hour.
+AI_STARTUP_DELAY: Final = timedelta(minutes=5)
+AI_PERIOD: Final = timedelta(hours=1)
+AI_TASK_DOMAIN: Final = "ai_task"
+AI_TASK_SERVICE: Final = "generate_data"
 
 # Statuses whose state reads "Routine off": the switch is off, or the manager turned the
 # routine off because its inputs are invalid or its target is gone (PRD 8.2, FR-R14).
@@ -256,6 +276,8 @@ class SummaryCoordinator:
         )
         # Listeners of every device's changes: the hub Routines sensor (Build A lane 14).
         self._change_listeners: list[CALLBACK_TYPE] = []
+        # The optional AI summary of the lines the parser cannot read (Build A lane 14).
+        self.ai = AiSummaries(hass, settings, phrases, self._refresh_views)
 
     # ----------------------------------------------------------------------------------
     # Lifecycle
@@ -287,6 +309,7 @@ class SummaryCoordinator:
                 bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, self._rebuild_soon)
             )
         self._started = True
+        self.ai.async_start()
         await self._async_rebuild()
 
     @callback
@@ -298,6 +321,7 @@ class SummaryCoordinator:
         self._unsubscribe.clear()
         self._debouncer.async_cancel()
         self._cancel_timer()
+        self.ai.async_stop()
 
     @callback
     def set_routine_provider(self, provider: RoutineItemsProvider | None) -> None:
@@ -400,6 +424,7 @@ class SummaryCoordinator:
 
     async def _async_rebuild(self) -> None:
         self._index = self._build_index()
+        self.ai.async_update(self._index.lines)
         self._refresh_views()
 
     def _build_index(self) -> _Index:
@@ -511,6 +536,11 @@ class SummaryCoordinator:
             update()
         for update in list(self._change_listeners):
             update()
+
+    @callback
+    def set_ai_store(self, store: RoutineStore) -> None:
+        """Take the Store whose `ai_cache` holds the AI lines; without it no AI is asked."""
+        self.ai.store = store
 
     @callback
     def async_add_change_listener(self, update: CALLBACK_TYPE) -> CALLBACK_TYPE:
@@ -655,6 +685,7 @@ class SummaryCoordinator:
             enabled=enabled,
             custom_logic=entry.line.custom_logic,
         )
+        item = self.ai.item(entry, item)
         return _Row(item, occurrences, entry.line.entity_ids)
 
     def _routine_rows(
@@ -919,6 +950,247 @@ def async_sync_conflict_issues(
             for subject, (device_name, routine) in routines.items()
         },
     )
+
+
+# --------------------------------------------------------------------------------------
+# The AI path (Build A lane 14: PRD FR-S5, TECH_SPEC 4.4)
+# --------------------------------------------------------------------------------------
+
+
+class TokenBucket:
+    """At most `capacity` calls in any `period`: each spent token returns a period later."""
+
+    def __init__(self, capacity: int, period: timedelta = AI_PERIOD) -> None:
+        """Start full."""
+        self.capacity = capacity
+        self.period = period
+        self._spent: deque[datetime] = deque()
+
+    def next_free(self, now: datetime) -> datetime:
+        """Return when the next token is free: `now` when one is free now."""
+        while self._spent and self._spent[0] + self.period <= now:
+            self._spent.popleft()
+        if len(self._spent) < self.capacity:
+            return now
+        return self._spent[0] + self.period
+
+    def take(self, now: datetime) -> None:
+        """Spend a token now; call it only when `next_free(now)` is `now`."""
+        self._spent.append(now)
+
+
+@dataclass(frozen=True, slots=True)
+class _AiRequest:
+    """One automation waiting for an AI line: its entity and the blocks to send."""
+
+    automation_entity: str
+    blocks: Mapping[str, Any]
+
+
+def _unread(line: ParsedLine) -> bool:
+    """Tell whether the parser could not fully read a line (FR-S5 sends those)."""
+    return line.custom_logic or not line.understood
+
+
+class AiSummaries:
+    """The optional AI line for automations the parser cannot fully read (PRD FR-S5).
+
+    Off unless `ai_task_entity` names an AI Task entity (and the Store is there for the
+    cache). After every index rebuild the hand written automations with a line the
+    parser could not fully read are queued, keyed by their config hash; one at a time
+    their trigger, condition and action blocks (`ai_prompt.blocks`: entity ids only) go
+    to that entity through the core's `ai_task.generate_data` action, never in the first
+    five minutes after Home Assistant started and at most `ai_calls_per_hour` times in
+    any hour (`TokenBucket`). The answer, cut to twelve words, is cached in the Store by
+    config hash, so it is asked again only when the automation changes, and the item
+    shows it with the `(AI)` suffix and `source: ai`. A failed call is not repeated for
+    that config while the entry runs. The cache is pruned to the hashes still present.
+    No interval: one point in time listener waits for the next allowed call.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        settings: GlobalSettings,
+        phrases: Phrases,
+        on_answer: Callable[[], None],
+    ) -> None:
+        """Hold the settings; `on_answer` recomputes the views after a new line."""
+        self.hass = hass
+        self.store: RoutineStore | None = None
+        self._entity = settings.ai_task_entity
+        self._phrases = phrases
+        self._on_answer = on_answer
+        self._bucket = TokenBucket(settings.ai_calls_per_hour)
+        self._digests: dict[str, str] = {}
+        self._queue: dict[str, _AiRequest] = {}
+        self._failed: set[str] = set()
+        self._asking: str | None = None
+        self._ready_at: datetime | None = None
+        self._task: asyncio.Task[None] | None = None
+        self._timer: CALLBACK_TYPE | None = None
+        self._unsub_started: CALLBACK_TYPE | None = None
+
+    @property
+    def enabled(self) -> bool:
+        """True when an AI Task entity is chosen and the cache can be kept."""
+        return self._entity is not None and self.store is not None
+
+    @callback
+    def async_start(self) -> None:
+        """Count the five minutes from now, or from Home Assistant's start if it is booting."""
+        if not self.enabled:
+            return
+        if self.hass.is_running:
+            self._begin()
+            return
+        self._unsub_started = self.hass.bus.async_listen_once(
+            EVENT_HOMEASSISTANT_STARTED, self._started
+        )
+
+    @callback
+    def _started(self, _event: Event[Any]) -> None:
+        self._unsub_started = None
+        self._begin()
+
+    @callback
+    def _begin(self) -> None:
+        self._ready_at = dt_util.utcnow() + AI_STARTUP_DELAY
+        self._pump()
+
+    @callback
+    def async_stop(self) -> None:
+        """Drop the queue, the timer and the call in flight."""
+        if self._unsub_started is not None:
+            self._unsub_started()
+            self._unsub_started = None
+        self._cancel_timer()
+        if self._task is not None:
+            self._task.cancel()
+            self._task = None
+        self._asking = None
+        self._queue.clear()
+        self._ready_at = None
+
+    @callback
+    def async_update(self, lines: Mapping[str, Sequence[IndexedLine]]) -> None:
+        """Queue every unread hand written automation whose config has no line yet."""
+        store = self.store
+        if self._entity is None or store is None:
+            return
+        unread = sorted(
+            {
+                entry.automation_entity
+                for group in lines.values()
+                for entry in group
+                if entry.kind == KIND_AUTOMATION and _unread(entry.line)
+            }
+        )
+        registry_ids = {
+            entry.id: entry.entity_id for entry in er.async_get(self.hass).entities.values()
+        }
+        digests: dict[str, str] = {}
+        queue: dict[str, _AiRequest] = {}
+        for entity_id in unread:
+            config = ha_adapter.automation_config(self.hass, entity_id)
+            if config is None:
+                continue
+            digest = digests[entity_id] = markers.config_hash(config)
+            if digest in store.data.ai_cache or digest in self._failed or digest == self._asking:
+                continue
+            queue[digest] = self._queue.get(digest) or _AiRequest(
+                entity_id, ai_prompt.blocks(config, registry_ids)
+            )
+        self._digests = digests
+        self._queue = queue
+        self._prune(store, set(digests.values()))
+        self._pump()
+
+    def _prune(self, store: RoutineStore, known: set[str]) -> None:
+        """Drop cached lines of configs that are gone, once the start has settled."""
+        if self._ready_at is None or dt_util.utcnow() < self._ready_at:
+            return
+        stale = [digest for digest in store.data.ai_cache if digest not in known]
+        for digest in stale:
+            del store.data.ai_cache[digest]
+        if stale:
+            store.async_delay_save()
+
+    def item(self, entry: IndexedLine, item: SummaryItem) -> SummaryItem:
+        """Return the item with the AI line when the parser could not read it and one exists."""
+        store = self.store
+        if (
+            self._entity is None
+            or store is None
+            or entry.kind != KIND_AUTOMATION
+            or not _unread(entry.line)
+        ):
+            return item
+        cached = store.data.ai_cache.get(self._digests.get(entry.automation_entity, ""))
+        if cached is None:
+            return item
+        text = self._phrases["ai_line"].format(text=cached.text)
+        return replace(item, summary=text, source=SOURCE_AI)
+
+    @callback
+    def _pump(self) -> None:
+        """Send the next queued automation when a call is allowed, else wait for that."""
+        self._cancel_timer()
+        if self._asking is not None or not self._queue or self._ready_at is None:
+            return
+        now = dt_util.utcnow()
+        due = max(self._ready_at, self._bucket.next_free(now))
+        if due > now:
+            self._timer = async_track_point_in_utc_time(self.hass, self._timer_fired, due)
+            return
+        digest = next(iter(self._queue))
+        request = self._queue.pop(digest)
+        self._bucket.take(now)
+        self._asking = digest
+        # Not started eagerly: the call finishes after this task is known, never inside.
+        self._task = self.hass.async_create_task(
+            self._async_ask(digest, request), "device_routines AI summary", eager_start=False
+        )
+
+    @callback
+    def _timer_fired(self, _now: datetime) -> None:
+        self._timer = None
+        self._pump()
+
+    def _cancel_timer(self) -> None:
+        if self._timer is not None:
+            self._timer()
+            self._timer = None
+
+    async def _async_ask(self, digest: str, request: _AiRequest) -> None:
+        """Ask the AI Task entity about one automation and cache the line it answers."""
+        text: str | None = None
+        try:
+            response = await self.hass.services.async_call(
+                AI_TASK_DOMAIN,
+                AI_TASK_SERVICE,
+                {
+                    "task_name": ai_prompt.TASK_NAME,
+                    "entity_id": self._entity,
+                    "instructions": ai_prompt.instructions(request.blocks),
+                },
+                blocking=True,
+                return_response=True,
+            )
+            text = ai_prompt.trim((response or {}).get("data"))
+        except (HomeAssistantError, vol.Invalid) as err:
+            _LOGGER.warning("The AI summary of %s failed: %s", request.automation_entity, err)
+        self._task = None
+        self._asking = None
+        store = self.store
+        if text is None or store is None:
+            _LOGGER.debug("No AI line for %s", request.automation_entity)
+            self._failed.add(digest)
+        else:
+            store.data.ai_cache[digest] = AiCacheEntry(text, dt_util.utcnow())
+            store.async_delay_save()
+            self._on_answer()
+        self._pump()
 
 
 class _NameLookup(Mapping[str, str]):

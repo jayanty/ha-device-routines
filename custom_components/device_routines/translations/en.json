@@ -435,7 +435,7 @@
       },
       "settings": {
         "data_description": {
-          "ai_task_entity": "Optional, off when empty. Device Routines then sends this AI Task entity, through its generate data action, only the automations whose schedule it cannot read itself, one automation at a time and at most AI calls per hour times an hour, never in the first five minutes after a start: their trigger, condition and action blocks as written, templates included, with entities named by entity id. Aliases and descriptions are left out, devices, areas, floors and labels become numbered placeholders, and no states, attributes or names are sent. Nothing goes anywhere else; where the entity sends it next depends on its integration (a local model keeps it in your home, a cloud service does not). Answers are cached until the automation changes and are shown with (AI)."
+          "ai_task_entity": "Optional; AI summaries stay off while this is empty. When you choose an AI Task entity, Device Routines sends it, through its generate data action, only the automations whose schedule it cannot read itself: one automation at a time, at most as many an hour as AI calls per hour allows, and never in the first five minutes after a start. For each it sends the trigger, condition and action blocks as written, templates included, with entities named by entity id. Aliases and descriptions are left out, devices, areas, floors and labels become numbered placeholders, and no names, states or attributes are sent. It goes to this entity only; where the entity sends it next depends on its integration (a local model keeps it in your home, a cloud service does not). Answers are kept until the automation changes and show with (AI)."
         }
       }
     },

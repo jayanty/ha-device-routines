@@ -590,6 +590,7 @@ class RoutineManager:
             bus.async_listen(EVENT_STATE_CHANGED, self._schedule_filled, event_filter=_has_blocks),
         ]
         self.summary.set_routine_provider(self)
+        self.summary.set_ai_store(self._store)
         await self._attributor.async_start()
         if self.hass.is_running:
             await self.async_reconcile()
