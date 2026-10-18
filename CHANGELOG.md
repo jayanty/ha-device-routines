@@ -21,6 +21,9 @@ Build A (Phases 2 and 3) is in progress; the entries below grow with it.
   `enable`, `disable` and `maintenance`, with device, area, floor, label and entity
   targets and an optional response listing what each target did and which targets have
   no routine.
+- Automation triggers "Routine action skipped", "Routine paused" and "Routine resumed" and
+  conditions "Routine is paused" and "Routine is active", with device, area, floor, label
+  and entity targets.
 
 ## [0.1.0] - 2026-10-18
 

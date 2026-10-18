@@ -464,3 +464,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | The five routine actions take a target filtered by entity domain (`domains.SUPPORTED_DOMAINS` plus `automation`, pinned by a test), with no device filter; `ignored` serializes as `{target, kind, reason}` (for a device, `target` is the device id), the asdict convention of TECH_SPEC 4.7; an offset free `until` is local time; `maintenance` takes an optional `dry_run`; a call with no loaded entry raises the translated `not_loaded`. `services.action_response` and `services.maintenance_response` are public so the WebSocket commands answer in the same shape. |
 | Consequence | Three manager gaps go to plan A4.0: a past `until` or zero `for` must be rejected before target resolution (a strict xfail pins it), linked device records must resolve to the user's device, and maintenance errors must be translated. |
 | PRD register entry | no |
+
+## 2026-10-18 L47: the integration triggers and conditions
+
+| Field | Content |
+| --- | --- |
+| Context | Lane 13 built FR-R17 on the V13 shape. Open: the target filter, what paused and active mean, how `all` counts routines that are off, an empty target, and whether a status change without a manager event fires. |
+| Options | As chosen, or the core's conventions for its own purpose specific triggers (which leave unavailable entities out of `all` and treat `all` over nothing as true). |
+| Choice | Targets filter by entity domain (the supported domains, pinned to `SUPPORTED_DOMAINS` by a test), for the reason of L46. Paused means status `paused` or `skipping` (a skip pauses until its paired end, D18 and D19); active means status `active`. `all` is strict: off and broken routines count, so `paused` with `all` fires exactly when `is_paused` with `all` becomes true; an empty target is false for both `any` and `all`. `paused` fires on every manager paused event, a replaced or extended pause included; an off routine fires neither `paused` nor `resumed`; a status change without a manager event fires nothing. No `for` option (the PRD lists only behavior). Floor targets work through `resolve_targets`; without a loaded entry nothing fires and every condition is false. |
+| Consequence | The linked device record gap of L46 also affects these pickers (A4.0); the editor's picker look stays owner item O4. |
+| PRD register entry | no |
