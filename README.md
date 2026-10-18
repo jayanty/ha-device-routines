@@ -9,8 +9,9 @@ Device Routines adds start and stop times, run timers and a plain language sched
 summary to every Home Assistant device page, backed by real, clearly marked automations
 that keep running even if the integration is removed.
 
-> Status: pre-release. Phase 0 (repository, pipeline and skeleton) is in progress. Nothing
-> here configures a device yet. The roadmap is in [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
+> Status: pre-release. Phase 1, the read only Schedule summary, is being built: every device
+> an automation acts on gets a Schedule sensor. Routines (the controls below) arrive in
+> Phase 2. The roadmap is in [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
 
 ## What it does
 
@@ -47,6 +48,7 @@ Requires Home Assistant 2026.10 or newer.
 
 ## Documentation
 
+- [User guide](docs/user-guide.md): reading the Schedule sensor.
 - [Product requirements](docs/PRD.md): what the integration does and why.
 - [Technical specification](docs/TECH_SPEC.md): how it is built.
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md): the build order and validation.
