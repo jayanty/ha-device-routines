@@ -354,3 +354,23 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | A change is a new state value between two available states: attribute updates, an entity appearing or going away and every transition to or from `unknown` or `unavailable` are ignored (a device coming back is catch up's job, PRD FR-R5, and an override set by its return would suppress that catch up). The grace runs while Home Assistant boots and until 30 seconds after the started event; set up in a running instance (install, reload) there is none. The run map wins over a user id (a script a person starts from a dashboard is an automation change), per the order of TECH_SPEC 4.3. Every value change of a watched entity reaches the sink, even when the on and off reading does not move, so `last_change_source` stays current; sink calls run as eagerly started tasks in event order. The run event names are local constants pinned to the core's by a test, because only the adapter may import the automation and script components. |
 | Consequence | Lane 5 implements `OverrideSink` idempotently and applies its state before its first await; `await attributor.async_start()`, `attributor.async_stop()` without await. Plan Section 4.2 attribution row annotated. |
 | PRD register entry | no |
+
+## 2026-10-18 L36: timer and schedule helpers carry no device
+
+| Field | Content |
+| --- | --- |
+| Context | TECH_SPEC 4.2 and L23 attach each routine helper to its device through the entity registry. Lane 3 found that on core 2026.10 the registry accepts a `device_id` for an entity without a config entry but drops it the next time the entity is added (an entity id change or a restart), logging that attaching a device to such an entity is deprecated and breaks in 2027.8. A canary test, `test_a_helper_does_not_keep_a_device_on_this_core`, holds the behavior. |
+| Options | (a) Keep setting the device and accept that it vanishes; (b) give helpers the entity id and the label only; (c) own the helpers through a config entry of this integration, which the core's helper collections do not offer. |
+| Choice | (b). The label, the entity id slug (`timer.routine_<slug>`, `schedule.routine_<slug>`) and the Store tie a helper to its routine; `async_create_helper` takes no device. |
+| Consequence | TECH_SPEC 4.2 helper row amended. The device page never showed helpers (they are inputs of the routine, not device controls), so nothing user visible changes. If the canary starts failing on a later core, the device link can return. |
+| PRD register entry | no |
+
+## 2026-10-18 L37: adapter semantics the manager relies on, and the two removal capabilities
+
+| Field | Content |
+| --- | --- |
+| Context | The Section 4.2 contract named the adapter's functions but not the write guard's exact meaning, and it had no path for the two writes the removal flow needs: take control of an owned automation (a config without M2, which the write guard refuses by design) and removing the system user (L23). |
+| Options | For the guard: a file hash or an entry hash. For removal: relax the write guard, or add one narrow capability per need. |
+| Choice | The guard is the file hash the adapter itself handed out at the caller's read (`file_hash` right after `async_read_automation`); a move of the file is retried once against a fresh read provided the target entry is unchanged since the guarded read, a second move or a changed target raises `WriteConflictError`; other entries' concurrent changes are never lost; comments are dropped as the core editor drops them. `async_install_blueprint` writes the exact shipped text after `async_add_blueprint`, because the core re dumps YAML and the shipped hash compare of TECH_SPEC 7 needs the bytes. `is_detached` is M1 without ownership, which also covers a `use_blueprint` pointed elsewhere. Removal gets two narrow capabilities, added by lane 10: `async_release_automation` writes an entry without M2 only over an entry owned at that moment, and `async_remove_system_user`. The write guard stays as it is. |
+| Consequence | Plan Section 4.2 adapter row and lane 10's file list amended. The invariant of CLAUDE.md Section 3 holds: every write targets an owned entry. |
+| PRD register entry | no |
