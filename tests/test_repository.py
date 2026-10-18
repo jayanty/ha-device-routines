@@ -34,6 +34,7 @@ PURE_MODULES = (
     "conflicts.py",
     "sentence.py",
     "settings.py",
+    "conversion.py",
 )
 
 # The modules allowed to reach Home Assistant internals (anything outside the public

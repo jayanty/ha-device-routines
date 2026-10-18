@@ -584,3 +584,43 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | (b). The instance moves only by hand deploys of tags: the beta at a build exit, the full tag after its live validation (Section 5.4), until the last build is released and the owner decides the channel (O13). The post restart check, the last good commit and the rollback stay as they are (L13, L16, L17). |
 | Consequence | Plan Section 0.1.6 amended. `v0.3.0-beta.1` (`efbf757`) is on disk since 2026-10-18 07:31Z and R1 loads exactly it; owner log O15 carries the request with the hazard (no diagnostics, Repairs or options of Device Routines before the restart). |
 | PRD register entry | no |
+
+## 2026-10-18 L59: Build B opens with wave B1 as three lanes; restart R1 has happened
+
+| Field | Content |
+| --- | --- |
+| Context | The Build A exit is recorded (Status line, L58). Health reads `ok` on `efbf757` (`v0.3.0-beta.1`, blueprint schema 1, no routine) since about 15:16Z: the owner's restart R1 happened before Build B opened, and auto deploy reads off. Plan 6.2 gave lanes 16 to 18 one line each. Lanes 16 and 17 change two sides of one tested contract: `tests/integration/test_contracts.py` compares the compiler's input names, defaults and schema with the installed blueprint and with the blueprint tests' mirror, so each lane alone breaks those tests. |
+| Options | (a) Lane 16 first, lane 17 after it lands; (b) both in parallel against a pinned contract, the comparing tests failing by design in each worktree until both land. |
+| Choice | (b). Plan 6.2.1 pins the shared names, the 38 schema 2 inputs with their order, defaults and value types, and the blueprint semantics; 6.2.2 to 6.2.4 are the lane briefs. Each lane reports the comparing tests by id; the orchestrator lands lanes 16 and 17 together, and any other failure is the lane's. Lane 18 is independent. Live validation A (plan 5.3) runs in its own session, proposed to the owner; this session does not run it and does not touch the validation records. Auto deploy stays off (L58). |
+| Consequence | Plan 6.1 amended by L60 and L61; plan 6.2 expanded; the Status line names the lanes and their branches. Owner log O15 is done. |
+| PRD register entry | no |
+
+## 2026-10-18 L60: sun bounds are a kind and an offset per side, compiled into blueprint input schema 2
+
+| Field | Content |
+| --- | --- |
+| Context | Plan 6.1 sketches FR-R10 as blueprint schema 2. Open: the shape in `RoutineSettings`, the offset's unit and range, whether a window with a sun bound crosses midnight, how the blueprint tests a window with offsets, and how schema 1 inputs read once the compiler is on schema 2 (`migration.DECOMPILERS` is empty, so `decompile_inputs(inputs, 1)` would refuse every routine at the first load). |
+| Options | Shape: (a) a kind and an offset per side next to the existing times; (b) one bound type replacing `on_time` and `off_time`, which every caller of Build A reads. Crossing: (c) a fixed nominal time per sun event; (d) the real sun times of the day, which would make the derived inputs change with the seasons and break `compile(decompile(i)) == i`. Window test: (e) the `sun` condition per half; (f) the state of `sun.sun`, which carries neither offsets nor the per half weekday sets. Schema 1: (g) a copied schema 1 decompiler; (h) `compiler.decompile` behind a schema 1 key check, pinned by a recorded fixture. |
+| Choice | (a), (c), (e), (h). Offsets in whole minutes (minutes everywhere, as for every other duration), plus or minus 180, so a nominal sun time plus its offset stays inside one day. Nominal sunrise 06:00 and sunset 18:00 decide only whether a window crosses midnight and which days its end runs on: sunset to sunrise crosses, sunrise to sunset does not, 22:00 to sunrise crosses, sunset to 23:00 does not. The four sun triggers share the ids `scheduled_on` and `scheduled_off`, so pause, skip, the start and end day rule and the skipped event apply to them unchanged. `expected_on` tests each half with the `sun` condition and its offset, Home Assistant's documented form for a window across midnight; the 6.1 sentence about `sun.sun` is superseded. Every new input defaults to schema 1 behavior, so a schema 1 routine runs unchanged on the schema 2 blueprint between the blueprint install and its rewrite. `DECOMPILERS[1]` refuses schema 2 keys and otherwise reads with `compiler.decompile`; `tests/fixtures/schema1/inputs.json` pins it, and a later change that reads schema 1 differently freezes a copy then. |
+| Consequence | A fixed bound that a sun bound passes over in the course of a year (sunset to 20:00 in a northern summer) follows the nominal order; the user guide says so (wave B3). On a day without a sunrise or sunset `nextrun` leaves that bound's action out. Plan 6.2.1 carries the contract; TECH_SPEC 3.1, 3.3, 3.6 (lane 16) and 5 (lane 17) follow. |
+| PRD register entry | no |
+
+## 2026-10-18 L61: what an exact conversion match is
+
+| Field | Content |
+| --- | --- |
+| Context | Plan 6.1 gives `conversion.match(lines, device)` and two shapes. The parser's lines are one per action on the device, so an extra notification or scene in the same automation is invisible to them, and converting would drop it. A window crossing midnight with a weekday condition ends on the condition's weekdays in a hand written automation but the day after each start day in a routine (FR-R1: a window belongs to the day it starts on). |
+| Options | Match on the lines only; or on the whole config, with the parser for what the lines say. |
+| Choice | `match(config, device)`. FR-R1 shape: exactly two enabled `time` triggers at fixed whole minute times (no entity, no offset), at different times; exactly one on action and one off action, on one entity of the device, each run by exactly one of the two triggers (a `choose` or an `if` on `trigger` conditions naming their ids) and carrying nothing beyond the target; conditions none, or only a `weekday` (a `time` condition with `weekday` alone, or the same `weekday` on both triggers); a window crossing midnight matches only on every day. FR-R3 shape: exactly one enabled `state` trigger on one entity of the device, `to: "on"`, `from` absent or `"off"`, `for` a whole number of minutes from 1 to 1440; exactly one off action on that entity; no condition. Everything else is None: a template, variables, a second entity or device, any other action (a delay, a notification, a scene, a toggle), a disabled trigger or action, an action carrying data (a brightness), seconds, an entity held time, any other condition. The settings carry the entity, the times or the duration and the days (a named day set as its name, else Some days); every other field is the `RoutineSettings` default. |
+| Consequence | Lane 16 implements and tests every shape and exclusion; lane 20 validates a match against the profile, skips devices with a routine, applies the global defaults and counts the golden corpus's offers by fixture number. |
+| PRD register entry | no |
+
+## 2026-10-18 L62: where the console's source, bundle and words live
+
+| Field | Content |
+| --- | --- |
+| Context | Plan 6.1 fixes Lit, TypeScript, Vite and vitest and records the committed bundle when it is reached. Open: where the source and the bundle live, what the scaffold lane commits, where the console's words come from, and how the views are tested before the integration serves them (lane 21). |
+| Options | Source inside the integration or at the repository root; the bundle committed from the scaffold on, or once the panel and its CI check exist; console words in `strings.json` (whose categories are fixed by the core) or in the console. |
+| Choice | Source in `frontend/` at the repository root, so the release zip and the dev channel carry only the bundle; the bundle at `custom_components/device_routines/frontend/dist/device-routines-panel.js`, inside the deploy tool's `frontend/` prefix (a browser reload); uncommitted in wave B1 and committed by lane 21 together with `panel.py` and the `frontend` CI job, which records the 6.1 decision. The console's words are keys in `frontend/src/translations/en.json`; error codes render with the integration's `exceptions` translations through `hass.localize`; colors from the theme variables; no `ha-*` element is needed. The scaffold is tested with vitest against a fake `hass` whose connection answers with the JSON examples of `docs/api.md`, extracted into `frontend/test/fixtures/api.json` by a script, and a test keeps the two equal. |
+| Consequence | Lane 18 commits no bundle; `.gitignore` keeps `dist/` ignored until lane 21 adds the exception. The style and privacy checks cover the frontend's text files. |
+| PRD register entry | no |

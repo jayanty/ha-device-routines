@@ -69,8 +69,8 @@ prompt for every later session.
 ## 3. Architecture invariants
 
 - Pure modules (`models`, `domains`, `compiler`, `markers`, `parser`, `parser_grammar`,
-  `nextrun`, `conflicts`, `sentence`, `settings`) import only the standard library and
-  each other. `tests/test_repository.py` parses the imports and fails otherwise.
+  `nextrun`, `conflicts`, `sentence`, `settings`, `conversion`) import only the standard
+  library and each other. `tests/test_repository.py` parses the imports and fails otherwise.
 - Only `ha_adapter.py` touches Home Assistant internals; everything else uses the public
   core, helpers and its own platform's base classes. Same test.
 - Behavior lives in `manager.py`, `summary.py`, `attribution.py`, `settings.py` and

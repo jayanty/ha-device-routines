@@ -27,7 +27,7 @@ Import rules, enforced by a test that parses the AST of every module:
 
 | Module group | May import |
 | --- | --- |
-| Pure: `models`, `domains`, `compiler`, `markers`, `parser`, `parser_grammar`, `nextrun`, `conflicts`, `sentence`, `settings` | Standard library and each other |
+| Pure: `models`, `domains`, `compiler`, `markers`, `parser`, `parser_grammar`, `nextrun`, `conflicts`, `sentence`, `settings`, `conversion` (Build B, decision L61) | Standard library and each other |
 | `ha_adapter` | `homeassistant.*`, including internals of `automation`, `blueprint`, `timer`, `schedule` and `config` |
 | Everything else | `homeassistant.core`, `homeassistant.helpers.*`, the base classes of its own platform, the pure modules, `ha_adapter` |
 
