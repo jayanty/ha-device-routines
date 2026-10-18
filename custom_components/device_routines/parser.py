@@ -203,40 +203,65 @@ def _sun_trigger(node: Mapping[str, Any]) -> list[Trigger] | None:
     return [SunTrigger(event=node["event"], offset=offset)]
 
 
-def _state_values(value: Any) -> tuple[bool, str | None]:
-    """(understood, value) for a state trigger's `to` or `from`."""
+def _state_values(value: Any) -> tuple[str | None, ...] | None:
+    """Return the states a state trigger's `to` or `from` names, once each; (None,) for any.
+
+    None when a value is not a state, or the list is empty.
+    """
     if value is None:
-        return True, None
-    values = _as_list(value)
-    if len(values) == 1 and isinstance(values[0], str | bool):
-        single = values[0]
-        if isinstance(single, bool):
-            return True, "on" if single else "off"
-        return True, single
-    return False, None
+        return (None,)
+    found: list[str | None] = []
+    for item in _as_list(value):
+        if isinstance(item, bool):
+            found.append("on" if item else "off")
+        elif isinstance(item, str):
+            found.append(item)
+        else:
+            return None
+    return tuple(dict.fromkeys(found)) or None
+
+
+def _noise_filtered(node: Mapping[str, Any], named: Iterable[str | None]) -> bool:
+    """Tell whether `not_to` and `not_from` only drop unknown and unavailable as noise.
+
+    That reading holds for a trigger about real states ("turns on"); a trigger that names
+    unknown or unavailable itself is about them, and the filter changes what it means.
+    """
+    filters = [set(_as_list(node[key])) for key in ("not_to", "not_from") if key in node]
+    if not all(values <= _IGNORED_UNAVAILABLE for values in filters):
+        return False
+    return not filters or not set(named) & _IGNORED_UNAVAILABLE
 
 
 def _state_triggers(node: Mapping[str, Any], device: DeviceContext) -> list[Trigger] | None:
+    """One trigger per entity and per from and to pair the core can fire on.
+
+    `to: [a, b]` fires exactly when `to: a` or `to: b` would, and a held `for` is tracked
+    per change, so the pairs read as separate triggers. A pair from a state to itself never
+    fires and is left out.
+    """
     if not _only(node, {"entity_id", "to", "from", "for", "not_to", "not_from"}):
         return None
-    for key in ("not_to", "not_from"):
-        if key in node and not set(_as_list(node[key])) <= _IGNORED_UNAVAILABLE:
-            return None
-    to_ok, to = _state_values(node.get("to"))
-    from_ok, from_state = _state_values(node.get("from"))
+    targets, origins = _state_values(node.get("to")), _state_values(node.get("from"))
+    if targets is None or origins is None or not _noise_filtered(node, targets + origins):
+        return None
     duration = None
     if "for" in node:
         duration = parse_duration(node["for"])
         if duration is None:
             return None
     entities = [_resolve(entity, device) for entity in _as_list(node.get("entity_id"))]
-    if not (to_ok and from_ok) or not entities or None in entities:
+    if not entities or None in entities:
         return None
-    return [
-        StateTrigger(entity=entity, to=to, from_state=from_state, duration=duration)
+    found: list[Trigger] = [
+        StateTrigger(entity=entity, to=to, from_state=origin, duration=duration)
         for entity in entities
         if entity is not None
+        for origin in origins
+        for to in targets
+        if origin is None or origin != to
     ]
+    return found or None
 
 
 def _numeric_triggers(node: Mapping[str, Any], device: DeviceContext) -> list[Trigger] | None:

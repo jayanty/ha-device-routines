@@ -232,22 +232,110 @@ def test_state_trigger_values() -> None:
         entity=FAN, to="off"
     )
     assert trigger_of({"trigger": "state", "entity_id": REGISTRY_ID}) == StateTrigger(entity=FAN)
+    assert trigger_of(
+        {
+            "trigger": "state",
+            "entity_id": FAN,
+            "not_from": ["unknown", "unavailable"],
+            "not_to": ["unknown", "unavailable"],
+        }
+    ) == StateTrigger(entity=FAN)
+
+
+def triggers_of(node: dict[str, Any]) -> tuple[Any, ...]:
+    line = only(automation(triggers=[node]))
+    assert line.understood, line
+    assert not line.custom_logic, line
+    return line.triggers
+
+
+def test_a_state_trigger_with_several_states_reads_as_one_trigger_per_state() -> None:
+    """`to: [a, b]` fires exactly when `to: a` or `to: b` would, a held `for` included."""
+    assert triggers_of({"trigger": "state", "entity_id": FAN, "to": ["on", "off"]}) == (
+        StateTrigger(entity=FAN, to="on"),
+        StateTrigger(entity=FAN, to="off"),
+    )
+    assert triggers_of(
+        {
+            "trigger": "state",
+            "entity_id": "sensor.power",
+            "to": ["unavailable", "unknown"],
+            "for": {"minutes": 10},
+        }
+    ) == (
+        StateTrigger(entity="sensor.power", to="unavailable", duration=timedelta(minutes=10)),
+        StateTrigger(entity="sensor.power", to="unknown", duration=timedelta(minutes=10)),
+    )
+    assert triggers_of(
+        {"trigger": "state", "entity_id": "sensor.power", "from": ["unavailable", "unknown"]}
+    ) == (
+        StateTrigger(entity="sensor.power", from_state="unavailable"),
+        StateTrigger(entity="sensor.power", from_state="unknown"),
+    )
+
+
+def test_several_from_and_to_states_read_as_every_pair_per_entity() -> None:
+    assert triggers_of(
+        {
+            "trigger": "state",
+            "entity_id": [FAN, "binary_sensor.door"],
+            "from": ["idle", "paused"],
+            "to": ["heat", "cool"],
+        }
+    ) == (
+        StateTrigger(entity=FAN, from_state="idle", to="heat"),
+        StateTrigger(entity=FAN, from_state="idle", to="cool"),
+        StateTrigger(entity=FAN, from_state="paused", to="heat"),
+        StateTrigger(entity=FAN, from_state="paused", to="cool"),
+        StateTrigger(entity="binary_sensor.door", from_state="idle", to="heat"),
+        StateTrigger(entity="binary_sensor.door", from_state="idle", to="cool"),
+        StateTrigger(entity="binary_sensor.door", from_state="paused", to="heat"),
+        StateTrigger(entity="binary_sensor.door", from_state="paused", to="cool"),
+    )
+
+
+def test_a_pair_that_can_never_fire_is_left_out_and_repeats_are_read_once() -> None:
+    """The core never fires on a change to the state an entity already has."""
+    assert triggers_of(
+        {"trigger": "state", "entity_id": FAN, "from": ["on", "off"], "to": "on"}
+    ) == (StateTrigger(entity=FAN, from_state="off", to="on"),)
+    assert triggers_of({"trigger": "state", "entity_id": FAN, "to": ["on", True, "on"]}) == (
+        StateTrigger(entity=FAN, to="on"),
+    )
 
 
 @pytest.mark.parametrize(
     "node",
     [
-        {"trigger": "state", "entity_id": FAN, "to": ["on", "off"]},
         {"trigger": "state", "entity_id": FAN, "attribute": "speed"},
         {"trigger": "state", "entity_id": FAN, "not_to": ["off"]},
         {"trigger": "state", "entity_id": FAN, "for": "{{ 5 }}"},
         {"trigger": "state", "entity_id": FAN, "for": "later"},
         {"trigger": "state", "entity_id": UNKNOWN_REGISTRY_ID},
         {"trigger": "state"},
+        {"trigger": "state", "entity_id": FAN, "to": []},
+        {"trigger": "state", "entity_id": FAN, "to": ["on", 3]},
+        {"trigger": "state", "entity_id": FAN, "from": "on", "to": "on"},
     ],
 )
 def test_state_triggers_outside_the_grammar(node: dict[str, Any]) -> None:
     not_understood_trigger(node)
+
+
+@pytest.mark.parametrize(
+    "node",
+    [
+        {"from": ["unavailable", "unknown"], "not_to": ["unavailable", "unknown"]},
+        {"from": "unavailable", "not_to": ["unknown"]},
+        {"to": ["on", "unknown"], "not_from": ["unavailable"]},
+    ],
+)
+def test_an_unavailable_filter_is_noise_only_for_a_trigger_about_real_states(
+    node: dict[str, Any],
+) -> None:
+    """Dropping unknown and unavailable is read as noise filtering ("turns on"), unless the
+    trigger itself names unknown or unavailable: then the filter is what it is about."""
+    not_understood_trigger({"trigger": "state", "entity_id": "sensor.power", **node})
 
 
 def test_numeric_state_trigger() -> None:

@@ -294,6 +294,29 @@ def test_lines_from_the_parser_in_24_hour_format() -> None:
     assert writer("24h").line(parsed) == "Mon, Wed 17:00: on"
 
 
+def summarized(trigger: dict[str, Any]) -> str:
+    """The line of an automation that turns the fan on, from the parser to the writer."""
+    device = DeviceContext("d", (EntityRef(FAN),))
+    config = {
+        "triggers": [trigger],
+        "actions": [{"action": "fan.turn_on", "target": {"entity_id": FAN}}],
+    }
+    (parsed,) = parser.summarize(config, device)
+    return writer().line(parsed)
+
+
+def test_a_state_trigger_with_several_states_reads_one_clause_per_state() -> None:
+    assert summarized(
+        {"trigger": "state", "entity_id": [DOOR, "binary_sensor.b"], "to": ["on", "off"]}
+    ) == (
+        "When Front door or binary_sensor.b turns on"
+        " or when Front door or binary_sensor.b turns off: on"
+    )
+    assert summarized(
+        {"trigger": "state", "entity_id": DOOR, "to": ["unavailable", "unknown"], "for": 600}
+    ) == ("When Front door is unavailable for 10 min or when Front door is unknown for 10 min: on")
+
+
 # --------------------------------------------------------------------------------------
 # The sensor state and its cap
 # --------------------------------------------------------------------------------------

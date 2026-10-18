@@ -217,7 +217,7 @@
         "source": "parser"
       },
       {
-        "line": "Every 5 min or when sensor.example_sensor_7 rises above 0.4 or when sensor.example_sensor_7 rises above 1.49 or when sensor.example_sensor_7 rises above 0.99 for 1 min 5 s or when sensor.example_sensor_7 drops below 0.4 for 1 min 5 s or when sensor.example_sensor_8 rises above 104.9 or when sensor.example_sensor_8 drops below 95 or when timer.example_timer_4 finishes or when timer.example_timer_5 finishes or when input_datetime.example_input_datetime_2 changes or when binary_sensor.example_binary_sensor_6 turns on or when a block of schedule.example_schedule_1 starts or when a block of schedule.example_schedule_1 ends or when Home Assistant starts: off (if 4 conditions pass), plus custom logic",
+        "line": "Every 5 min or when sensor.example_sensor_7 rises above 0.4 or when sensor.example_sensor_7 rises above 1.49 or when sensor.example_sensor_7 rises above 0.99 for 1 min 5 s or when sensor.example_sensor_7 drops below 0.4 for 1 min 5 s or when sensor.example_sensor_8 rises above 104.9 or when sensor.example_sensor_8 drops below 95 or when timer.example_timer_4 finishes or when timer.example_timer_5 finishes or when binary_sensor.example_binary_sensor_7 or binary_sensor.example_binary_sensor_8 turns on or when binary_sensor.example_binary_sensor_7 or binary_sensor.example_binary_sensor_8 turns off or when sensor.example_sensor_8 is unavailable for 10 min or when sensor.example_sensor_8 is unknown for 10 min or when input_datetime.example_input_datetime_2 changes or when binary_sensor.example_binary_sensor_6 turns on or when a block of schedule.example_schedule_1 starts or when a block of schedule.example_schedule_1 ends or when Home Assistant starts: off (if 4 conditions pass), plus custom logic",
         "source": "parser"
       }
     ],
@@ -227,18 +227,18 @@
         "source": "parser"
       },
       {
-        "line": "Every 5 min or when sensor.example_sensor_7 rises above 0.4 or when sensor.example_sensor_7 rises above 1.49 or when sensor.example_sensor_7 rises above 0.99 for 1 min 5 s or when sensor.example_sensor_7 drops below 0.4 for 1 min 5 s or when sensor.example_sensor_8 rises above 104.9 or when sensor.example_sensor_8 drops below 95 or when timer.example_timer_4 finishes or when timer.example_timer_5 finishes or when input_datetime.example_input_datetime_2 changes or when binary_sensor.example_binary_sensor_6 turns on or when a block of schedule.example_schedule_1 starts or when a block of schedule.example_schedule_1 ends or when Home Assistant starts: off (if 2 conditions pass), plus custom logic",
+        "line": "Every 5 min or when sensor.example_sensor_7 rises above 0.4 or when sensor.example_sensor_7 rises above 1.49 or when sensor.example_sensor_7 rises above 0.99 for 1 min 5 s or when sensor.example_sensor_7 drops below 0.4 for 1 min 5 s or when sensor.example_sensor_8 rises above 104.9 or when sensor.example_sensor_8 drops below 95 or when timer.example_timer_4 finishes or when timer.example_timer_5 finishes or when binary_sensor.example_binary_sensor_7 or binary_sensor.example_binary_sensor_8 turns on or when binary_sensor.example_binary_sensor_7 or binary_sensor.example_binary_sensor_8 turns off or when sensor.example_sensor_8 is unavailable for 10 min or when sensor.example_sensor_8 is unknown for 10 min or when input_datetime.example_input_datetime_2 changes or when binary_sensor.example_binary_sensor_6 turns on or when a block of schedule.example_schedule_1 starts or when a block of schedule.example_schedule_1 ends or when Home Assistant starts: off (if 2 conditions pass), plus custom logic",
         "source": "parser"
       },
       {
-        "line": "Every 5 min or when sensor.example_sensor_7 rises above 0.4 or when sensor.example_sensor_7 rises above 1.49 or when sensor.example_sensor_7 rises above 0.99 for 1 min 5 s or when sensor.example_sensor_7 drops below 0.4 for 1 min 5 s or when sensor.example_sensor_8 rises above 104.9 or when sensor.example_sensor_8 drops below 95 or when timer.example_timer_4 finishes or when timer.example_timer_5 finishes or when input_datetime.example_input_datetime_2 changes or when binary_sensor.example_binary_sensor_6 turns on or when a block of schedule.example_schedule_1 starts or when a block of schedule.example_schedule_1 ends or when Home Assistant starts: on (if 6 conditions pass), plus custom logic",
+        "line": "Every 5 min or when sensor.example_sensor_7 rises above 0.4 or when sensor.example_sensor_7 rises above 1.49 or when sensor.example_sensor_7 rises above 0.99 for 1 min 5 s or when sensor.example_sensor_7 drops below 0.4 for 1 min 5 s or when sensor.example_sensor_8 rises above 104.9 or when sensor.example_sensor_8 drops below 95 or when timer.example_timer_4 finishes or when timer.example_timer_5 finishes or when binary_sensor.example_binary_sensor_7 or binary_sensor.example_binary_sensor_8 turns on or when binary_sensor.example_binary_sensor_7 or binary_sensor.example_binary_sensor_8 turns off or when sensor.example_sensor_8 is unavailable for 10 min or when sensor.example_sensor_8 is unknown for 10 min or when input_datetime.example_input_datetime_2 changes or when binary_sensor.example_binary_sensor_6 turns on or when a block of schedule.example_schedule_1 starts or when a block of schedule.example_schedule_1 ends or when Home Assistant starts: on (if 6 conditions pass), plus custom logic",
         "source": "parser"
       }
     ],
     "input_boolean.example_input_boolean_7": [
       {
-        "line": "Automation: Automation 35 (custom logic)",
-        "source": "none"
+        "line": "When sensor.example_sensor_8 is unavailable for 10 min or when sensor.example_sensor_8 is unknown for 10 min: on",
+        "source": "parser"
       },
       {
         "line": "Automation: Automation 35 (custom logic)",
