@@ -65,6 +65,7 @@ from custom_components.device_routines.models import (
     Pulse,
     RoutineSettings,
     Status,
+    TimeKind,
     Weekday,
 )
 from custom_components.device_routines.nextrun import routine_lines
@@ -198,13 +199,18 @@ def _kind_problems(kind: str, options: Mapping[str, Any], value: Any) -> list[st
             ok = isinstance(value, str) and _CLOCK.fullmatch(value) is not None
         case "text":
             ok = isinstance(value, str) and bool(value)
-        case "select":
+        case "select" if options.get("multiple"):
             ok = (
-                bool(options.get("multiple"))
-                and isinstance(value, list)
+                isinstance(value, list)
                 and value == [day for day in WEEKDAY_ORDER if day in value]
                 and len(set(value)) == len(value)
             )
+        case "select":
+            # A single select (a bound's kind, schema 2) holds one of its option values.
+            offered = [
+                item["value"] if isinstance(item, dict) else item for item in options["options"]
+            ]
+            ok = isinstance(value, str) and value in offered
         case "entity":
             domains = _entity_domains(options)
             ok = isinstance(value, str) and (not domains or value.partition(".")[0] in domains)
@@ -431,9 +437,9 @@ def mirror_overrides(
 ) -> dict[str, Any]:
     """Return what a blueprint test passes `inputs()` for these settings: primary inputs only.
 
-    `inputs()` derives the switches (`*_enabled`), `crosses_midnight`, `days_end` and
-    `late_window_end` itself, as TECH_SPEC 3.3 derives them; those are what the comparison
-    with `compile` is about.
+    `inputs()` derives the switches (`*_enabled`, the four sun flags), `crosses_midnight`,
+    `days_end`, `late_window_end` and `late_sun_offset` itself, as TECH_SPEC 3.3 derives
+    them; those are what the comparison with `compile` is about.
     """
     given: dict[str, Any] = {
         **mirror.target_inputs(profile.domain, settings.target_entity, device_class),
@@ -453,6 +459,12 @@ def mirror_overrides(
         given["on_time"] = settings.on_time.isoformat()
     if settings.off_time is not None:
         given["off_time"] = settings.off_time.isoformat()
+    if settings.on_kind is not TimeKind.TIME:
+        given["on_kind"] = settings.on_kind.value
+        given["on_sun_offset"] = mirror.sun_offset(settings.on_sun_offset_min)
+    if settings.off_kind is not TimeKind.TIME:
+        given["off_kind"] = settings.off_kind.value
+        given["off_sun_offset"] = mirror.sun_offset(settings.off_sun_offset_min)
     if settings.days is Days.WEEKLY_SCHEDULE:
         given["schedule_entity"] = settings.schedule_entity
     if settings.turn_off_after_min or settings.turn_back_on_after_min:
@@ -745,6 +757,10 @@ ROUTINE_SETTINGS: Final = frozenset(item.name for item in fields(RoutineSettings
     "effective_days",
     "end_days",
     "crosses_midnight",
+    "has_on",
+    "has_off",
+    "nominal_on",
+    "nominal_off",
 }
 
 

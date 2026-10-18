@@ -100,6 +100,7 @@ from .models import (
     Source,
     Status,
     SummaryItem,
+    TimeKind,
     Weekday,
 )
 from .sentence import Writer
@@ -405,6 +406,10 @@ _CONVERTERS: Final[Mapping[str, Callable[[Any], Any]]] = {
     "pulse": _as_pulse,
     "extra_conditions": _as_conditions,
     "docked_guard": _as_flag,
+    "on_kind": TimeKind,
+    "on_sun_offset_min": _as_minutes,
+    "off_kind": TimeKind,
+    "off_sun_offset_min": _as_minutes,
 }
 
 
