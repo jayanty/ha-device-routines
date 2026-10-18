@@ -299,16 +299,13 @@
       "message": "None of the chosen targets has a routine."
     },
     "not_loaded": {
-      "message": "Device Routines is not loaded. Add it in Devices and services, or check the Home Assistant log for why it did not load."
+      "message": "Device Routines is not loaded. Wait until it has started; if it does not start, check its entry in Devices and services and the Home Assistant log."
     },
     "no_valid_settings": {
       "message": "There are no earlier valid settings for the routine of {device} to restore."
     },
     "unknown_routine": {
       "message": "{automation} is not a routine Device Routines manages."
-    },
-    "not_loaded": {
-      "message": "Device Routines is not loaded. Wait until it has started, or check its entry on the integrations page."
     },
     "target_all_reserved": {
       "message": "A target of all is reserved for a later version. Choose devices, entities, areas, floors or labels."

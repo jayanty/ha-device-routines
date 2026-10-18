@@ -178,6 +178,29 @@ def test_the_english_translation_equals_the_source_strings() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        COMPONENT / "strings.json",
+        COMPONENT / "translations" / "en.json",
+        COMPONENT / "icons.json",
+        COMPONENT / "sentences" / "en.json",
+    ],
+    ids=lambda path: path.relative_to(COMPONENT).as_posix(),
+)
+def test_json_files_hold_no_duplicate_keys(path: Path) -> None:
+    """A key added twice by two lanes would silently keep only the last value."""
+    duplicates: list[str] = []
+
+    def collect(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        keys = [key for key, _ in pairs]
+        duplicates.extend(sorted({key for key in keys if keys.count(key) > 1}))
+        return dict(pairs)
+
+    json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=collect)
+    assert not duplicates
+
+
 def translation_keys_in_source() -> set[tuple[str, str]]:
     """Return (platform, key) for every translation key an entity module assigns."""
     found: set[tuple[str, str]] = set()
