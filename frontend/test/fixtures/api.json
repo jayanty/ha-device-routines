@@ -108,7 +108,90 @@
                 }
               ],
               "override": false,
-              "last_change_source": null
+              "last_change_source": null,
+              "opted_in": true
+            }
+          ]
+        }
+      },
+      {
+        "request": {
+          "id": 4,
+          "type": "device_routines/routines/list"
+        },
+        "response": {
+          "routines": [
+            {
+              "device_id": "dev_living_room_fan",
+              "device_name": "Living room fan",
+              "area_id": "living_room",
+              "automation_id": "device_routines_5c1e0f3a9b72",
+              "automation_entity_id": "automation.routine_living_room_fan",
+              "settings": {
+                "target_entity": "switch.living_room_fan",
+                "on_time": "17:00:00",
+                "off_time": "23:00:00",
+                "days": "every_day",
+                "day_set": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu",
+                  "fri",
+                  "sat",
+                  "sun"
+                ],
+                "schedule_entity": null,
+                "turn_off_after_min": 0,
+                "turn_back_on_after_min": 0,
+                "catch_up": true,
+                "late_start_window_min": 15,
+                "respect_manual": true,
+                "pulse": null,
+                "extra_conditions": [],
+                "docked_guard": true,
+                "on_kind": "time",
+                "on_sun_offset_min": 0,
+                "off_kind": "time",
+                "off_sun_offset_min": 0
+              },
+              "status": "off",
+              "enabled": false,
+              "paused_until": null,
+              "skipped_action": null,
+              "next_action": null,
+              "sentence": "Routine off",
+              "items": [
+                {
+                  "kind": "routine",
+                  "automation_entity": "automation.routine_living_room_fan",
+                  "alias": "Routine: Living room fan",
+                  "summary": "5:00 PM: on, 11:00 PM: off",
+                  "next_run": null,
+                  "source": "parser",
+                  "enabled": false,
+                  "custom_logic": false,
+                  "parts": [
+                    "5:00 PM: on",
+                    "11:00 PM: off"
+                  ]
+                },
+                {
+                  "kind": "automation",
+                  "automation_entity": "automation.late_fan_on",
+                  "alias": "Late fan on",
+                  "summary": "11:00 PM: on",
+                  "next_run": "2026-10-19T23:00:00-07:00",
+                  "source": "parser",
+                  "enabled": true,
+                  "custom_logic": false,
+                  "parts": []
+                }
+              ],
+              "conflicts": [],
+              "override": false,
+              "last_change_source": null,
+              "opted_in": false
             }
           ]
         }
@@ -315,12 +398,6 @@
               "b": 1,
               "reason_key": "on_in_off_window",
               "at": "2026-10-19T23:00:00-07:00"
-            },
-            {
-              "a": 0,
-              "b": 1,
-              "reason_key": "opposite_same_minute",
-              "at": "2026-10-19T23:00:00-07:00"
             }
           ],
           "override": false,
@@ -363,7 +440,11 @@
             {
               "target": "dev_desk_lamp",
               "kind": "device",
-              "reason": "no_routine"
+              "reason": "no_routine",
+              "placeholders": {
+                "target": "dev_desk_lamp",
+                "device": "Desk lamp"
+              }
             }
           ]
         }
@@ -379,6 +460,45 @@
           "for": "01:30:00"
         },
         "response": null
+      },
+      {
+        "request": {
+          "id": 10,
+          "type": "device_routines/routines/action",
+          "action": "skip_next",
+          "target": {
+            "area_id": "living_room"
+          }
+        },
+        "response": {
+          "results": [
+            {
+              "device_id": "dev_living_room_fan",
+              "device_name": "Living room fan",
+              "action": "skip_next",
+              "paused_until": "2026-10-19T23:01:00-07:00",
+              "skipped_action": {
+                "at": "2026-10-19T17:00:00-07:00",
+                "verb": "on"
+              },
+              "next_action": {
+                "at": "2026-10-20T17:00:00-07:00",
+                "verb": "on"
+              }
+            }
+          ],
+          "ignored": [
+            {
+              "target": "dev_desk_lamp",
+              "kind": "device",
+              "reason": "nothing_to_skip",
+              "placeholders": {
+                "target": "dev_desk_lamp",
+                "device": "Desk lamp"
+              }
+            }
+          ]
+        }
       }
     ],
     "errors": [],

@@ -316,6 +316,17 @@ room fan with its routine turned off and then opted out:
           "enabled": false,
           "custom_logic": false,
           "parts": ["5:00 PM: on", "11:00 PM: off"]
+        },
+        {
+          "kind": "automation",
+          "automation_entity": "automation.late_fan_on",
+          "alias": "Late fan on",
+          "summary": "11:00 PM: on",
+          "next_run": "2026-10-19T23:00:00-07:00",
+          "source": "parser",
+          "enabled": true,
+          "custom_logic": false,
+          "parts": []
         }
       ],
       "conflicts": [],
