@@ -12,6 +12,11 @@ Build A (Phases 2 and 3) is in progress; the entries below grow with it.
 
 - Every Schedule sensor carries two more attributes, `paused_until` and `skipped_action`
   (empty until a device has a routine), and a device's routine line sorts first.
+- The integration installs its routine blueprint
+  (`blueprints/automation/device_routines/device_routine.yaml`) and creates the `Routines`
+  label and the `Device Routines` automation category at setup, and keeps them in place:
+  a missing blueprint is reinstalled, a hand edited one is left alone and reported in
+  Repairs.
 
 ## [0.1.0] - 2026-10-18
 
