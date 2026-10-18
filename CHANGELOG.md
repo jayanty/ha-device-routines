@@ -20,6 +20,12 @@ All notable changes to this project are documented here. The format follows
   gains `conversions/list` and `conversions/convert`.
 - The `schedule/today` WebSocket items carry the device name, the automation's alias and
   how many conditions gate each action.
+- The Device Routines console: an admin only sidebar panel with three views. Routines lists
+  every routine with its sentence, status, next action and pause, with Skip next, pause,
+  resume, enable and disable per row or for a selection, opt in and out, inline settings
+  and the conversion offers; Today shows the day's actions in the house by area and time
+  with conflicts highlighted; Settings edits every global setting, runs the maintenance
+  actions with a preview first and shows Health.
 
 ### Changed
 
