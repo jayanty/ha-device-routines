@@ -317,6 +317,15 @@ def test_a_state_trigger_with_several_states_reads_one_clause_per_state() -> Non
     ) == ("When Front door is unavailable for 10 min or when Front door is unknown for 10 min: on")
 
 
+def test_a_timer_event_reads_like_the_timer_trigger() -> None:
+    event = {"event_type": "timer.finished", "event_data": {"entity_id": "timer.a"}}
+    named = {"target": {"entity_id": "timer.a"}}
+    assert summarized({"trigger": "event", **event}) == "When timer.a finishes: on"
+    assert summarized({"trigger": "event", **event}) == summarized(
+        {"trigger": "timer.finished", **named}
+    )
+
+
 # --------------------------------------------------------------------------------------
 # The sensor state and its cap
 # --------------------------------------------------------------------------------------

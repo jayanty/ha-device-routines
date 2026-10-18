@@ -348,6 +348,23 @@ def _named_trigger(
     return [NamedTrigger(name=kind, entities=resolved)]
 
 
+def _event_trigger(node: Mapping[str, Any]) -> list[Trigger] | None:
+    """Read an event trigger on a timer's own event for one timer as the timer trigger."""
+    if not _only(node, {"event_type", "event_data"}):
+        return None
+    kinds = [grammar.EVENT_TRIGGERS.get(str(event)) for event in _as_list(node.get("event_type"))]
+    data = node.get("event_data")
+    if not kinds or None in kinds or not isinstance(data, Mapping) or set(data) != {"entity_id"}:
+        return None
+    entity = data["entity_id"]
+    names = tuple(dict.fromkeys(kind for kind in kinds if kind is not None))
+    if not _is_entity_id(entity) or any(
+        entity.partition(".")[0] != name.partition(".")[0] for name in names
+    ):
+        return None
+    return [NamedTrigger(name=name, entities=(entity,)) for name in names]
+
+
 def parse_trigger(node: Any, device: DeviceContext) -> list[Trigger] | None:
     """Return what one trigger means, or None when it is outside the grammar."""
     if not isinstance(node, Mapping) or _templated(node):
@@ -361,6 +378,7 @@ def parse_trigger(node: Any, device: DeviceContext) -> list[Trigger] | None:
         "sun": _sun_trigger,
         "homeassistant": _start_trigger,
         "calendar": _calendar_trigger,
+        "event": _event_trigger,
     }
     if kind in simple:
         return simple[kind](node)

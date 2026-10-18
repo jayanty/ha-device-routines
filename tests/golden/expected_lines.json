@@ -54,8 +54,8 @@
   "automation_14": {
     "switch.example_switch_4": [
       {
-        "line": "Automation: Automation 14 (custom logic)",
-        "source": "none"
+        "line": "When timer.example_timer_2 finishes: off (if 1 condition passes)",
+        "source": "parser"
       }
     ]
   },

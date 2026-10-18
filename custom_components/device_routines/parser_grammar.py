@@ -98,6 +98,16 @@ NAMED_TRIGGERS: Final[Mapping[str, str]] = {
     "vacuum.errored": "when_vacuum_errored",
 }
 
+# Event triggers on an integration's own events, as the purpose specific trigger each one
+# equals. A timer fires its event and records the same transition (`last_transition`, which
+# the timer triggers watch) in one step, so an event trigger whose `event_data` names
+# exactly one timer reads like that trigger. Any other event, or more event data, is not.
+EVENT_TRIGGERS: Final[Mapping[str, str]] = {
+    "timer.started": "timer.started",
+    "timer.finished": "timer.finished",
+    "timer.cancelled": "timer.cancelled",
+}
+
 # The `behavior` option of a purpose specific trigger that the phrase states: any one
 # target is enough (`any` is the legacy name of `each`). `first` and `all` wait for the
 # first or the last of several targets, and a `for` option for a held duration: neither is

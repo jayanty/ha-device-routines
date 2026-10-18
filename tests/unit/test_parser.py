@@ -459,6 +459,56 @@ def test_the_vacuum_triggers_are_the_ones_the_core_has() -> None:
     not_understood_trigger({"trigger": "vacuum.docked", "target": {"entity_id": "vacuum.robot"}})
 
 
+def test_a_timer_event_for_one_timer_reads_as_the_timer_trigger() -> None:
+    """The timer fires its event and records the same transition together."""
+    assert trigger_of(
+        {
+            "trigger": "event",
+            "event_type": "timer.finished",
+            "event_data": {"entity_id": "timer.fan"},
+        }
+    ) == NamedTrigger(name="timer.finished", entities=("timer.fan",))
+    assert triggers_of(
+        {
+            "trigger": "event",
+            "event_type": ["timer.started", "timer.cancelled", "timer.started"],
+            "event_data": {"entity_id": "timer.fan"},
+        }
+    ) == (
+        NamedTrigger(name="timer.started", entities=("timer.fan",)),
+        NamedTrigger(name="timer.cancelled", entities=("timer.fan",)),
+    )
+
+
+@pytest.mark.parametrize(
+    "node",
+    [
+        {"event_type": "timer.finished"},
+        {"event_type": "timer.finished", "event_data": {}},
+        {"event_type": "timer.finished", "event_data": "timer.fan"},
+        {"event_type": "timer.finished", "event_data": {"entity_id": ["timer.a", "timer.b"]}},
+        {"event_type": "timer.finished", "event_data": {"entity_id": REGISTRY_ID}},
+        {"event_type": "timer.finished", "event_data": {"entity_id": FAN}},
+        {
+            "event_type": "timer.finished",
+            "event_data": {"entity_id": "timer.fan", "finished_at": "2026-10-17T09:00:00"},
+        },
+        {
+            "event_type": "timer.finished",
+            "event_data": {"entity_id": "timer.fan"},
+            "context": {"user_id": "u"},
+        },
+        {"event_type": ["timer.finished", "timer.paused"], "event_data": {"entity_id": "timer.a"}},
+        {"event_type": "timer.changed", "event_data": {"entity_id": "timer.fan"}},
+        {"event_type": [], "event_data": {"entity_id": "timer.fan"}},
+        {"event_type": "custom_event"},
+    ],
+)
+def test_other_event_triggers_are_outside_the_grammar(node: dict[str, Any]) -> None:
+    """Any timer, several timers, more event data, a user filter or another event: not read."""
+    not_understood_trigger({"trigger": "event", **node})
+
+
 @pytest.mark.parametrize(
     "node",
     [
