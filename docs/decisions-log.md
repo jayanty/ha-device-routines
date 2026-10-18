@@ -444,3 +444,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | The manager is the source of truth for each routine's runtime state and pre registers the two entities at opt in (unique ids `device_routines_<device id>_manual_override` and `_paused_until`, suggested object ids from the device slug); lane 8's platforms claim them, render the view and hand restored values back through `async_restore_runtime`. Result dataclasses for every method, `ServiceValidationError` with a translation key as the only exception; the patch is a mapping of `RoutineSettings` field names. The debounce runs one second from the last change and flushes on opt out and unload. Invalid edits keep the old `last_hash`, so every later sync detects them again. Take control drops the owned record; "create a new routine" takes the first free `markers.automation_id(f"{device_id}#{n}")` from n = 2, and the summary ties an owned routine to its device by the `device_id` input. A routine the manager turned off comes back on only if the manager turned it off; a person's disable sticks (kept in memory for now, A4.0 carries persisting it). The system user is created at the first helper, not at setup. The deleted `Routines` label is recreated and re applied, never opting anyone out. A new pause replaces a skip and clears the skip's override; a restored Paused until in the past is dropped. `async_remove_entry` waits for lane 10. |
 | Consequence | Plan Section 4.2 manager and entities rows carry the landed API; lane 8 drops the test shim; plan A4.0 lists the carry overs. `tests/conftest.py` gives every test its own config directory, because setup installs the blueprint. |
 | PRD register entry | no |
+
+## 2026-10-18 L45: shared modules in wave A3
+
+| Field | Content |
+| --- | --- |
+| Context | The eight lanes of wave A3 run in parallel, and several need small additions to modules other lanes own: `config_flow.py` (lanes 10 and 14), `manager.py` (lanes 8 and 14), `summary.py` (lanes 11, 12 and 14), `__init__.py` (lanes 9, 10, 12 and 15), `ha_adapter.py` (lanes 10 and 14). |
+| Options | Serialize the lanes that overlap, or let each add a separate, additive piece and resolve the overlaps at rebase. |
+| Choice | Additive pieces, each owned by one lane, listed in plan Section 4.5's arbitration paragraph; the orchestrator rebases in landing order. The AI disclosure is a `strings.json` description, not code in `config_flow.py`. |
+| Consequence | Lanes keep parallel; rebases may need a by hand merge in `strings.json` and the shared modules, which the orchestrator does and reruns the whole suite after. |
+| PRD register entry | no |
