@@ -78,6 +78,34 @@
     "adapter_incompatible": {
       "title": "Device Routines cannot read automations on this Home Assistant version",
       "description": "Home Assistant {ha_version} does not offer what Device Routines needs for: {capabilities}. Schedule sensors stay as they were and routines keep running. Update Device Routines; the issue clears by itself once a compatible version loads."
+    },
+    "blueprint_modified": {
+      "title": "The Device Routines blueprint was changed",
+      "description": "The installed blueprint file differs from the one Device Routines ships, so it was left alone. Routines keep running on the changed file. Reinstall the shipped blueprint to undo the change."
+    },
+    "invalid_inputs": {
+      "title": "The routine of {device} cannot run as edited",
+      "description": "An edit of {automation} left inputs a routine cannot use ({reason}). The routine was turned off and nothing was overwritten. Restore the last valid settings, or correct the automation in its form."
+    },
+    "detached_routine": {
+      "title": "The routine of {device} is now a normal automation",
+      "description": "{automation} no longer uses the Device Routines blueprint, so its device page controls are unavailable and the integration never touches it again. Create a new routine for {device} if you want the controls back."
+    },
+    "schedule_blocks_needed": {
+      "title": "The weekly schedule of {device} is empty",
+      "description": "The schedule helper {schedule} had to be recreated and has no blocks yet, so the routine of {device} does nothing. Open the helper and add the blocks again."
+    },
+    "write_conflict": {
+      "title": "A change to the routine of {device} was not saved",
+      "description": "{automation} was changed by something else twice while Device Routines saved it, so the change was not written. Retry to save it again."
+    },
+    "automation_load_failed": {
+      "title": "The routine of {device} does not load",
+      "description": "{automation} did not load, even after Device Routines regenerated it once. Regenerate it from the last valid settings, or check the Home Assistant log for the reason."
+    },
+    "conflict": {
+      "title": "Two automations drive {device} in opposite directions",
+      "description": "{first} and {second} change {device} in opposite directions at {time}. Change one of them; this issue clears when they no longer collide."
     }
   },
   "exceptions": {
