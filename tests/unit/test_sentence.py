@@ -138,6 +138,21 @@ def test_days(days: frozenset[Weekday], text: str) -> None:
 LINE_CASES = [
     (
         line(
+            StateTrigger(entity=DOOR),
+            StateTrigger(entity="input_boolean.guest"),
+            StartTrigger("start"),
+            StateTrigger(entity="sensor.example_temperature"),
+            StateTrigger(entity=DOOR, to="on"),
+            StateTrigger(entity=DOOR),
+            verb=Verb.ON,
+        ),
+        (
+            "When Front door, input_boolean.guest or Temperature changes or when Home Assistant"
+            " starts or when Front door turns on: on"
+        ),
+    ),
+    (
+        line(
             TimeTrigger(at=time(9, 45)),
             TimeTrigger(at=time(10)),
             verb=Verb.START,

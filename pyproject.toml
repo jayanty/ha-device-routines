@@ -1,6 +1,6 @@
 [project]
 name = "ha-device-routines"
-version = "0.0.1"
+version = "0.1.0"
 description = "Device level routines for Home Assistant: schedules, run timers and a plain language schedule summary on every device page"
 requires-python = ">=3.14"
 license = { text = "MIT" }

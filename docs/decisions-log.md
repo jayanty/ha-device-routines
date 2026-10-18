@@ -304,3 +304,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Consequence | TECH_SPEC 4.4 reads as above. `DeviceEntry.config_entries` is deprecated in core 2026.10; the code uses `config_entry_id`. |
 | PRD register entry | no |
 
+## 2026-10-18 L31: state triggers waiting for the same change share one clause
+
+| Field | Content |
+| --- | --- |
+| Context | Phase 1 sentence review (task 1.6): the owner confirmed nine of ten live lines and called the tenth confusing: an automation with five state triggers that each wait for any change read "when A changes or when B changes or ..." five times. |
+| Options | (a) Leave it; (b) a special case for that automation, which the plan forbids; (c) a general rule: state triggers with the same to, from and duration merge into one clause listing their subjects. |
+| Choice | (c). "When A, B or C changes or when Home Assistant starts: on". The order of first appearance is kept; other trigger kinds keep their own clauses. |
+| Consequence | A unit test in `tests/unit/test_sentence.py`; the golden corpus changed in exactly the two lines of that shape, reviewed in the diff. |
+| PRD register entry | no |
+

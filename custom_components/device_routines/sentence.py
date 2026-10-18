@@ -11,7 +11,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, time, timedelta
 import json
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 from .models import (
     ALL_DAYS,
@@ -224,6 +224,42 @@ class Writer:
             return self.say("held_from", state=origin, duration=duration)
         return self.say("held_any", duration=duration)
 
+    def event_clauses(self, line: ParsedLine) -> list[str]:
+        """Return the event clauses; state triggers waiting for the same change share one.
+
+        "When A, B or C changes" instead of "when A changes or when B changes or ...".
+        """
+        groups: dict[tuple[str | None, str | None, timedelta | None], list[str]] = {}
+        order: list[tuple[str, Any]] = []
+        for trigger in line.triggers:
+            if isinstance(trigger, StateTrigger):
+                key = (trigger.to, trigger.from_state, trigger.duration)
+                if key not in groups:
+                    groups[key] = []
+                    order.append(("state", trigger))
+                subject = self.subject(trigger.entity, line)
+                if subject not in groups[key]:
+                    groups[key].append(subject)
+            elif (clause := self.event(trigger, line)) is not None:
+                order.append(("clause", clause))
+        clauses: list[str] = []
+        for kind, value in order:
+            if kind == "clause":
+                clauses.append(value)
+                continue
+            subjects = groups[(value.to, value.from_state, value.duration)]
+            clauses.append(
+                self.say("when_state", subject=self.subjects(subjects), change=self.change(value))
+            )
+        return clauses
+
+    def subjects(self, names: Sequence[str]) -> str:
+        """Return names as a list: A, B or C."""
+        if len(names) == 1:
+            return names[0]
+        head = self.say("list_separator").join(names[:-1])
+        return f"{head}{self.say('or_separator')}{names[-1]}"
+
     def event(self, trigger: Trigger, line: ParsedLine) -> str | None:
         """Return the clause of an event trigger; None for a timed one."""
         if isinstance(trigger, StateTrigger):
@@ -337,7 +373,7 @@ class Writer:
         if (after := self._after_form(line)) is not None:
             return after
         clauses = self.timed_clauses(line)
-        clauses += [c for t in line.triggers if (c := self.event(t, line)) is not None]
+        clauses += self.event_clauses(line)
         qualifiers = [self.window(window, line) for window in line.windows]
         if line.weekdays is not None and not _folded(line):
             qualifiers.insert(0, self.say("qualifier_days", days=self.days(line.weekdays)))

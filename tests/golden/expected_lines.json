@@ -249,11 +249,11 @@
   "automation_36": {
     "switch.example_switch_5": [
       {
-        "line": "Every 2 min or when input_boolean.example_input_boolean_5 changes or when input_boolean.example_input_boolean_6 changes or when timer.example_timer_7 changes or when schedule.example_schedule_1 changes or when binary_sensor.example_binary_sensor_8 changes or when Home Assistant starts: on (if 2 conditions pass)",
+        "line": "Every 2 min or when input_boolean.example_input_boolean_5, input_boolean.example_input_boolean_6, timer.example_timer_7, schedule.example_schedule_1 or binary_sensor.example_binary_sensor_8 changes or when Home Assistant starts: on (if 2 conditions pass)",
         "source": "parser"
       },
       {
-        "line": "Every 2 min or when input_boolean.example_input_boolean_5 changes or when input_boolean.example_input_boolean_6 changes or when timer.example_timer_7 changes or when schedule.example_schedule_1 changes or when binary_sensor.example_binary_sensor_8 changes or when Home Assistant starts: off (if 2 conditions pass)",
+        "line": "Every 2 min or when input_boolean.example_input_boolean_5, input_boolean.example_input_boolean_6, timer.example_timer_7, schedule.example_schedule_1 or binary_sensor.example_binary_sensor_8 changes or when Home Assistant starts: off (if 2 conditions pass)",
         "source": "parser"
       }
     ]

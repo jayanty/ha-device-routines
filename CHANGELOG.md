@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-18
+
+The read only Schedule summary (Phase 1).
+
 ### Changed
 
 - The test harness is pinned to core 2026.10.2 (harness 0.13.373), the version the
@@ -76,6 +80,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Several state triggers that wait for the same change now read as one clause ("When A, B
+  or C changes") instead of a chain of "or when" clauses.
 - An automation acting on a device several times the same way no longer repeats the same
   Schedule line.
 
