@@ -34,6 +34,7 @@ from custom_components.device_routines.entity import (
 )
 from custom_components.device_routines.maintenance import MaintenanceAction
 from custom_components.device_routines.manager import (
+    ManagerEvent,
     RestoredRuntime,
     RoutineManager,
     UpdateResult,
@@ -575,6 +576,48 @@ async def test_skip_next_is_unavailable_when_nothing_is_scheduled(
 
     await call(hass, "switch", "turn_off", entity_id=entity_of(hass, home.fan, "routine"))
     assert shown(hass, skip).state == "unavailable"
+
+
+async def test_skip_next_follows_the_countdown_of_a_routine_without_times(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, clock: Clock, freezer: Any
+) -> None:
+    """Plan A4.0 item 1 (L52): the timer's start and end reach the device page at once.
+
+    A routine with only Turn off after has nothing scheduled until a countdown runs, so
+    Skip next must become available when the timer starts and go when it ends; pressing
+    it is "keep it on this time" (D19), from the device page.
+    """
+    clock.set(clock.at(0, "15:00"))
+    await give_routine(hass, manager, home.fan, freezer, turn_off_after_min=30)
+    skip = entity_of(hass, home.fan, "skip_next")
+    assert shown(hass, skip).state == "unavailable"
+    # A first change at the wall names the device as the source of the last change, so
+    # the changes below move nothing but the timer.
+    home.switch.device_change(True)
+    await hass.async_block_till_done()
+    heard: list[ManagerEvent] = []
+    manager.async_add_listener(heard.append)
+
+    home.switch.device_change(False)  # turned off at the wall: the countdown ends
+    await hass.async_block_till_done()
+
+    assert state_of(hass, TIMER) == "idle"
+    assert heard == [ManagerEvent("routine_changed", home.fan)]
+    assert shown(hass, skip).state == "unavailable"
+
+    home.switch.device_change(True)  # on again: a new countdown starts
+    await hass.async_block_till_done()
+
+    assert state_of(hass, TIMER) == "active"
+    assert heard[1:] == [ManagerEvent("routine_changed", home.fan)]
+    assert shown(hass, skip).state == "unknown"
+
+    await call(hass, "button", "press", entity_id=skip)
+
+    assert state_of(hass, TIMER) == "idle"
+    assert shown(hass, skip).state == "unavailable"
+    await clock.to(clock.at(0, "15:35"))
+    assert home.switch.state_now == "on"  # kept on this time
 
 
 async def test_resume_is_unavailable_unless_paused_or_skipping(

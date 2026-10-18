@@ -50,7 +50,14 @@ from homeassistant.const import (
     STATE_ON,
     STATE_UNAVAILABLE,
 )
-from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, State, callback
+from homeassistant.core import (
+    CALLBACK_TYPE,
+    Event,
+    EventStateChangedData,
+    HomeAssistant,
+    State,
+    callback,
+)
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import (
     area_registry as ar,
@@ -521,6 +528,8 @@ class _Routine:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     # The weekly schedule watched while `schedule_blocks_needed` is open, and its handle.
     blocks_watch: tuple[str, CALLBACK_TYPE] | None = None
+    # The routine's timer helper and the handle of the listener that follows it.
+    timer_watch: tuple[str, CALLBACK_TYPE] | None = None
 
 
 type AttributorFactory = Callable[[HomeAssistant, RoutineLookup, OverrideSink], Attributor]
@@ -615,6 +624,7 @@ class RoutineManager:
         for routine in self._routines.values():
             self._cancel_resume(routine)
             self._unwatch_blocks(routine)
+            self._unwatch_timer(routine)
         self._cancel_cleanup()
         self._attributor.async_stop()
 
@@ -1443,6 +1453,8 @@ class RoutineManager:
         )
 
     def _watch(self, routine: _Routine) -> None:
+        """Follow the routine's target (attribution) and its timer helper."""
+        self._watch_timer(routine)
         target = routine.settings.target_entity if routine.settings else None
         if routine.watched == target:
             return
@@ -1451,6 +1463,38 @@ class RoutineManager:
         routine.watched = target
         if target is not None:
             self._attributor.watch(target)
+
+    def _watch_timer(self, routine: _Routine) -> None:
+        """Tell listeners when the routine's countdown starts, stops or moves (L52).
+
+        A running countdown is an action Skip next can skip (D19), so the device page
+        must hear the timer helper start and stop: one state listener per routine timer,
+        never an interval.
+        """
+        timer = self._timer_entity(routine)
+        if routine.timer_watch is not None and routine.timer_watch[0] == timer:
+            return
+        self._unwatch_timer(routine)
+        if timer is None:
+            return
+
+        @callback
+        def moved(event: Event[EventStateChangedData]) -> None:
+            old, new = event.data["old_state"], event.data["new_state"]
+            if (
+                old is None
+                or new is None
+                or old.state != new.state
+                or old.attributes.get("finishes_at") != new.attributes.get("finishes_at")
+            ):
+                self._changed(routine.device_id)
+
+        routine.timer_watch = (timer, async_track_state_change_event(self.hass, [timer], moved))
+
+    def _unwatch_timer(self, routine: _Routine) -> None:
+        if routine.timer_watch is not None:
+            routine.timer_watch[1]()
+            routine.timer_watch = None
 
     async def _async_turn(self, routine: _Routine, *, on: bool) -> bool:
         """Turn the routine's automation on or off; True when its state changed."""
@@ -2054,6 +2098,7 @@ class RoutineManager:
             return
         routine.detached = True
         self._cancel_write(routine)
+        self._watch_timer(routine)
         # Only an owned routine can be invalid, unsaved, empty or not loaded (lane 11).
         for issue_id in _ROUTINE_ISSUES:
             self._sync_issue(issue_id, routine, present=issue_id == repairs.DETACHED_ROUTINE)
@@ -2446,6 +2491,7 @@ class RoutineManager:
             self._clear_runtime(routine)
             routine.settings = None
             self._watch(routine)
+            self._unwatch_timer(routine)
         self._changed(device_id)
 
     async def async_rebuild_index(self, *, dry_run: bool) -> builtins.list[str]:
