@@ -7,7 +7,9 @@ running. It logs a failure once at WARNING and its recovery once at INFO (findin
 
 Capabilities:
 
-- read: the automation component's reference helpers and each entity's `raw_config`.
+- read: the automation component's reference helpers and each entity's `raw_config`;
+  for a blueprint automation also its `use_blueprint` block, which the rendered
+  `raw_config` no longer holds.
 - write: the config editor's path replicated (Stage 0 V6): load `automations.yaml`,
   replace or append one entry, write the file atomically, reload that id only. The
   editor's lock is not reachable, so the adapter holds its own lock and compares the file
@@ -41,12 +43,12 @@ from homeassistant.components.automation import (
 )
 from homeassistant.components.automation.const import DOMAIN as AUTOMATION_DOMAIN
 from homeassistant.components.blueprint import models as blueprint_models
-from homeassistant.components.blueprint.const import BLUEPRINT_FOLDER
+from homeassistant.components.blueprint.const import BLUEPRINT_FOLDER, CONF_USE_BLUEPRINT
 from homeassistant.components.timer import ATTR_FINISHES_AT, STATUS_ACTIVE
 from homeassistant.components.websocket_api.connection import ActiveConnection
 from homeassistant.components.websocket_api.http import WebSocketAdapter
 from homeassistant.config import AUTOMATION_CONFIG_PATH
-from homeassistant.const import CONF_ID, SERVICE_RELOAD
+from homeassistant.const import CONF_ID, CONF_PATH, SERVICE_RELOAD
 from homeassistant.core import HomeAssistant, State, callback, split_entity_id
 from homeassistant.helpers import (
     category_registry as cr,
@@ -78,6 +80,7 @@ _REFERENCE_HELPERS: Final = (
     "floors_in_automation",
     "labels_in_automation",
     "automations_with_entity",
+    "blueprint_in_automation",
 )
 
 # The automation component fires this after a reload; the SummaryCoordinator listens.
@@ -146,7 +149,13 @@ class AdapterReport:
 
 @dataclass(frozen=True, slots=True)
 class AutomationRefs:
-    """One loaded automation: its config and every id it references, resolved."""
+    """One loaded automation: its config and every id it references, resolved.
+
+    `config` is the entity's `raw_config`, which for a blueprint automation is the
+    rendered config without `use_blueprint`; `blueprint` is that block (path and inputs),
+    None for a plain automation. Ownership (M1 and M2) reads both together:
+    `markers.is_owned({**config, "use_blueprint": blueprint})`.
+    """
 
     entity_id: str
     config: Mapping[str, Any]
@@ -155,6 +164,7 @@ class AutomationRefs:
     areas: frozenset[str]
     floors: frozenset[str]
     labels: frozenset[str]
+    blueprint: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -288,6 +298,25 @@ def automation_config(hass: HomeAssistant, entity_id: str) -> Mapping[str, Any] 
     return config if isinstance(config, Mapping) else None
 
 
+def automation_blueprint(hass: HomeAssistant, entity_id: str) -> Mapping[str, Any] | None:
+    """Return the `use_blueprint` block a loaded automation was built from, or None.
+
+    Core keeps the rendered config, inputs substituted and `use_blueprint` dropped, as the
+    entity's `raw_config` (`automation/config.py`), so neither M2 nor the inputs are in
+    it. The block is the entity's blueprint inputs; when that attribute moves, the public
+    `blueprint_in_automation` helper still names the path, and the inputs read as absent.
+    """
+    path = automation.blueprint_in_automation(hass, entity_id)
+    if path is None:
+        return None
+    entity = hass.data[DATA_COMPONENT].get_entity(entity_id)
+    inputs = getattr(entity, "_blueprint_inputs", None)
+    block = inputs.get(CONF_USE_BLUEPRINT) if isinstance(inputs, Mapping) else None
+    if isinstance(block, Mapping) and block.get(CONF_PATH) == path:
+        return block
+    return {CONF_PATH: path}
+
+
 def _resolved(hass: HomeAssistant, references: list[str]) -> frozenset[str]:
     """Resolve registry id references to entity ids, dropping any that do not resolve."""
     registry = er.async_get(hass)
@@ -316,6 +345,7 @@ def automation_references(hass: HomeAssistant) -> list[AutomationRefs]:
                 entity_id=entity_id,
                 config=config,
                 entities=_resolved(hass, automation.entities_in_automation(hass, entity_id)),
+                blueprint=automation_blueprint(hass, entity_id),
                 **ids,
             )
         )
@@ -332,7 +362,10 @@ def is_detached(config: Mapping[str, Any]) -> bool:
     """Tell whether a config carries M1 but no longer M2: a routine someone took over.
 
     Take control removes `use_blueprint` and keeps the id (Stage 0 V8); a config pointed
-    at another blueprint is no longer owned either and counts the same way.
+    at another blueprint is no longer owned either and counts the same way. Pass the entry
+    as `automations.yaml` holds it, or `AutomationRefs.config` with its `blueprint` block
+    put back: the rendered `raw_config` alone has no `use_blueprint`, so every routine
+    would read as detached.
     """
     return markers.has_routine_id(config) and not markers.is_owned(config)
 

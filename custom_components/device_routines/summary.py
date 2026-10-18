@@ -14,15 +14,30 @@ Discovery walks the automations, not the devices: for each loaded automation the
 helpers name the entities, devices, areas, floors and labels it references, each resolved
 to the devices it can reach, and the parser then keeps only actions on that device
 (decision L30).
+
+Routines (Build A lane 7, plan Section 4.2). The manager is a `RoutineItemsProvider`: for
+a device it returns a `RoutineSummary` whose items are the routine's own lines, sorted
+first, and whose status picks the state form of PRD FR-S4 (Skipped, Paused until, Routine
+off). The manager calls `async_refresh_device` after every change of a routine, which
+recomputes that device's view without rebuilding the index. Ownership is read from the
+markers, never from the provider:
+
+- An owned automation (M1 and M2) is parsed like every automation and its lines carry the
+  kind `routine`. When the provider returns a summary for the device whose routine id it
+  carries, the provider's items replace those lines, and the routine's next actions come
+  from its blueprint inputs (`compiler.decompile`, then `nextrun.routine_occurrences`
+  after Paused until), so the state names the action Skip next would skip.
+- A detached routine (M1 without M2, Stage 0 V8) is parsed like any automation with the
+  kind `detached_routine`; a line the parser cannot read is the translated kind phrase.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 import logging
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 from homeassistant.const import (
     EVENT_CORE_CONFIG_UPDATE,
@@ -42,7 +57,7 @@ from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.sun import get_astral_event_date
 from homeassistant.util import dt as dt_util
 
-from . import conflicts, ha_adapter, nextrun, parser
+from . import compiler, conflicts, ha_adapter, markers, nextrun, parser
 from .models import (
     Conflict,
     DeviceContext,
@@ -50,8 +65,11 @@ from .models import (
     Occurrence,
     ParsedLine,
     ParseError,
+    RoutineSettings,
+    Status,
     SummaryItem,
     TimeTrigger,
+    Weekday,
 )
 from .sentence import Phrases, Writer
 from .settings import GlobalSettings, ScheduleScope
@@ -63,8 +81,17 @@ CONFLICT_WINDOW: Final = timedelta(days=1)
 OCCURRENCE_LIMIT: Final = 20
 SCHEDULE_KEY: Final = "schedule"
 KIND_AUTOMATION: Final = "automation"
+KIND_ROUTINE: Final = "routine"
+KIND_DETACHED: Final = "detached_routine"
 SOURCE_PARSER: Final = "parser"
 SOURCE_NONE: Final = "none"
+
+# Statuses whose state reads "Routine off": the switch is off, or the manager turned the
+# routine off because its inputs are invalid or its target is gone (PRD 8.2, FR-R14).
+_OFF_STATUSES: Final = frozenset({Status.OFF, Status.INVALID, Status.MISSING_TARGET})
+# Statuses under which the routine's automation runs its scheduled actions.
+_RUNNING_STATUSES: Final = frozenset({Status.ACTIVE, Status.PAUSED, Status.SKIPPING})
+_PAUSING_STATUSES: Final = frozenset({Status.PAUSED, Status.SKIPPING})
 
 _REGISTRY_EVENTS: Final = (
     er.EVENT_ENTITY_REGISTRY_UPDATED,
@@ -81,11 +108,47 @@ def schedule_unique_id(device_id: str) -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class RoutineSummary:
+    """A device's routine as the manager hands it to the summary (plan Section 4.2).
+
+    `items` are the routine's own lines (kind `routine`); they sort first and replace the
+    parsed lines of the device's owned automation. `paused_until` is the stored Paused
+    until value; it counts while `status` is paused or skipping and it is in the future.
+    `skipped_action` is the action Skip next skipped (the `RoutineView` field, not the
+    next one that runs); it fills the `skipped_action` attribute while skipping. The
+    state names the next action that really runs, computed here from the routine's
+    inputs. `status` picks the state form; `detached` hands the device back to the parser.
+    """
+
+    items: tuple[SummaryItem, ...]
+    paused_until: datetime | None
+    skipped_action: Occurrence | None
+    status: Status
+
+
+class RoutineItemsProvider(Protocol):
+    """What the manager implements so the Schedule summary shows routines."""
+
+    def routine_summary(self, device_id: str) -> RoutineSummary | None:
+        """Return the device's routine, or None when the device has none the manager knows."""
+
+
+@dataclass(frozen=True, slots=True)
 class IndexedLine:
-    """One parsed line and the automation it came from."""
+    """One parsed line, the automation it came from and that automation's kind."""
 
     automation_entity: str
     line: ParsedLine
+    kind: str = KIND_AUTOMATION
+
+
+@dataclass(frozen=True, slots=True)
+class _OwnedRoutine:
+    """A device's own routine automation (M1 and M2) with the settings its inputs hold."""
+
+    automation_entity: str
+    settings: RoutineSettings
+    timer_entity: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +163,9 @@ class DeviceSummary:
     items: tuple[SummaryItem, ...]
     conflicts: tuple[Conflict, ...] = ()
     next_change: datetime | None = None
+    paused_until: datetime | None = None
+    skipped_action: str | None = None
+    has_routine: bool = False
 
     def attributes(self) -> dict[str, Any]:
         """Return the sensor attributes."""
@@ -116,8 +182,8 @@ class DeviceSummary:
                 }
                 for item in self.items
             ],
-            "paused_until": None,
-            "skipped_action": None,
+            "paused_until": self.paused_until.isoformat() if self.paused_until else None,
+            "skipped_action": self.skipped_action,
             "conflicts": [
                 {
                     "items": [conflict.a, conflict.b],
@@ -136,6 +202,19 @@ type AddSensors = Callable[[list[str]], None]
 class _Index:
     lines: dict[str, list[IndexedLine]] = field(default_factory=dict)
     time_entities: frozenset[str] = frozenset()
+    routines: dict[str, _OwnedRoutine] = field(default_factory=dict)
+    # The timer and weekly schedule helpers of the routines, whose states move the views.
+    runtime_entities: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True, slots=True)
+class _Row:
+    """One item with the occurrences the state, the timer and the conflicts read."""
+
+    item: SummaryItem
+    occurrences: Sequence[Occurrence]
+    entity_ids: tuple[str, ...]
+    routine: RoutineSettings | None = None
 
 
 class SummaryCoordinator:
@@ -155,6 +234,11 @@ class SummaryCoordinator:
         self._sensor_devices: set[str] = set()
         self._unsubscribe: list[CALLBACK_TYPE] = []
         self._timer: CALLBACK_TYPE | None = None
+        self._provider: RoutineItemsProvider | None = None
+        # Devices the manager named that the index may not hold (a routine whose
+        # automation is not loaded); dropped once the provider no longer knows them.
+        self._routine_devices: set[str] = set()
+        self._started = False
         self._debouncer = Debouncer(
             hass,
             _LOGGER,
@@ -192,16 +276,51 @@ class SummaryCoordinator:
             self._unsubscribe.append(
                 bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, self._rebuild_soon)
             )
+        self._started = True
         await self._async_rebuild()
 
     @callback
     def async_stop(self) -> None:
         """Drop every listener and the timer."""
+        self._started = False
         for unsubscribe in self._unsubscribe:
             unsubscribe()
         self._unsubscribe.clear()
         self._debouncer.async_cancel()
         self._cancel_timer()
+
+    @callback
+    def set_routine_provider(self, provider: RoutineItemsProvider | None) -> None:
+        """Take the manager as the source of routine items; None stops asking.
+
+        Once started, every view is recomputed from the index as it is (no rebuild).
+        """
+        self._provider = provider
+        if self._started:
+            self._refresh_views()
+
+    @callback
+    def async_refresh_device(self, device_id: str) -> None:
+        """Recompute one device's view and push its sensor, without rebuilding the index.
+
+        A callback, not awaited. The manager calls it after every change of a routine;
+        a device the index does not hold is shown from the provider alone and is asked
+        about at every later refresh until the provider returns None for it.
+        """
+        self._routine_devices.add(device_id)
+        if not self._started:
+            return
+        now = dt_util.now()
+        summary = self._device_summary(device_id, now, self._lookups(), self._writer())
+        summaries = dict(self.summaries)
+        previous = summaries.pop(device_id, None)
+        if summary is not None:
+            summaries[device_id] = summary
+        self.summaries = summaries
+        self._reconcile_sensors()
+        if summary != previous:
+            self._notify(device_id)
+        self._schedule_next(now)
 
     @callback
     def async_add_listener(self, device_id: str, update: CALLBACK_TYPE) -> CALLBACK_TYPE:
@@ -246,7 +365,7 @@ class SummaryCoordinator:
             old: State | None = event_data.get("old_state")
             new: State | None = event_data.get("new_state")
             return old is None or new is None or old.state != new.state
-        return entity_id in self._index.time_entities
+        return entity_id in self._index.time_entities or entity_id in self._index.runtime_entities
 
     @callback
     def _state_changed(self, event: Event[Any]) -> None:
@@ -275,8 +394,14 @@ class SummaryCoordinator:
         registry_ids = {entry.id: entry.entity_id for entry in entities.entities.values()}
         contexts: dict[str, DeviceContext] = {}
         lines: dict[str, list[IndexedLine]] = {}
+        routines: dict[str, _OwnedRoutine] = {}
         for refs in ha_adapter.automation_references(self.hass):
+            config = _marked(refs)
+            kind = _kind(config)
+            owned = _owned_routine(refs.entity_id, config) if kind == KIND_ROUTINE else None
             for device_id in sorted(self._reachable_devices(refs)):
+                if owned is not None and config.get("id") == markers.automation_id(device_id):
+                    routines[device_id] = owned
                 context = contexts.get(device_id)
                 if context is None:
                     context = contexts[device_id] = self._device_context(device_id, registry_ids)
@@ -286,10 +411,20 @@ class SummaryCoordinator:
                     _LOGGER.debug("%s is not an automation config", refs.entity_id)
                     break
                 lines.setdefault(device_id, []).extend(
-                    IndexedLine(refs.entity_id, line) for line in parsed
+                    IndexedLine(refs.entity_id, line, kind) for line in parsed
                 )
         lines = {device_id: found for device_id, found in lines.items() if found}
-        return _Index(lines=lines, time_entities=_time_entities(lines.values()))
+        return _Index(
+            lines=lines,
+            time_entities=_time_entities(lines.values()),
+            routines=routines,
+            runtime_entities=frozenset(
+                entity
+                for owned in routines.values()
+                for entity in (owned.timer_entity, owned.settings.schedule_entity)
+                if entity is not None
+            ),
+        )
 
     def _reachable_devices(self, refs: ha_adapter.AutomationRefs) -> set[str]:
         """Return every device an automation's references can reach, except our own."""
@@ -345,22 +480,30 @@ class SummaryCoordinator:
     # The views
     # ----------------------------------------------------------------------------------
 
-    @callback
-    def _refresh_views(self) -> None:
-        now = dt_util.now()
-        lookups = nextrun.Lookups(sun=self._sun, entity_times=self._entity_times())
-        writer = Writer(
+    def _lookups(self) -> nextrun.Lookups:
+        return nextrun.Lookups(sun=self._sun, entity_times=self._entity_times())
+
+    def _writer(self) -> Writer:
+        return Writer(
             self.phrases,
             self.settings.resolved_time_format(self.hass.config.country),
             _NameLookup(self.hass),
         )
-        devices = dr.async_get(self.hass)
+
+    def _notify(self, device_id: str) -> None:
+        for update in list(self._listeners.get(device_id, [])):
+            update()
+
+    @callback
+    def _refresh_views(self) -> None:
+        now = dt_util.now()
+        lookups = self._lookups()
+        writer = self._writer()
         summaries: dict[str, DeviceSummary] = {}
-        for device_id, indexed in self._index.lines.items():
-            device = devices.async_get(device_id)
-            if device is None:
-                continue
-            summaries[device_id] = self._summary(device, indexed, now, lookups, writer)
+        for device_id in sorted(self._index.lines.keys() | self._routine_devices):
+            summary = self._device_summary(device_id, now, lookups, writer)
+            if summary is not None:
+                summaries[device_id] = summary
         changed = {
             device_id
             for device_id in summaries.keys() | self.summaries.keys()
@@ -369,48 +512,64 @@ class SummaryCoordinator:
         self.summaries = summaries
         self._reconcile_sensors()
         for device_id in changed:
-            for update in list(self._listeners.get(device_id, [])):
-                update()
+            self._notify(device_id)
         self._schedule_next(now)
+
+    def _device_summary(
+        self, device_id: str, now: datetime, lookups: nextrun.Lookups, writer: Writer
+    ) -> DeviceSummary | None:
+        """Return a device's view from the index and the provider; None with no item."""
+        routine = self._provider.routine_summary(device_id) if self._provider else None
+        if routine is None:
+            self._routine_devices.discard(device_id)
+        device = dr.async_get(self.hass).async_get(device_id)
+        if device is None:
+            return None
+        return self._summary(device, routine, now, lookups, writer)
 
     def _summary(
         self,
         device: dr.AnyDeviceEntry,
-        indexed: list[IndexedLine],
+        routine: RoutineSummary | None,
         now: datetime,
         lookups: nextrun.Lookups,
         writer: Writer,
-    ) -> DeviceSummary:
-        rows: list[tuple[SummaryItem, list[Occurrence], tuple[str, ...]]] = []
+    ) -> DeviceSummary | None:
+        indexed = self._index.lines.get(device.id, [])
+        pause_end = _pause_end(routine, now)
+        # The provider's items stand for the device's own routine automation, unless the
+        # routine was detached (then that automation is an ordinary one again) or the
+        # provider has no line for it (then the parsed lines stay).
+        provided = (
+            routine
+            if routine is not None and routine.status is not Status.DETACHED and routine.items
+            else None
+        )
+        rows = self._routine_rows(device.id, provided, pause_end, now) if provided else []
+        # The next action the routine really runs, known when its inputs were read.
+        routine_next = (
+            rows[0].occurrences[0] if rows and rows[0].routine and rows[0].occurrences else None
+        )
+        own_id = markers.automation_id(device.id)
         for entry in indexed:
-            enabled = _is_on(self.hass.states.get(entry.automation_entity))
-            occurrences = (
-                nextrun.next_occurrences(entry.line, now, lookups, limit=OCCURRENCE_LIMIT)
-                if enabled
-                else []
-            )
-            item = SummaryItem(
-                kind=KIND_AUTOMATION,
-                automation_entity=entry.automation_entity,
-                alias=entry.line.alias,
-                summary=writer.line(entry.line),
-                next_run=occurrences[0].at if occurrences else None,
-                source=SOURCE_PARSER if entry.line.understood else SOURCE_NONE,
-                enabled=enabled,
-                custom_logic=entry.line.custom_logic,
-            )
-            # One automation acting several times on a device the same way reads once.
-            if any(row[0] == item for row in rows):
+            if provided and entry.kind == KIND_ROUTINE and entry.line.automation_id == own_id:
                 continue
-            rows.append((item, occurrences, entry.line.entity_ids))
+            row = self._parsed_row(entry, now, lookups, writer)
+            # One automation acting several times on a device the same way reads once.
+            if any(existing.item == row.item for existing in rows):
+                continue
+            rows.append(row)
+        if not rows:
+            return None
         rows.sort(key=_row_order)
-        items = tuple(row[0] for row in rows)
-        upcoming = nextrun.earliest(row[1][0] for row in rows if row[1])
+        items = tuple(row.item for row in rows)
+        upcoming = nextrun.earliest(row.occurrences[0] for row in rows if row.occurrences)
         fallback = next((item.summary for item in items if item.enabled), items[0].summary)
         planned = [
-            conflicts.Planned(index, entity_ids, tuple(occurrences))
-            for index, (_, occurrences, entity_ids) in enumerate(rows)
+            conflicts.Planned(index, row.entity_ids, tuple(row.occurrences), row.routine)
+            for index, row in enumerate(rows)
         ]
+        changes = [m for m in (upcoming.at if upcoming else None, pause_end) if m is not None]
         return DeviceSummary(
             device_id=device.id,
             device_name=device.name,
@@ -418,11 +577,98 @@ class SummaryCoordinator:
             connections=(
                 frozenset(device.connections) if isinstance(device, dr.DeviceEntry) else frozenset()
             ),
-            state=writer.state(upcoming, fallback, now),
+            state=_state(
+                writer,
+                routine,
+                pause_end=pause_end,
+                routine_next=routine_next,
+                upcoming=upcoming,
+                fallback=fallback,
+                now=now,
+            ),
             items=items,
             conflicts=tuple(conflicts.find(planned, now, now + CONFLICT_WINDOW)),
-            next_change=upcoming.at if upcoming else None,
+            next_change=min(changes, default=None),
+            paused_until=pause_end,
+            skipped_action=_skipped_line(writer, routine, pause_end, now),
+            has_routine=routine is not None or any(e.kind == KIND_ROUTINE for e in indexed),
         )
+
+    def _parsed_row(
+        self, entry: IndexedLine, now: datetime, lookups: nextrun.Lookups, writer: Writer
+    ) -> _Row:
+        enabled = _is_on(self.hass.states.get(entry.automation_entity))
+        occurrences = (
+            nextrun.next_occurrences(entry.line, now, lookups, limit=OCCURRENCE_LIMIT)
+            if enabled
+            else []
+        )
+        if entry.kind != KIND_AUTOMATION and not entry.line.understood:
+            # "Routine" or "Detached routine" where an automation reads "Automation: ...".
+            text = writer.routine_kind(detached=entry.kind == KIND_DETACHED)
+        else:
+            text = writer.line(entry.line)
+        item = SummaryItem(
+            kind=entry.kind,
+            automation_entity=entry.automation_entity,
+            alias=entry.line.alias,
+            summary=text,
+            next_run=occurrences[0].at if occurrences else None,
+            source=SOURCE_PARSER if entry.line.understood else SOURCE_NONE,
+            enabled=enabled,
+            custom_logic=entry.line.custom_logic,
+        )
+        return _Row(item, occurrences, entry.line.entity_ids)
+
+    def _routine_rows(
+        self, device_id: str, routine: RoutineSummary, pause_end: datetime | None, now: datetime
+    ) -> list[_Row]:
+        """Return the provider's items as rows.
+
+        The first item stands for the owned automation: while it runs, its next actions
+        are computed from its inputs after Paused until; while it does not, it has none.
+        Every other item, and every item before the owned automation is indexed, counts
+        its own next run with its action unknown.
+        """
+        rows = [
+            _Row(item, [Occurrence(item.next_run, None)] if item.next_run else [], ())
+            for item in routine.items
+        ]
+        owned = self._index.routines.get(device_id)
+        if owned is None:
+            return rows
+        first = rows[0].item
+        if routine.status in _RUNNING_STATUSES and _is_on(
+            self.hass.states.get(owned.automation_entity)
+        ):
+            settings = owned.settings
+            occurrences = self._routine_occurrences(owned, pause_end, now)
+            rows[0] = _Row(first, occurrences, (settings.target_entity,), settings)
+        else:
+            rows[0] = _Row(first, [], ())
+        return rows
+
+    def _routine_occurrences(
+        self, owned: _OwnedRoutine, pause_end: datetime | None, now: datetime
+    ) -> list[Occurrence]:
+        """Return the routine's coming actions from its settings and its helpers' states."""
+        settings = owned.settings
+        schedule_state: str | None = None
+        entity_times: dict[str, time | datetime] = {}
+        if settings.schedule_entity is not None:
+            schedule = self.hass.states.get(settings.schedule_entity)
+            schedule_state = schedule.state if schedule else None
+            if (next_event := _attribute_moment(schedule, "next_event")) is not None:
+                entity_times[settings.schedule_entity] = next_event
+        timer = self.hass.states.get(owned.timer_entity) if owned.timer_entity else None
+        return nextrun.routine_occurrences(
+            settings,
+            now,
+            schedule_state,
+            nextrun.Lookups(sun=self._sun, entity_times=entity_times),
+            countdown_ends=_attribute_moment(timer, "finishes_at", "active"),
+            not_before=pause_end,
+        )[:OCCURRENCE_LIMIT]
 
     def _sun(self, day: date, event: str) -> datetime | None:
         return get_astral_event_date(self.hass, event, day)
@@ -455,7 +701,8 @@ class SummaryCoordinator:
     def _wanted_sensors(self) -> set[str]:
         if self.settings.schedule_scope is ScheduleScope.ALL:
             return set(self.summaries)
-        # Routines arrive in Phase 2; until then the routines scope has no device.
+        if self.settings.schedule_scope is ScheduleScope.ROUTINES:
+            return {device for device, summary in self.summaries.items() if summary.has_routine}
         return set()
 
     def _reconcile_sensors(self) -> None:
@@ -499,10 +746,125 @@ def _is_on(state: State | None) -> bool:
     return state is not None and state.state == "on"
 
 
-def _row_order(row: tuple[SummaryItem, list[Occurrence], tuple[str, ...]]) -> tuple[Any, ...]:
-    item = row[0]
+def _row_order(row: _Row) -> tuple[Any, ...]:
+    """Routines first (PRD FR-S4); then timed lines by time, read lines, custom logic."""
+    item = row.item
     rank = 0 if item.next_run else (1 if item.source == SOURCE_PARSER else 2)
-    return (rank, item.next_run or datetime.max.replace(tzinfo=dt_util.UTC), item.alias)
+    return (
+        item.kind != KIND_ROUTINE,
+        rank,
+        item.next_run or datetime.max.replace(tzinfo=dt_util.UTC),
+        item.alias,
+    )
+
+
+def _marked(refs: ha_adapter.AutomationRefs) -> Mapping[str, Any]:
+    """Return the config as `automations.yaml` holds it, `use_blueprint` included.
+
+    The loaded entity's config is the rendered one, so the adapter reads the block apart.
+    """
+    if refs.blueprint is None:
+        return refs.config
+    return {**refs.config, "use_blueprint": refs.blueprint}
+
+
+def _kind(config: Mapping[str, Any]) -> str:
+    """Owned (M1 and M2) is a routine; M1 alone is a detached routine (Stage 0 V8)."""
+    if markers.is_owned(config):
+        return KIND_ROUTINE
+    if markers.has_routine_id(config):
+        return KIND_DETACHED
+    return KIND_AUTOMATION
+
+
+def _owned_routine(entity_id: str, config: Mapping[str, Any]) -> _OwnedRoutine | None:
+    """Return an owned automation's settings, or None when its inputs do not read."""
+    inputs = config["use_blueprint"].get("input")
+    if not compiler.is_valid_shape(inputs):
+        return None
+    timer = compiler.refs_of(inputs).timer_entity
+    return _OwnedRoutine(
+        automation_entity=entity_id,
+        settings=compiler.decompile(inputs),
+        timer_entity=None if timer == compiler.UNUSED_TIMER else timer,
+    )
+
+
+def _pause_end(routine: RoutineSummary | None, now: datetime) -> datetime | None:
+    """Return Paused until while the routine is paused or skipping and it is ahead."""
+    if (
+        routine is None
+        or routine.status not in _PAUSING_STATUSES
+        or routine.paused_until is None
+        or routine.paused_until <= now
+    ):
+        return None
+    return routine.paused_until
+
+
+def _state(  # noqa: PLR0913  # every input of the FR-S4 state
+    writer: Writer,
+    routine: RoutineSummary | None,
+    *,
+    pause_end: datetime | None,
+    routine_next: Occurrence | None,
+    upcoming: Occurrence | None,
+    fallback: str,
+    now: datetime,
+) -> str | None:
+    """Return the state: the routine's form first (FR-S4), else the earliest action."""
+    if routine is not None and routine.status in _OFF_STATUSES:
+        return writer.routine_off()
+    if pause_end is not None:
+        assert routine is not None  # noqa: S101  # a pause needs a routine
+        if routine.status is Status.SKIPPING and routine_next is not None:
+            assert routine_next.verb is not None  # noqa: S101  # routine actions have verbs
+            return writer.skipped(routine_next.verb, routine_next.at, now)
+        return writer.paused(pause_end, now)
+    return writer.state(upcoming, fallback, now)
+
+
+def _skipped_line(
+    writer: Writer, routine: RoutineSummary | None, pause_end: datetime | None, now: datetime
+) -> str | None:
+    """Return the skipped action as a line ("5:00 PM: on") while the routine skips."""
+    if (
+        pause_end is None
+        or routine is None
+        or routine.status is not Status.SKIPPING
+        or routine.skipped_action is None
+        or routine.skipped_action.verb is None
+    ):
+        return None
+    action = routine.skipped_action
+    moment = action.at.astimezone(now.tzinfo)
+    weekdays = None if moment.date() == now.date() else frozenset({Weekday.of(moment)})
+    line = ParsedLine(
+        automation_id="",
+        alias="",
+        entity_ids=(),
+        verb=action.verb,
+        triggers=(TimeTrigger(at=moment.time(), weekdays=weekdays),),
+    )
+    return writer.line(line)
+
+
+def _moment(value: Any) -> datetime | None:
+    """Return an aware datetime from a state attribute: a datetime or an ISO string."""
+    if isinstance(value, str):
+        value = dt_util.parse_datetime(value)
+    if not isinstance(value, datetime):
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=dt_util.get_default_time_zone())
+
+
+def _attribute_moment(
+    state: State | None, attribute: str, when: str | None = None
+) -> datetime | None:
+    """Return a datetime attribute of a state, only in the state `when` if one is given."""
+    if state is None or (when is not None and state.state != when):
+        return None
+    return _moment(state.attributes.get(attribute))
 
 
 def _time_entities(groups: Iterable[list[IndexedLine]]) -> frozenset[str]:
