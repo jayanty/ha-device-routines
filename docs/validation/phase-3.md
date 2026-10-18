@@ -38,7 +38,10 @@ tools print it, without instance names. Phase 2 rows and the Build A deploy stan
 
 ## Live rows
 
-Filled after restart R1 (plan Section 5.3).
+Filled after restart R1 (plan Section 5.3). Phase 2 rows of the same section and the R1
+restart bundle are in `phase-2.md`.
 
 | Step | Method | Evidence | Result | Date | Approved by |
 | --- | --- | --- | --- | --- | --- |
+| 5.3 step 2: the read only WebSocket commands | MCP `ha_call_service` with `ws_command` | `device_routines/routines/list`: `routines: []`. `device_routines/settings/get`: every PRD 10.4 default (scope `all`, time format `auto`, catch up and respect manual on, late start window 15, cleanup after 30 days, assign area on, removal `keep`, no AI Task entity, 20 AI calls per hour, conversion offers and conflict repairs on). `device_routines/devices/opt` `list`: 120 devices, each with its controllable targets and no configuration or diagnostic entity. `devices/opt` `suggest`: 3 devices, exactly the devices that hand written time triggered automations drive, the sandbox plug's device among them. `device_routines/schedule/today`: the day's 4 planned actions, all `kind: automation`, sorted by time, earlier ones of the day included as planned, no conflict | Pass | 2026-10-18 | n/a (read only) |
+| 5.3 steps 10 to 12: keep alive, pulse, weekly schedule, the editor pickers | Live writes on the sandbox device (L26); owner look (O4) | None yet | Not run: wait on step 3 of the Phase 2 rows, refused by this session's permission layer (owner log O17). The harness rows above stand meanwhile | 2026-10-18 | |

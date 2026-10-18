@@ -102,9 +102,25 @@ settings catalog, G5) are in `phase-3.md`.
 | Whole suite | `pytest -m "not live" --cov` on `dev` | 1831 passed, 6 skipped (the live suite and Stage 0 probes that need a live instance), 4 deselected (`live`), no xfail; total coverage 99.87 percent, every integration module at 100 percent line and branch; 1 minute 46 seconds | Pass | 2026-10-18 | n/a |
 | Static gates and CI | `ruff check`, `ruff format --check`, `mypy --strict`, style and privacy checks locally; CI (lint, typecheck, style, privacy, test pinned and latest, hassfest, HACS, deploy tool parity) | Every local gate clean; CI green on every job, hassfest included, from `b277a3d` on; the exit commit's own CI run is the one the `main` fast forward waits for. A wall clock dependent Stage 0 test that failed near local midnight now runs at a fixed instant (L57); six repeated runs of the two other tests seen failing once under parallel load were green | Pass | 2026-10-18 | n/a |
 
+## Restart R1 bundle (plan Section 5.2, template 9.6)
+
+| Field | Content |
+| --- | --- |
+| Restart | R1, the owner's, 2026-10-18 at about 15:16Z (owner log O15, decision L59) |
+| Deployed before | `efbf757` (`v0.3.0-beta.1`) on disk since 07:31:35Z, from `shell_command.device_routines_deploy_status` (the Build A exit deploy row above); Health read `d00fa2f` running until the restart |
+| Staged | Nothing, as plan 5.2 says for R1 (first load: no routine exists before it). The plan 5.1 step 2 baseline was not read before the restart, because the restart happened before this session started; it is read after instead: the sandbox plug `on` since 15:16:03Z, turned on by its hand written automation's start reconcile (automation `on`, last triggered 15:16:21Z) |
+| Running after | Health `ok`, `commit` `efbf757` (branch `v0.3.0-beta.1`), version 0.3.0, `blueprint_schema: 1`, `blueprint_status: ok`, `owned_count: 0`, `loaded_count: 0`, `issues: []`, `last_reconcile` 15:16:21Z, Home Assistant 2026.10.2. Time to `ok`: within the start (the first reconcile ran at 15:16:21Z, 18 seconds after the plug came back on); not measured to the second, since no session was reading during the restart |
+| Read after | No staged scenario. The Section 5.3 rows follow |
+
 ## Live rows
 
-Filled after restart R1 (plan Section 5.3).
+Filled after restart R1 (plan Section 5.3). Phase 3 rows of the same section (the
+WebSocket API, keep alive, pulse, weekly schedules, the editor pickers) are in
+`phase-3.md`.
 
 | Step | Method | Evidence | Result | Date | Approved by |
 | --- | --- | --- | --- | --- | --- |
+| 5.3 step 1: Health, blueprint, label, category, Repairs, Schedule sensors | MCP reads: a template over Health, the hub entities and the Schedule sensors; the label and automation category registries; the blueprint list; `repairs/list_issues`; `shell_command.device_routines_deploy_status`; the system log filtered on the integration | Health as in the R1 bundle above. Deploy status: `efbf757` on `v0.3.0-beta.1` since 07:31:35Z, five backups, `python_ok: true`, `hacs_managed: false`. The `Routines` label exists (icon `mdi:calendar-clock`, on no device or entity yet) and exactly one automation category, `Device Routines` (same icon). The blueprint `device_routines/device_routine.yaml` is installed, author Device Routines, no `source_url` (L24). No Repairs issue of the integration (the other domains' issues predate the restart and are unrelated). Hub entities: Problem `off`, Routines `0`, Clean up now present. 10 Schedule sensors, the same number as the Phase 1 record, none unavailable. No system log entry of the integration. Auto deploy and auto restart both `off` (L58). `pytest -m live` not run: `local/live.env` does not exist yet (O2), so these MCP reads stand in for it | Pass | 2026-10-18 | n/a (read only) |
+| 5.3 step 3: the sandbox plug's hand written automation off | Read before over MCP; `automation.turn_off`; read after | Read before: the plug `on` since 15:16:03Z, the hand automation `on`, the plug's Schedule sensor reading the hand automation's next off (four parser items, no conflict). The write was refused by Claude Code's auto mode classifier in this session ("Modify Shared Resources"), and so was a plain state read right after it; nothing was written, so the instance is unchanged | Not run: waits for the owner to allow the live session's Home Assistant calls (owner log O17) | 2026-10-18 | |
+| 5.3 steps 4 to 8 and 13: S2, S6, S7, S11, S13, end state | Live writes on the sandbox device (L26) | None yet | Not run: wait on step 3 (O17). The harness rows above stand meanwhile | 2026-10-18 | |
+| 5.3 step 9: S1, a hand written weekday automation's next start | MCP read (template, before the refusal) | The Schedule sensor of a device that a hand written weekday automation starts read `Start Mon <time>` on a Sunday, which is that automation's next start. Its attributes (`kind: automation`) were not read before the refusal | Partly: the sentence passes; the attribute read waits on O17 | 2026-10-18 | n/a (read only) |
