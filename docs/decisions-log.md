@@ -384,3 +384,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | `compiler.canonical` maps Some days with a named set to that name, keeps `day_set` only for Some days and `schedule_entity` only for a weekly schedule, and drops microseconds; `decompile(compile(s)) == canonical(s)`, and `decompile` reads the primary inputs only, so the next write repairs derived inputs a form edit left stale. A profile without an on action carries its off action in `on_action` (a valid service that can only make the device safer), with every on feature disabled. `validate` also rejects times with Weekly schedule and minutes out of range (durations 0 to 1440, late window 0 to 180, pulse 1 to 1440, steadiness 0 to 1440). `skip_target` takes a keyword `countdown_ends` for an active timer. Skip next outside a weekly schedule block returns None in lane 1; lane 14 closes the gap by reading the helper's blocks through the adapter and skipping the next block start with its end, as D18 does for a window. With `late_start_window_min` 0 the compiler emits `late_window_end` equal to `on_time`; the blueprint guards that case so 0 means no late start (lane 2 told). |
 | Consequence | Plan Section 4.2 compiler, nextrun, sentence and markers rows annotated with the landed names; lane 14's file list gains `nextrun.py`. The Writer's new state methods are pinned for lane 7. |
 | PRD register entry | no |
+
+## 2026-10-18 L39: wave A2 starts with lanes 6 and 7; maintenance takes its target
+
+| Field | Content |
+| --- | --- |
+| Context | Plan Section 4.4 dispatches lanes 5, 6 and 7 together, but lane 5 (the manager) consumes lanes 6 and 7 and lane 2's blueprint fixtures, while lanes 6 and 7 need neither lane 2 nor lane 5. The contract `maintenance.async_run(hass, entry, action, dry_run)` would make lane 6 read a manager from the entry's runtime data, a field lane 5 adds. |
+| Options | (a) Dispatch the three together and let lane 5 rebase onto lanes 6 and 7 when they land; (b) dispatch lanes 6 and 7 as soon as lane 1, 3 and 4 have landed, and lane 5 when lane 2 lands, by when lanes 6 and 7 are likely on `dev`. For maintenance: (a) keep the entry parameter; (b) pass the target. |
+| Choice | (b) and (b). `async_run(hass, target, action, dry_run)` with a `MaintenanceTarget` protocol in `maintenance.py`; services, the hub button and the WebSocket command pass `entry.runtime_data.manager`. Lane 6 may also export `async_migrate_entry` from `__init__.py` and bump the entry's `MINOR_VERSION` in `config_flow.py`, one line each. |
+| Consequence | Plan Section 4.2 maintenance row and lane 6's file list amended; the Status line names the lanes in flight. |
+| PRD register entry | no |
