@@ -410,7 +410,8 @@
           "on_removal": "What removing Device Routines does to the routine automations. Keep turns each into a normal automation that keeps running; delete removes them with their timers and schedules.",
           "ai_calls_per_hour": "The most summaries the AI summary entity writes in one hour.",
           "offer_conversions": "Offer, in Repairs, to turn a hand written automation that does exactly what a routine does into a routine.",
-          "raise_conflict_repairs": "Raise a Repairs issue when a routine and another automation switch a device in opposite directions at the same minute."
+          "raise_conflict_repairs": "Raise a Repairs issue when a routine and another automation switch a device in opposite directions at the same minute.",
+          "ai_task_entity": "Optional; AI summaries stay off while this is empty. When you choose an AI Task entity, Device Routines sends it, through its generate data action, only the automations whose schedule it cannot read itself: one automation at a time, at most as many an hour as AI calls per hour allows, and never in the first five minutes after a start. For each it sends the trigger, condition and action blocks as written, templates included, with entities named by entity id. Aliases and descriptions are left out, devices, areas, floors and labels become numbered placeholders, and no names, states or attributes are sent. It goes to this entity only; where the entity sends it next depends on its integration (a local model keeps it in your home, a cloud service does not). Answers are kept until the automation changes and show with (AI)."
         }
       },
       "devices": {
@@ -431,11 +432,6 @@
         },
         "data_description": {
           "devices": "Nothing is ticked: leave it that way to skip."
-        }
-      },
-      "settings": {
-        "data_description": {
-          "ai_task_entity": "Optional; AI summaries stay off while this is empty. When you choose an AI Task entity, Device Routines sends it, through its generate data action, only the automations whose schedule it cannot read itself: one automation at a time, at most as many an hour as AI calls per hour allows, and never in the first five minutes after a start. For each it sends the trigger, condition and action blocks as written, templates included, with entities named by entity id. Aliases and descriptions are left out, devices, areas, floors and labels become numbered placeholders, and no names, states or attributes are sent. It goes to this entity only; where the entity sends it next depends on its integration (a local model keeps it in your home, a cloud service does not). Answers are kept until the automation changes and show with (AI)."
         }
       }
     },
