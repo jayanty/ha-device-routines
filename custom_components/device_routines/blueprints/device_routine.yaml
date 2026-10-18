@@ -1,0 +1,925 @@
+# Device Routines blueprint, schema 1.
+# Do not edit: changes are detected and offered for restore.
+#
+# One automation per device runs this blueprint. Every rule lives in native conditions;
+# the only template is the Paused until check (decision L22). Inputs that switch a rule
+# on or off are read through `enabled:`, which a condition, an action and a trigger all
+# accept: inside a plain list a switched off condition passes, inside an `or` it counts
+# as false, so "X is set" is an `or` holding one empty `and` that X switches on.
+blueprint:
+  name: Device routine (managed by Device Routines)
+  description: >-
+    The routine of one device: when it turns on and off, how long it may stay on or off,
+    and what happens after a restart. Device Routines manages this automation from the
+    device page, which is the main editor; this form is a second editor for the same
+    settings, and a change saved here shows up on the device page. Home Assistant runs the
+    routine on its own, with or without the integration.
+  domain: automation
+  author: Device Routines
+  homeassistant:
+    min_version: 2026.10.2
+  input:
+    target:
+      name: Target
+      description: The device entity this routine controls and how to switch it.
+      collapsed: false
+      input:
+        target_entity:
+          name: Device
+          description: The entity the routine turns on and off.
+          selector:
+            entity:
+              filter:
+                - domain:
+                    - switch
+                    - light
+                    - fan
+                    - input_boolean
+                    - humidifier
+                    - climate
+                    - media_player
+                    - vacuum
+                    - lawn_mower
+                    - cover
+                    - lock
+                    - valve
+        on_action:
+          name: Turn on action
+          description: The action that turns the device on, for example switch.turn_on.
+          selector:
+            text: {}
+        off_action:
+          name: Turn off action
+          description: The action that turns the device off, for example switch.turn_off.
+          selector:
+            text: {}
+        inactive_state:
+          name: Off state
+          description: The state the device is in when it is off (off, docked, closed or locked).
+          selector:
+            text: {}
+        device_id:
+          name: Device id
+          description: The id of the device, carried in the events the routine fires.
+          selector:
+            text: {}
+    schedule:
+      name: Schedule
+      description: When the device turns on and off.
+      collapsed: false
+      input:
+        on_time_enabled:
+          name: Use Turn on at
+          description: Turn the device on at a time.
+          default: false
+          selector:
+            boolean: {}
+        on_time:
+          name: Turn on at
+          description: The time the device turns on.
+          default: "00:00:00"
+          selector:
+            time: {}
+        off_time_enabled:
+          name: Use Turn off at
+          description: Turn the device off at a time.
+          default: false
+          selector:
+            boolean: {}
+        off_time:
+          name: Turn off at
+          description: The time the device turns off.
+          default: "00:00:00"
+          selector:
+            time: {}
+        days_start:
+          name: Days
+          description: The days the times apply to. A window that ends after midnight belongs to the day it starts.
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              options:
+                - {value: mon, label: Monday}
+                - {value: tue, label: Tuesday}
+                - {value: wed, label: Wednesday}
+                - {value: thu, label: Thursday}
+                - {value: fri, label: Friday}
+                - {value: sat, label: Saturday}
+                - {value: sun, label: Sunday}
+        days_end:
+          name: Days the window ends
+          description: The days a window ends on; one day after the start days when the window crosses midnight.
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              options:
+                - {value: mon, label: Monday}
+                - {value: tue, label: Tuesday}
+                - {value: wed, label: Wednesday}
+                - {value: thu, label: Thursday}
+                - {value: fri, label: Friday}
+                - {value: sat, label: Saturday}
+                - {value: sun, label: Sunday}
+        crosses_midnight:
+          name: Window crosses midnight
+          description: On when Turn on at is later in the day than Turn off at.
+          default: false
+          selector:
+            boolean: {}
+        schedule_enabled:
+          name: Use a weekly schedule
+          description: Follow the blocks of a weekly schedule helper instead of the times.
+          default: false
+          selector:
+            boolean: {}
+        schedule_entity:
+          name: Weekly schedule
+          description: The schedule helper whose blocks turn the device on and off.
+          default: schedule.device_routines_unused
+          selector:
+            entity:
+              filter:
+                - domain: schedule
+    timers:
+      name: Timers
+      description: How long the device may stay on, or off.
+      collapsed: true
+      input:
+        timer_entity:
+          name: Timer
+          description: The timer helper that counts down, so a countdown survives a restart.
+          default: timer.device_routines_unused
+          selector:
+            entity:
+              filter:
+                - domain: timer
+        turn_off_after_min:
+          name: Turn off after
+          description: Turn the device off this many minutes after it turns on (0 is off).
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 1440
+              step: 1
+              mode: box
+              unit_of_measurement: min
+        turn_back_on_after_min:
+          name: Turn back on after
+          description: Turn the device back on this many minutes after it turns off (0 is off). Not together with Turn off after.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 1440
+              step: 1
+              mode: box
+              unit_of_measurement: min
+    behavior:
+      name: Behavior
+      description: Restarts, manual changes and pauses.
+      collapsed: true
+      input:
+        catch_up:
+          name: Catch up
+          description: After a restart, a reconnect or a pause, set the device to the state the schedule expects now.
+          default: true
+          selector:
+            boolean: {}
+        late_start_window_min:
+          name: Late start window
+          description: A start with no end that was missed by up to this many minutes still runs after a restart (0 is off).
+          default: 15
+          selector:
+            number:
+              min: 0
+              max: 180
+              step: 1
+              mode: box
+              unit_of_measurement: min
+        late_window_end:
+          name: Late start window ends at
+          description: Turn on at plus the late start window.
+          default: "00:15:00"
+          selector:
+            time: {}
+        respect_manual:
+          name: Respect manual changes
+          description: A change made by hand turns the manual override on until the next scheduled time.
+          default: true
+          selector:
+            boolean: {}
+        override_entity:
+          name: Manual override
+          description: The switch that holds the manual override; catch up waits while it is on.
+          default: switch.device_routines_unused
+          selector:
+            entity:
+              filter:
+                - domain: switch
+        paused_until_entity:
+          name: Paused until
+          description: The date and time the routine is paused or skipping until.
+          default: datetime.device_routines_unused
+          selector:
+            entity:
+              filter:
+                - domain: datetime
+    advanced:
+      name: Advanced
+      description: Pulse, the docked guard and extra conditions.
+      collapsed: true
+      input:
+        pulse_enabled:
+          name: Use pulse
+          description: At a time, switch to the opposite state for a few minutes, then back.
+          default: false
+          selector:
+            boolean: {}
+        pulse_at:
+          name: Pulse at
+          description: The time the pulse starts.
+          default: "00:00:00"
+          selector:
+            time: {}
+        pulse_minutes:
+          name: Pulse length
+          description: How long the device stays in the opposite state.
+          default: 3
+          selector:
+            number:
+              min: 1
+              max: 1440
+              step: 1
+              mode: box
+              unit_of_measurement: min
+        pulse_min_steady_min:
+          name: Pulse only after steady for
+          description: The pulse runs only if the device has not changed for this many minutes.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 1440
+              step: 1
+              mode: box
+              unit_of_measurement: min
+        docked_guard:
+          name: Start only when docked
+          description: Start a vacuum or a lawn mower only from its dock; for other devices, turn on only when off.
+          default: true
+          selector:
+            boolean: {}
+        extra_conditions:
+          name: Only when
+          description: Conditions that must hold for the routine to turn the device on at a scheduled time.
+          default: []
+          selector:
+            condition: {}
+
+mode: queued
+max: 10
+
+variables:
+  paused_entity: !input paused_until_entity
+
+triggers:
+  - alias: Turn on at
+    id: scheduled_on
+    trigger: time
+    at: !input on_time
+    enabled: !input on_time_enabled
+  - alias: Turn off at
+    id: scheduled_off
+    trigger: time
+    at: !input off_time
+    enabled: !input off_time_enabled
+  - alias: A weekly schedule block starts
+    id: block_on
+    trigger: state
+    entity_id: !input schedule_entity
+    from: "off"
+    to: "on"
+    enabled: !input schedule_enabled
+  - alias: A weekly schedule block ends
+    id: block_off
+    trigger: state
+    entity_id: !input schedule_entity
+    from: "on"
+    to: "off"
+    enabled: !input schedule_enabled
+  - alias: Home Assistant started
+    id: ha_start
+    trigger: homeassistant
+    event: start
+    enabled: !input catch_up
+  - alias: The device is back from unavailable
+    id: reconnect
+    trigger: state
+    entity_id: !input target_entity
+    from: unavailable
+    for:
+      seconds: 10
+    enabled: !input catch_up
+  - alias: The device turned on (for Turn off after)
+    id: device_on
+    trigger: state
+    entity_id: !input target_entity
+    from: !input inactive_state
+    not_to: [unavailable, unknown]
+    enabled: !input turn_off_after_min
+  - alias: The device turned on (for Turn back on after)
+    id: device_on
+    trigger: state
+    entity_id: !input target_entity
+    from: !input inactive_state
+    not_to: [unavailable, unknown]
+    enabled: !input turn_back_on_after_min
+  - alias: The device turned off (for Turn off after)
+    id: device_off
+    trigger: state
+    entity_id: !input target_entity
+    to: !input inactive_state
+    enabled: !input turn_off_after_min
+  - alias: The device turned off (for Turn back on after)
+    id: device_off
+    trigger: state
+    entity_id: !input target_entity
+    to: !input inactive_state
+    enabled: !input turn_back_on_after_min
+  - alias: The countdown finished
+    id: timer_done
+    trigger: timer.finished
+    target:
+      entity_id: !input timer_entity
+  - alias: The countdown ran out while Home Assistant was down (caught up by the integration)
+    id: timer_done
+    trigger: event
+    event_type: device_routines_timer_caught_up
+    event_data:
+      device_id: !input device_id
+  - alias: Paused until changed
+    id: pause_changed
+    trigger: state
+    entity_id: !input paused_until_entity
+    not_from: [unavailable]
+    not_to: [unavailable]
+  - alias: The manual override was cleared
+    id: override_cleared
+    trigger: state
+    entity_id: !input override_entity
+    from: "on"
+    to: "off"
+    enabled: !input catch_up
+  - alias: Pulse at
+    id: pulse
+    trigger: time
+    at: !input pulse_at
+    enabled: !input pulse_enabled
+
+actions:
+  - alias: Apply the rule for what happened
+    choose:
+      # ------------------------------------------------------------------------------
+      - alias: A scheduled start (Turn on at, or a weekly schedule block starts)
+        conditions:
+          - alias: Triggered by Turn on at or a block start
+            condition: trigger
+            id: [scheduled_on, block_on]
+          - alias: A start day, or a weekly schedule block
+            condition: or
+            conditions:
+              - alias: Triggered by a weekly schedule block
+                condition: trigger
+                id: block_on
+              - alias: Today is a start day
+                condition: time
+                weekday: !input days_start
+          - &extra_ok
+            alias: Only when (extra conditions)
+            condition: and
+            conditions: !input extra_conditions
+        sequence:
+          - alias: Turn on unless paused
+            if:
+              - &not_paused
+                alias: Not paused
+                condition: template
+                value_template: "{% set s = states(paused_entity) %}{{ s in ('unknown', 'unavailable', '') or as_datetime(s) <= now() }}"
+            then:
+              - &clear_override
+                alias: Clear the manual override
+                if:
+                  - alias: The manual override is on
+                    condition: switch.is_on
+                    target:
+                      entity_id: !input override_entity
+                then:
+                  - alias: Turn the manual override off
+                    action: switch.turn_off
+                    target:
+                      entity_id: !input override_entity
+              - &turn_on
+                alias: Turn the device on, if that is safe
+                if:
+                  - &safe_to_activate
+                    alias: Not a refused action (PRD 5.4)
+                    condition: not
+                    conditions:
+                      - alias: The device is a lock or an alarm panel, or its state is unknown
+                        condition: state
+                        entity_id: !input target_entity
+                        state:
+                          - unknown
+                          - unavailable
+                          - locked
+                          - unlocked
+                          - locking
+                          - unlocking
+                          - jammed
+                          - open
+                          - opening
+                          - disarmed
+                          - armed_home
+                          - armed_away
+                          - armed_night
+                          - armed_vacation
+                          - armed_custom_bypass
+                          - pending
+                          - arming
+                          - disarming
+                          - triggered
+                      - alias: The device is a garage door, a gate, a door or a gas valve
+                        condition: state
+                        entity_id: !input target_entity
+                        attribute: device_class
+                        state: [garage, gate, door, gas]
+                  - alias: Docked guard (the device is in its off state)
+                    condition: state
+                    entity_id: !input target_entity
+                    state: !input inactive_state
+                    enabled: !input docked_guard
+                then:
+                  - alias: Turn the device on
+                    action: !input on_action
+                    target:
+                      entity_id: !input target_entity
+              - alias: Start Turn off after when there is no window
+                if:
+                  - &only_turn_off_after
+                    alias: Turn off after is the duration in use
+                    condition: and
+                    conditions:
+                      - alias: Turn off after is set
+                        condition: or
+                        conditions:
+                          - alias: Turn off after minutes above zero
+                            condition: and
+                            conditions: []
+                            enabled: !input turn_off_after_min
+                      - alias: Turn back on after is not set (D27)
+                        condition: not
+                        conditions:
+                          - alias: Turn back on after minutes above zero
+                            condition: and
+                            conditions: []
+                            enabled: !input turn_back_on_after_min
+                  - alias: No window with an end
+                    condition: not
+                    conditions:
+                      - &has_window
+                        alias: The routine has a window
+                        condition: or
+                        conditions:
+                          - alias: A weekly schedule is linked
+                            condition: and
+                            conditions: []
+                            enabled: !input schedule_enabled
+                          - alias: Both Turn on at and Turn off at are set
+                            condition: and
+                            conditions:
+                              - &on_time_set
+                                alias: Turn on at is set
+                                condition: or
+                                conditions:
+                                  - alias: Turn on at is in use
+                                    condition: and
+                                    conditions: []
+                                    enabled: !input on_time_enabled
+                              - &off_time_set
+                                alias: Turn off at is set
+                                condition: or
+                                conditions:
+                                  - alias: Turn off at is in use
+                                    condition: and
+                                    conditions: []
+                                    enabled: !input off_time_enabled
+                then:
+                  - &start_turn_off_after
+                    alias: Start the Turn off after countdown
+                    action: timer.start
+                    target:
+                      entity_id: !input timer_entity
+                    data:
+                      duration:
+                        minutes: !input turn_off_after_min
+            else:
+              - alias: Report the skipped start
+                event: device_routines_action_skipped
+                event_data:
+                  device_id: !input device_id
+                  automation_id: "{{ this.attributes.id }}"
+                  trigger_id: "{{ trigger.id }}"
+                  action: "on"
+                  scheduled_at: "{{ (trigger.now if trigger.now is defined else now()).isoformat() }}"
+
+      # ------------------------------------------------------------------------------
+      - alias: A scheduled end (Turn off at, or a weekly schedule block ends)
+        conditions:
+          - alias: Triggered by Turn off at or a block end
+            condition: trigger
+            id: [scheduled_off, block_off]
+          - alias: An end day, or a weekly schedule block
+            condition: or
+            conditions:
+              - alias: Triggered by a weekly schedule block
+                condition: trigger
+                id: block_off
+              - alias: Today is an end day
+                condition: time
+                weekday: !input days_end
+        sequence:
+          - alias: Turn off unless paused
+            if:
+              - *not_paused
+            then:
+              - *clear_override
+              - &turn_off
+                alias: Turn the device off, if it is not off already
+                if:
+                  - &device_active
+                    alias: The device is not off
+                    condition: not
+                    conditions:
+                      - alias: The device is off or unavailable
+                        condition: state
+                        entity_id: !input target_entity
+                        state:
+                          - !input inactive_state
+                          - unavailable
+                then:
+                  - alias: Turn the device off
+                    action: !input off_action
+                    target:
+                      entity_id: !input target_entity
+              - &cancel_timer
+                alias: Cancel the countdown
+                if:
+                  - alias: The countdown is running or paused
+                    condition: or
+                    conditions:
+                      - alias: The countdown is running
+                        condition: timer.is_active
+                        target:
+                          entity_id: !input timer_entity
+                      - alias: The countdown is paused
+                        condition: timer.is_paused
+                        target:
+                          entity_id: !input timer_entity
+                then:
+                  - alias: Cancel the timer
+                    action: timer.cancel
+                    target:
+                      entity_id: !input timer_entity
+            else:
+              - alias: Report the skipped end
+                event: device_routines_action_skipped
+                event_data:
+                  device_id: !input device_id
+                  automation_id: "{{ this.attributes.id }}"
+                  trigger_id: "{{ trigger.id }}"
+                  action: "off"
+                  scheduled_at: "{{ (trigger.now if trigger.now is defined else now()).isoformat() }}"
+
+      # ------------------------------------------------------------------------------
+      - alias: The device turned on, so Turn off after starts counting
+        conditions:
+          - alias: Triggered by the device turning on
+            condition: trigger
+            id: device_on
+          - *only_turn_off_after
+          - *not_paused
+          - alias: Not inside a window with a Turn off at
+            condition: not
+            conditions:
+              - &expected_on
+                alias: The schedule expects the device on now
+                condition: or
+                conditions:
+                  - alias: The weekly schedule is on
+                    condition: schedule.is_on
+                    target:
+                      entity_id: !input schedule_entity
+                    enabled: !input schedule_enabled
+                  - alias: Inside a window that starts and ends the same day
+                    condition: and
+                    conditions:
+                      - *on_time_set
+                      - *off_time_set
+                      - &after_on_time
+                        alias: After Turn on at on a start day
+                        condition: time
+                        after: !input on_time
+                        weekday: !input days_start
+                      - &before_off_time
+                        alias: Before Turn off at on an end day
+                        condition: time
+                        before: !input off_time
+                        weekday: !input days_end
+                  - alias: Inside a window crossing midnight, before midnight
+                    condition: and
+                    enabled: !input crosses_midnight
+                    conditions:
+                      - *after_on_time
+                  - alias: Inside a window crossing midnight, after midnight
+                    condition: and
+                    enabled: !input crosses_midnight
+                    conditions:
+                      - *before_off_time
+        sequence:
+          - *start_turn_off_after
+
+      # ------------------------------------------------------------------------------
+      - alias: The device turned on, so Turn back on after is not needed
+        conditions:
+          - alias: Triggered by the device turning on
+            condition: trigger
+            id: device_on
+          - &only_turn_back_on_after
+            alias: Turn back on after is the duration in use
+            condition: and
+            conditions:
+              - alias: Turn back on after is set
+                condition: or
+                conditions:
+                  - alias: Turn back on after minutes above zero
+                    condition: and
+                    conditions: []
+                    enabled: !input turn_back_on_after_min
+              - alias: Turn off after is not set (D27)
+                condition: not
+                conditions:
+                  - alias: Turn off after minutes above zero
+                    condition: and
+                    conditions: []
+                    enabled: !input turn_off_after_min
+        sequence:
+          - *cancel_timer
+
+      # ------------------------------------------------------------------------------
+      - alias: The device turned off, so Turn back on after starts counting
+        conditions:
+          - alias: Triggered by the device turning off
+            condition: trigger
+            id: device_off
+          - *only_turn_back_on_after
+          - *not_paused
+          - &not_a_scheduled_off
+            alias: The schedule expects the device on, or there is no window
+            condition: or
+            conditions:
+              - *expected_on
+              - alias: No window
+                condition: not
+                conditions:
+                  - *has_window
+        sequence:
+          - alias: Start the Turn back on after countdown
+            action: timer.start
+            target:
+              entity_id: !input timer_entity
+            data:
+              duration:
+                minutes: !input turn_back_on_after_min
+
+      # ------------------------------------------------------------------------------
+      - alias: The device turned off, so Turn off after is not needed
+        conditions:
+          - alias: Triggered by the device turning off
+            condition: trigger
+            id: device_off
+          - *only_turn_off_after
+        sequence:
+          - *cancel_timer
+
+      # ------------------------------------------------------------------------------
+      - alias: A countdown finished
+        conditions:
+          - alias: Triggered by the countdown
+            condition: trigger
+            id: timer_done
+        sequence:
+          - alias: Act unless paused
+            if:
+              - *not_paused
+            then:
+              - alias: Which countdown finished
+                choose:
+                  - alias: Turn off after ran out
+                    conditions:
+                      - *only_turn_off_after
+                      - alias: Not inside a window with a Turn off at
+                        condition: not
+                        conditions:
+                          - *expected_on
+                    sequence:
+                      - *turn_off
+                  - alias: Turn back on after ran out
+                    conditions:
+                      - *only_turn_back_on_after
+                      - *not_a_scheduled_off
+                      - *extra_ok
+                    sequence:
+                      - *turn_on
+            else:
+              - alias: Report the skipped Turn off after
+                enabled: !input turn_off_after_min
+                event: device_routines_action_skipped
+                event_data:
+                  device_id: !input device_id
+                  automation_id: "{{ this.attributes.id }}"
+                  trigger_id: "{{ trigger.id }}"
+                  action: "off"
+                  scheduled_at: "{{ (trigger.now if trigger.now is defined else now()).isoformat() }}"
+              - alias: Report the skipped Turn back on after
+                enabled: !input turn_back_on_after_min
+                event: device_routines_action_skipped
+                event_data:
+                  device_id: !input device_id
+                  automation_id: "{{ this.attributes.id }}"
+                  trigger_id: "{{ trigger.id }}"
+                  action: "on"
+                  scheduled_at: "{{ (trigger.now if trigger.now is defined else now()).isoformat() }}"
+
+      # ------------------------------------------------------------------------------
+      - alias: A pause or a skip started
+        conditions:
+          - alias: Triggered by Paused until
+            condition: trigger
+            id: pause_changed
+          - alias: Paused
+            condition: not
+            conditions:
+              - *not_paused
+        sequence:
+          - alias: Pause a running countdown
+            if:
+              - alias: The countdown is running
+                condition: timer.is_active
+                target:
+                  entity_id: !input timer_entity
+            then:
+              - alias: Pause the timer
+                action: timer.pause
+                target:
+                  entity_id: !input timer_entity
+
+      # ------------------------------------------------------------------------------
+      - alias: A pause or a skip ended
+        conditions:
+          - alias: Triggered by Paused until
+            condition: trigger
+            id: pause_changed
+        sequence:
+          - alias: Resume a paused countdown with its remaining time
+            if:
+              - alias: The countdown is paused
+                condition: timer.is_paused
+                target:
+                  entity_id: !input timer_entity
+            then:
+              - alias: Resume the timer
+                action: timer.start
+                target:
+                  entity_id: !input timer_entity
+          - alias: Catch up now (D20)
+            enabled: !input catch_up
+            if:
+              - &no_override
+                alias: No manual override
+                condition: not
+                conditions:
+                  - alias: The manual override is on
+                    condition: switch.is_on
+                    target:
+                      entity_id: !input override_entity
+            then:
+              - &catch_up_window
+                alias: Set the device to the window's state
+                choose:
+                  - alias: The window expects on and the device is off
+                    conditions:
+                      - *expected_on
+                      - &device_inactive
+                        alias: The device is off
+                        condition: state
+                        entity_id: !input target_entity
+                        state: !input inactive_state
+                      - *extra_ok
+                    sequence:
+                      - *turn_on
+                  - alias: The window expects off and the device is on
+                    conditions:
+                      - *has_window
+                      - alias: The schedule does not expect the device on
+                        condition: not
+                        conditions:
+                          - *expected_on
+                      - *device_active
+                    sequence:
+                      - *turn_off
+
+      # ------------------------------------------------------------------------------
+      - alias: Catch up after a start, a reconnect or a cleared manual override
+        conditions:
+          - alias: Triggered by a start, a reconnect or the manual override
+            condition: trigger
+            id: [ha_start, reconnect, override_cleared]
+          - *not_paused
+          - *no_override
+        sequence:
+          - *catch_up_window
+          - alias: Run a missed start with no end, within the late start window
+            if:
+              - *on_time_set
+              - alias: No window
+                condition: not
+                conditions:
+                  - *has_window
+              - alias: A late start window is set
+                condition: or
+                conditions:
+                  - alias: Late start window minutes above zero
+                    condition: and
+                    conditions: []
+                    enabled: !input late_start_window_min
+              - alias: Within the late start window on a start day
+                condition: time
+                after: !input on_time
+                before: !input late_window_end
+                weekday: !input days_start
+              - *device_inactive
+              - *extra_ok
+            then:
+              - *turn_on
+
+      # ------------------------------------------------------------------------------
+      - alias: Pulse time
+        conditions:
+          - alias: Triggered by Pulse at
+            condition: trigger
+            id: pulse
+          - alias: The device has not changed for the pulse's minimum
+            condition: state
+            entity_id: !input target_entity
+            state:
+              - "on"
+              - !input inactive_state
+            for:
+              minutes: !input pulse_min_steady_min
+          - *extra_ok
+        sequence:
+          - alias: Pulse unless paused
+            if:
+              - *not_paused
+            then:
+              - alias: Switch to the opposite state for a while, then back
+                choose:
+                  - alias: The device is off, so on for a while, then off
+                    conditions:
+                      - *device_inactive
+                    sequence:
+                      - *turn_on
+                      - &pulse_delay
+                        alias: Wait for the pulse length
+                        delay:
+                          minutes: !input pulse_minutes
+                      - *turn_off
+                  - alias: The device is on, so off for a while, then on
+                    conditions:
+                      - *device_active
+                    sequence:
+                      - *turn_off
+                      - *pulse_delay
+                      - *turn_on
+            else:
+              - alias: Report the skipped pulse
+                event: device_routines_action_skipped
+                event_data:
+                  device_id: !input device_id
+                  automation_id: "{{ this.attributes.id }}"
+                  trigger_id: "{{ trigger.id }}"
+                  action: pulse
+                  scheduled_at: "{{ (trigger.now if trigger.now is defined else now()).isoformat() }}"

@@ -53,8 +53,11 @@ ignore = [
 # so an unused `hass` or `config` argument is the normal shape there.
 "custom_components/**" = ["ARG001"]
 # Tests assert, poke at private state, compare with literal values and take fixtures
-# they never read. Docstrings are welcome but not required there.
-"tests/**" = ["S101", "PLR2004", "SLF001", "ARG001", "D", "FBT003", "PLR0913", "S603", "S607"]
+# they never read, positionally, as many as the scenario needs. Docstrings are welcome but
+# not required there.
+"tests/**" = [
+    "S101", "PLR2004", "SLF001", "ARG001", "D", "FBT003", "PLR0913", "PLR0917", "S603", "S607",
+]
 # The tool tests assemble token shaped strings at runtime so that the test source never
 # contains one; the f-string suggestion would put them back. The deploy tests also pass
 # obviously fake tokens and stub network functions with lambdas that ignore arguments.
