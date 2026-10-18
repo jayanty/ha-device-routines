@@ -589,6 +589,7 @@ ENTRY_POINTS: Final = frozenset(
         ("entity", "async_setup_device_entities"),
         ("entity", "linked_device_info"),
         ("repairs", "open_issue_ids"),
+        ("repairs", "problem_issue_ids"),
     }
 )
 SERVICE_CALLS: Final = frozenset(

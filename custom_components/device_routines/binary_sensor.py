@@ -1,4 +1,7 @@
-"""The hub Problem sensor: on while any Repairs issue of this integration is open (PRD 4.4)."""
+"""The hub Problem sensor: on while a Repairs issue of this integration reports a problem.
+
+PRD 4.4, with the offers left out (decision L67): a conversion offer is a suggestion.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +17,7 @@ from homeassistant.helpers.issue_registry import EVENT_REPAIRS_ISSUE_REGISTRY_UP
 from . import DeviceRoutinesConfigEntry
 from .const import DOMAIN
 from .entity import DeviceRoutinesHubEntity
-from .repairs import open_issue_ids
+from .repairs import problem_issue_ids
 
 PARALLEL_UPDATES = 0
 
@@ -45,7 +48,7 @@ class ProblemSensor(DeviceRoutinesHubEntity, BinarySensorEntity):
 
     async def async_added_to_hass(self) -> None:
         """Follow the issue registry."""
-        self._issues = open_issue_ids(self.hass)
+        self._issues = problem_issue_ids(self.hass)
         self.async_on_remove(
             self.hass.bus.async_listen(
                 EVENT_REPAIRS_ISSUE_REGISTRY_UPDATED,
@@ -56,12 +59,12 @@ class ProblemSensor(DeviceRoutinesHubEntity, BinarySensorEntity):
 
     @callback
     def _issues_changed(self, _event: Event[Any]) -> None:
-        self._issues = open_issue_ids(self.hass)
+        self._issues = problem_issue_ids(self.hass)
         self.async_write_ha_state()
 
     @property
     def is_on(self) -> bool:
-        """Return whether any issue is open."""
+        """Return whether an issue that reports a problem is open."""
         return bool(self._issues)
 
     @property

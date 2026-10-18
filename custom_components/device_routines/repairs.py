@@ -193,6 +193,23 @@ def open_issue_ids(hass: HomeAssistant) -> list[str]:
     )
 
 
+# Issues that offer something rather than report a problem (decision L67): open, they
+# leave the hub Problem sensor off and Health's `issues` out.
+SUGGESTIONS: Final = frozenset({CONVERSION_OFFER})
+
+
+@callback
+def problem_issue_ids(hass: HomeAssistant) -> list[str]:
+    """Return the open issues that report a problem: every open issue but the offers."""
+    registry = ir.async_get(hass)
+    return [
+        issue_id
+        for issue_id in open_issue_ids(hass)
+        if (issue := registry.async_get_issue(DOMAIN, issue_id)) is not None
+        and issue.translation_key not in SUGGESTIONS
+    ]
+
+
 # --------------------------------------------------------------------------------------
 # Fix flows
 # --------------------------------------------------------------------------------------

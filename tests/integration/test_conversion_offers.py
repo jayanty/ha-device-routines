@@ -716,3 +716,26 @@ async def test_an_original_deleted_while_converting_has_nothing_to_label(
     assert view.settings == EVENING_SETTINGS
     assert er.async_get(hass).async_get(EVENING) is None
     assert lr.async_get(hass).async_get_label(markers.REPLACED_LABEL_ID) is not None
+
+
+async def test_an_offer_is_not_a_problem(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, at_four: Clock, freezer: Any
+) -> None:
+    """An open offer leaves the hub Problem sensor off and Health's issues out (L67)."""
+    problem = er.async_get(hass).async_get_entity_id(
+        "binary_sensor", DOMAIN, f"{DOMAIN}_hub_hub_problem"
+    )
+    assert problem is not None
+    await add_automations(hass, freezer, FAN_EVENING)
+
+    assert offer_issues(hass) == ["conversion_offer_fan_evening"]
+    assert repairs.problem_issue_ids(hass) == []
+    assert state_of(hass, problem) == "off"
+    assert manager.health_inputs().issues == ()
+
+    # A problem beside the offer turns the sensor on and is the only one Health lists.
+    repairs.async_sync_issue(hass, repairs.ADAPTER_INCOMPATIBLE, present=True)
+    await hass.async_block_till_done()
+    assert repairs.problem_issue_ids(hass) == [repairs.ADAPTER_INCOMPATIBLE]
+    assert state_of(hass, problem) == "on"
+    assert manager.health_inputs().issues == (repairs.ADAPTER_INCOMPATIBLE,)
