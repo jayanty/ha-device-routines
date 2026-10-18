@@ -141,12 +141,10 @@ supported.
 
 ### The controls
 
-<!-- A3: lane 8 -->
 The device page gets these controls. They are Home Assistant's own time pickers, number
 boxes and switches; labels follow the device, so a robot vacuum shows "Start at" and a
 blind shows "Open at".
 
-<!-- A3: lane 8 -->
 | Control | Card | Shown | What it does |
 | --- | --- | --- | --- |
 | Routine | Configuration | Yes | Turns the routine on and off. Off means nothing runs. It mirrors the automation, so turning the automation off in the automation list turns this off too. |
@@ -163,11 +161,12 @@ blind shows "Open at".
 | Manual override | Diagnostic | Yes | On while a change made by hand holds the device away from its schedule. |
 | Routine controls | Configuration | Only with several candidates | Picks which entity the routine drives when the device has more than one. |
 
-<!-- A3: lane 8 -->
 Advanced controls are created disabled. To use one, open the device page, show the
 entities that are hidden, and enable it.
 
-<!-- A3: lane 8 -->
+Home Assistant's time control has no way to clear a time. To remove Turn on at or Turn off
+at, clear it in the routine's automation form.
+
 The Schedule sensor confirms every change within a second, in words. The write to
 `automations.yaml` follows one second after your last change, so setting three values in
 a row is one write. A combination that cannot work is refused with a message and the
@@ -181,7 +180,6 @@ at 5:00 PM".
 
 ### Days
 
-<!-- A3: lane 8 -->
 Days limits the scheduled times; run timers apply every day.
 
 | Days | Runs on |
@@ -229,7 +227,6 @@ Every on and off checks the device first, so catch up running twice changes noth
 
 ### Manual changes
 
-<!-- A3: lane 8 -->
 With **Respect manual changes** on (the default), a change made by hand (a wall switch,
 the app, a dashboard, a voice assistant) that leaves the device in a state the schedule
 did not ask for turns **Manual override** on. While it is on, catch up and Turn back on
@@ -266,7 +263,6 @@ Skip next skips the action the Schedule sentence shows next:
   start clears it.
 - **A running countdown:** the timer is cancelled and the device stays as it is.
 
-<!-- A3: lane 8 -->
 Pressing Skip next again extends the skip to the following action. Skip next is
 unavailable when nothing is scheduled.
 
@@ -629,7 +625,6 @@ start, and never more than the calls per hour you allow.
 Home Assistant is turned off at once. After the cleanup period its automation and helpers
 are deleted; 0 keeps them forever.
 
-<!-- A3: lane 8 -->
 The hub's **Clean up now** button runs the cleanup immediately; nothing requires pressing
 it.
 

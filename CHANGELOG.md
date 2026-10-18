@@ -10,6 +10,11 @@ Build A (Phases 2 and 3) is in progress; the entries below grow with it.
 
 ### Added
 
+- Routine controls on every opted in device page: Routine, Turn on at and Turn off at
+  (worded for the device: Start at, Open at, Lock at), Days, Turn off after, Turn back on
+  after, Catch up after restart, Respect manual changes, Skip next, Paused until, Resume,
+  Manual override, and Routine controls when a device has several entities; a Clean up now
+  button on the hub.
 - Every Schedule sensor carries two more attributes, `paused_until` and `skipped_action`
   (empty until a device has a routine), and a device's routine line sorts first.
 - The integration installs its routine blueprint
