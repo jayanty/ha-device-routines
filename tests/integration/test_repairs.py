@@ -460,6 +460,49 @@ async def test_the_detached_fix_creates_a_new_routine_and_never_touches_the_old_
     assert repairs.open_issue_ids(hass) == []
 
 
+@pytest.mark.parametrize("flag", ["invalid", "load_failed"])
+async def test_a_new_routine_drops_the_flags_of_the_detached_one(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any, flag: str
+) -> None:
+    """Plan A4.0 item 7 (L48): the new routine reads as itself at once, not as the old one.
+
+    The old automation was invalid (a refused action in its form) or did not load (a
+    condition the core does not know) when it was taken over; the new routine is written
+    from valid settings, so it is active the moment the fix returns, before any sync.
+    """
+    if flag == "invalid":
+        automation_id = await give_routine(hass, manager, home.fan, freezer, on_time=time(17))
+        entry = file_entry(hass, automation_id)
+        assert entry is not None
+        entry["use_blueprint"]["input"]["on_action"] = "lock.unlock"
+        await save_entry(hass, entry)
+    else:
+        broken = [{"condition": "no_such_condition"}]
+        automation_id = await give_routine(
+            hass, manager, home.fan, freezer, on_time=time(17), extra_conditions=broken
+        )
+        await manager.async_reconcile()
+        await manager.async_reconcile()
+        await manager.async_update(home.fan, {"extra_conditions": []})
+        await flush(hass, freezer)
+    view = manager.get(home.fan)
+    assert view is not None
+    assert view.status is Status.INVALID
+    await save_entry(hass, taken_over(automation_id))
+
+    await manager.async_create_new_routine(home.fan)
+
+    view = manager.get(home.fan)
+    assert view is not None
+    assert view.automation_id == markers.automation_id(f"{home.fan}#2")
+    assert view.status is Status.ACTIVE
+    await hass.async_block_till_done()
+    view = manager.get(home.fan)
+    assert view is not None
+    assert view.status is Status.ACTIVE
+    assert repairs.open_issue_ids(hass) == []
+
+
 async def test_a_detached_fix_for_a_routine_the_manager_no_longer_knows_aborts(
     hass: HomeAssistant, home: Home, manager: RoutineManager, fixer: RepairsFlowManager
 ) -> None:

@@ -1558,7 +1558,9 @@ class RoutineManager:
         """Fix flow of `detached_routine`: a new routine; the detached one is never touched.
 
         The new automation gets the first free id derived from the device id, writes the
-        settings the routine had before it was detached, and the controls come back.
+        settings the routine had before it was detached, and the controls come back. What
+        the manager knew of the old automation (invalid, not loaded, turned off by the
+        manager) does not carry over to the new one (L48).
         """
         routine = self._routines.get(device_id)
         if routine is None or not routine.detached:
@@ -1571,6 +1573,9 @@ class RoutineManager:
         repairs.async_sync_issue(self.hass, repairs.DETACHED_ROUTINE, present=False, subject=old_id)
         routine.automation_id = candidate
         routine.detached = False
+        routine.invalid = routine.load_failed = False
+        routine.regenerated = routine.migration_failed = False
+        routine.turned_off_for = None
         await self._async_write(routine)
         self._changed(device_id)
 
