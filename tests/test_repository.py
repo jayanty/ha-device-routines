@@ -9,6 +9,7 @@ from __future__ import annotations
 import ast
 import json
 from pathlib import Path
+import subprocess
 from typing import Any
 
 import pytest
@@ -321,3 +322,21 @@ def test_the_release_workflow_builds_the_hacs_zip() -> None:
     assert triggers["push"]["tags"] == ["v*"]
     assert "device_routines.zip" in path.read_text()
     assert "manifest.json" in path.read_text()
+
+
+def test_a_beta_tag_is_compared_with_the_version_it_previews() -> None:
+    """`v0.3.0-beta.1` must pass against manifest 0.3.0 and take the 0.3.0 notes (L33)."""
+    path = REPO_ROOT / ".github" / "workflows" / "release.yml"
+    workflow = yaml.safe_load(path.read_text())
+    steps = {step.get("name"): step for step in workflow["jobs"]["release"]["steps"]}
+    check = steps["The manifest version must match the tag"]["run"]
+    notes = steps["Collect the release notes from the changelog"]["run"]
+    for script in (check, notes):
+        assert 'tag="${GITHUB_REF_NAME#v}"' in script
+        assert '"${tag%%-beta.*}"' in script
+    assert '[ "$release" != "$version" ]' in check
+    assert "contains(github.ref_name, '-beta.')" in path.read_text()
+    shell = ["bash", "-c", 'tag="$1"; echo "${tag%%-beta.*}"', "-"]
+    for tag, release in (("0.3.0-beta.1", "0.3.0"), ("0.3.0", "0.3.0"), ("1.0.0-beta.12", "1.0.0")):
+        result = subprocess.run([*shell, tag], capture_output=True, text=True, check=True)
+        assert result.stdout.strip() == release

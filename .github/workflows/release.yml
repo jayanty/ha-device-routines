@@ -17,8 +17,10 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME#v}"
+          # A beta tag (v0.3.0-beta.1) carries the version it previews (decision L33).
+          release="${tag%%-beta.*}"
           version=$(python3 -c 'import json; print(json.load(open("custom_components/device_routines/manifest.json"))["version"])')
-          if [ "$tag" != "$version" ]; then
+          if [ "$release" != "$version" ]; then
             echo "::error::tag v$tag does not match manifest.json version $version"
             exit 1
           fi
@@ -40,7 +42,8 @@ jobs:
       - name: Collect the release notes from the changelog
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          tag="${GITHUB_REF_NAME#v}"
+          version="${tag%%-beta.*}"
           python3 - "$version" > notes.md <<'PY'
           import re, sys
           version = sys.argv[1]
