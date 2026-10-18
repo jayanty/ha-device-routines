@@ -29,12 +29,16 @@ rules:
       events. `tests/integration/test_summary.py::test_no_interval_or_time_pattern_listener_exists`.
 
   brands:
-    status: todo
+    status: exempt
     comment: >-
-      The final assets are in `brand/` and in the `home-assistant/brands` layout under
-      `brand/brands/` (drawn by `tools/make_brand.py`; `tests/test_repository.py` checks
-      their sizes, transparency and layout). The rule is done when the brands pull request,
-      prepared in `docs/publication.md`, has merged: owner log O10.
+      The rule asks for the images in the `home-assistant/brands` repository, and its text
+      covers core integrations only; that repository calls its custom integrations folder
+      legacy. Since Home Assistant 2026.3 a custom integration ships them in a `brand/`
+      folder of its own, and this one does: `custom_components/device_routines/brand/`,
+      drawn by `tools/make_brand.py` (decision L78). `tests/test_repository.py` checks the
+      images against the brands README's rules and
+      `test_the_hacs_brands_check_finds_the_icon_where_it_looks`; the HACS brands check
+      passes on it with nothing ignored.
 
   common-modules:
     status: done

@@ -271,9 +271,9 @@ whole minutes and durations are minutes, up to 1440.
 | 1.0.0 | Sun times, Only when, conversion offers, the console | `v1.0.0-beta.1`, then `v1.0.0` |
 
 Each beta follows its test harness record; each full release follows a run on a real
-home. After 1.0.0 the plan is listing in the HACS default list and the Home Assistant
-brands repository. A calendar view, which would also bring vacation handling, is a
-candidate for later. The [changelog](CHANGELOG.md) lists every change.
+home. After 1.0.0 the plan is listing in the HACS default list; the icon and logo
+already ship inside the integration. A calendar view, which would also bring vacation
+handling, is a candidate for later. The [changelog](CHANGELOG.md) lists every change.
 
 ## Documentation
 
@@ -287,7 +287,7 @@ candidate for later. The [changelog](CHANGELOG.md) lists every change.
 - [Technical specification](docs/TECH_SPEC.md): how it is built.
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md): the build order and validation.
 - [Decisions log](docs/decisions-log.md): choices made during implementation.
-- [Publication](docs/publication.md): the brands and HACS default submissions, prepared.
+- [Publication](docs/publication.md): the brand images and the HACS default submission, prepared.
 
 ## Development
 

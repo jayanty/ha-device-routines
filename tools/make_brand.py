@@ -8,9 +8,9 @@ Routines", set in Aileron Regular, the CC0 font Pillow bundles behind
 `ImageFont.load_default(size=...)`, with a light stroke for a medium weight.
 
 Run `python -m tools.make_brand` to write every image to `brand/` and the same bytes to
-`brand/brands/custom_integrations/device_routines/`, the layout of the
-`home-assistant/brands` repository. `--check` writes nothing and fails when a committed
-file differs from a fresh drawing, is missing, or has no drawing.
+`custom_components/device_routines/brand/`, the folder Home Assistant 2026.3 and later
+reads a custom integration's images from (decision L78). `--check` writes nothing and
+fails when a committed file differs from a fresh drawing, is missing, or has no drawing.
 
 The images are reproducible by construction. Every shape is a rectangle or a circle on
 whole pixel steps of an eight times larger canvas, which Pillow fills in integers,
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BRAND_DIR = Path("brand")
-BRANDS_LAYOUT_DIR = BRAND_DIR / "brands" / "custom_integrations" / "device_routines"
+INTEGRATION_BRAND_DIR = Path("custom_components") / "device_routines" / "brand"
 
 EXIT_OK = 0
 EXIT_DIFFERENT = 1
@@ -79,8 +79,8 @@ WORDMARK_SIZE = 0.42  # the font size, as a share of the logo's height
 WORDMARK_STROKE = 0.006  # the stroke that gives the medium weight, as a share of it
 WORDMARK_GAP = 0.25  # the space between the icon and the words, as a share of it
 
-# Every file name, in the order `render_all` draws them. The brands repository takes
-# `dark_` variants for the dark theme; the icon reads on both, the words do not.
+# Every file name, in the order `render_all` draws them. Home Assistant takes `dark_`
+# variants for the dark theme; the icon reads on both, the words do not.
 ASSET_NAMES = (
     "icon.png",
     "icon@2x.png",
@@ -223,10 +223,10 @@ def encode(image: Image.Image) -> bytes:
 
 
 def render_files() -> dict[Path, bytes]:
-    """Return the bytes of every file, under `brand/` and under the brands layout."""
+    """Return the bytes of every file, under `brand/` and under the integration's `brand/`."""
     encoded = {name: encode(image) for name, image in render_all().items()}
     files = {BRAND_DIR / name: data for name, data in encoded.items()}
-    files.update({BRANDS_LAYOUT_DIR / name: data for name, data in encoded.items()})
+    files.update({INTEGRATION_BRAND_DIR / name: data for name, data in encoded.items()})
     return files
 
 
@@ -250,7 +250,7 @@ def check(root: Path) -> list[str]:
             problems.append(f"{relative}: missing")
         elif path.read_bytes() != data:
             problems.append(f"{relative}: differs from a fresh drawing")
-    for directory in (BRAND_DIR, BRANDS_LAYOUT_DIR):
+    for directory in (BRAND_DIR, INTEGRATION_BRAND_DIR):
         problems.extend(
             f"{path.relative_to(root)}: not drawn by tools/make_brand.py"
             for path in sorted((root / directory).glob("*.png"))

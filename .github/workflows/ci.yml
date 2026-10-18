@@ -78,9 +78,6 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          # The brands pull request is Phase 4 task 4.5; until it is merged the brands
-          # check cannot pass for a reason unrelated to this repository.
-          ignore: brands
 
   privacy:
     name: privacy

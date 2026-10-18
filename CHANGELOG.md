@@ -51,8 +51,9 @@ routine blueprint input schema 2 with the same behavior.
   device back on); before, the loaded automation kept the previous value until the next
   start. The routine blueprint carries Respect manual changes, Turn on timing and Turn
   off timing as variables, so it reads every one of its inputs.
-- Final icon and logo, in light and dark, with the `home-assistant/brands` layout under
-  `brand/brands/`.
+- Final icon and logo, in light and dark, shipped inside the integration in its own
+  `brand/` folder, where Home Assistant shows them for Device Routines; no brands
+  repository entry is needed.
 - A routine change answers the conflicts of its new settings at once, and the Today view
   follows them, instead of after the routine is written.
 - The Schedule state reads a sunrise or sunset to the whole minute ("On at 7:26 AM").

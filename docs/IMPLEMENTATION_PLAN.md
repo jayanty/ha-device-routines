@@ -6,7 +6,7 @@ The build order for Claude Code: Phase 0, Stage 0, then Phases 1 to 4, each with
 
 Revised 2026-10-18 (decision L32): Phases 2 and 3 are built as one build in parallel lanes with a single restart; Phase 4 is the second build with a second restart; everything the owner has to do is batched into two owner sessions and otherwise deferred in `docs/owner-log.md`. Section 0.1 is the operating model, Sections 4 to 6 the builds, Section 8 the prompts.
 
-Status: Build B done (2026-10-18, decisions L59 to L77); restart R2 happened at about 21:52Z: running `01ca0b3` (`v1.0.0-beta.2`) equals deployed `01ca0b3`, Health `ok`, version 1.0.0, blueprint schema 2, the sandbox routine migrated. Releases: `v0.3.0` on `efbf757` is the last full release; `v1.0.0-beta.1` (`db7fa10`) and `v1.0.0-beta.2` (`01ca0b3`, `main`) are pre releases. `dev` carries the form layout of O3 (L74), the Health fix of F4 (L76) and the blueprint reading every input (L77) for the next deploy, which installs the blueprint file once. Live validation B (Section 6.3) is open from step 1 and runs in the live session that ran 5.3, with S9 on a staged exact match (L75); lane 25 fixed F4 to F6 (`922db5f`, L76), and the live suite passes 4 of 4 on the instance. Auto deploy off (L58). Owner log: O12 (the console walkthrough) holds `v1.0.0`; O10, O11 ready (`docs/publication.md`); O18 done (the owner kept the default: not offered). Next: live validation B, then `v1.0.0` once O12 is done (Section 6.4).
+Status: Build B done (2026-10-18, decisions L59 to L78); restart R2 happened at about 21:52Z: running `01ca0b3` (`v1.0.0-beta.2`) equals deployed `01ca0b3`, Health `ok`, version 1.0.0, blueprint schema 2, the sandbox routine migrated. Releases: `v0.3.0` on `efbf757` is the last full release; `v1.0.0-beta.1` (`db7fa10`) and `v1.0.0-beta.2` (`01ca0b3`, `main`) are pre releases. `dev` carries the form layout of O3 (L74), the Health fix of F4 (L76), the blueprint reading every input (L77) and the brand images in the integration's own `brand/` folder (L78) for the next deploy, which installs the blueprint file once. Live validation B (Section 6.3) is open from step 1 and runs in the live session that ran 5.3, with S9 on a staged exact match (L75); lane 25 fixed F4 to F6 (`922db5f`, L76), and the live suite passes 4 of 4 on the instance. Auto deploy off (L58). Owner log: O12 (the console walkthrough) holds `v1.0.0`; O10 a look at the images only (no brands pull request since L78; the `hacs` job runs every check), O11 ready (`docs/publication.md`); O18 done (the owner kept the default: not offered). Next: live validation B, then `v1.0.0` once O12 is done (Section 6.4).
 
 ## 0. Rules of engagement (Claude Code reads this first)
 
@@ -42,7 +42,7 @@ What you have: the repository, the `gh` CLI with Jayant's authentication, the Ho
 | --- | --- | --- | --- | --- |
 | A (Section 4) | Phase 2 (every P0 row) and Phase 3 (every P1 row, the WebSocket API) built together in the harness | R1, the owner's, after the build exit | Section 5, in a session that runs while Build B starts | `v0.3.0-beta.1` at the harness exit; `v0.3.0` after live validation A (L33) |
 | B (Section 6) | Phase 4: FR-R9, FR-R10, FR-M1, the console, publication | R2 after the build exit | Section 6.3, S9 and the console | `v1.0.0-beta.1` at the harness exit; `v1.0.0` after live validation B and the owner's console look |
-| Publication | brands pull request, HACS default submission, channel switch | R3, optional, only if the owner switches to the HACS channel | the HACS install | none |
+| Publication | HACS default submission (the brand images ship in the integration, L78), channel switch | R3, optional, only if the owner switches to the HACS channel | the HACS install | none |
 
 Opportunistic restarts: the owner restarts for monthly Home Assistant updates and other reasons of his own. Every such restart is announced in chat or the owner log beforehand when possible; the session then stages the pending scenarios of Section 5.2 before it and reads after it, exactly as for R1 and R2.
 
@@ -474,7 +474,7 @@ A session that starts right after R1 reads the Status line (which says: deployed
 
 ## 6. Build B: Phase 4, restart R2, live validation B, publication
 
-Goal: FR-R9, FR-R10 and FR-M1; the console with its Routines, Today and Settings views; the brands pull request and the HACS default submission prepared; release v1.0.0.
+Goal: FR-R9, FR-R10 and FR-M1; the console with its Routines, Today and Settings views; the brand images and the HACS default submission prepared (the brands pull request planned here was replaced by images shipped in the integration, L78); release v1.0.0.
 
 ### 6.1 Scope and decisions to record when the build starts
 
@@ -639,7 +639,7 @@ Before: stage S3 or S4 plus S5 from Section 5.2 by the time of day. After:
 ### 6.4 Publication and v1.0.0
 
 - `v1.0.0` is tagged when live validation B is recorded and the owner's console look (O12) is done; O12 is the only owner item that gates a release, because the console is the one surface the harness cannot judge.
-- The brands pull request (O10) and the HACS default submission (O11) are opened by the session on the owner's go ahead; their texts and assets are ready in the repository from wave B3. When the brands pull request merges, the HACS job drops `ignore: brands` (L14).
+- The brand images (O10) need only the owner's look: since L78 they ship inside the integration (`custom_components/device_routines/brand/`), which Home Assistant 2026.3 and later shows and the HACS brands check accepts, so there is no brands pull request and the HACS job runs every check (L14 ended). The HACS default submission (O11) is opened by the session on the owner's go ahead, after `v1.0.0`; its texts are ready in the repository from wave B3.
 - The channel switch (O13) is the owner's: install through HACS, turn auto deploy off, remove the package and the deploy tool; the deploy tool then reports `hacs_managed`. R3 is that restart. Until then the instance stays on the dev channel.
 - Remaining restart scenario rows (Section 5.2) ride on the next restart the owner does for his own reasons.
 
@@ -704,7 +704,7 @@ Keep the Status line current, defer owner items to docs/owner-log.md, stop only 
 | --- | --- | --- | --- |
 | Build A exit | Build A done; `v0.3.0-beta.1` deployed, running `d00fa2f`; R1 requested; Build B wave B1 open | Owner session 1 (Section 8.1) at his convenience | Section 5.3 after the restart; Build B meanwhile in its own session |
 | Build B exit | Build B done; `v1.0.0-beta.1` deployed, running `v0.3.0`; R2 requested with the staged scenario | Owner session 2 | Section 6.3 after the restart |
-| Release 1.0 | live validation B recorded; O12 open | the console look; O10, O11, O13 decisions | tag `v1.0.0`; open the publication pull requests on the go ahead |
+| Release 1.0 | live validation B recorded; O12 open | the console look; O10, O11, O13 decisions | tag `v1.0.0`; open the HACS default submission on the go ahead |
 | Any owner restart | pending restart scenarios listed | announces the restart | stages Section 5.2 before, reads after |
 | Context exhausted mid wave | the wave, lanes done, in flight (branch names) and pending | nothing | Section 8.3 |
 

@@ -7,8 +7,10 @@ architecture's import rules are all things that drift quietly; each one is pinne
 from __future__ import annotations
 
 import ast
+import fnmatch
 import json
 from pathlib import Path
+import re
 import subprocess
 from typing import Any
 
@@ -408,11 +410,13 @@ def test_a_beta_tag_is_compared_with_the_version_it_previews() -> None:
 
 
 # --------------------------------------------------------------------------------------
-# Brand images: what the home-assistant/brands repository asks for (Build B lane 23)
+# Brand images (Build B lane 23): the image rules of the home-assistant/brands README, and
+# since decision L78 the copy the integration ships in its own `brand/` folder, which Home
+# Assistant 2026.3 and later shows and the HACS brands check looks for.
 # --------------------------------------------------------------------------------------
 
 BRAND = REPO_ROOT / make_brand.BRAND_DIR
-BRANDS_LAYOUT = REPO_ROOT / make_brand.BRANDS_LAYOUT_DIR
+INTEGRATION_BRAND = REPO_ROOT / make_brand.INTEGRATION_BRAND_DIR
 LOGOS = ("logo", "dark_logo")
 
 
@@ -428,11 +432,14 @@ def brand_image(name: str) -> Image.Image:
 
 
 def test_the_brand_files_are_exactly_the_drawn_set() -> None:
-    """`brand/` and the brands layout hold the drawn images and nothing else."""
+    """`brand/` and the integration's `brand/` hold the drawn images and nothing else.
+
+    `brand/brands/`, the layout of the brands pull request L78 dropped, is gone with it.
+    """
     names = set(make_brand.ASSET_NAMES)
 
-    assert {path.name for path in BRAND.glob("*.png")} == names
-    assert {path.name for path in BRANDS_LAYOUT.iterdir()} == names
+    assert {path.name for path in BRAND.iterdir()} == names
+    assert {path.name for path in INTEGRATION_BRAND.iterdir()} == names
     assert {"icon.png", "icon@2x.png", "logo.png", "logo@2x.png"} <= names
 
 
@@ -444,7 +451,7 @@ def test_every_brand_image_is_an_rgba_png_with_transparent_corners(name: str) ->
 
     assert image.format == "PNG"
     assert image.mode == "RGBA"
-    assert not image.info.get("interlace"), "the brands repository wants no interlacing"
+    assert not image.info.get("interlace"), "the drawing is written without interlacing"
     assert [image.getchannel("A").getpixel(corner) for corner in corners] == [0, 0, 0, 0]
 
 
@@ -474,8 +481,50 @@ def test_the_logos_are_landscape_within_the_brands_limits(stem: str) -> None:
 
 
 @pytest.mark.parametrize("name", make_brand.ASSET_NAMES)
-def test_the_brands_layout_mirrors_brand(name: str) -> None:
-    assert (BRANDS_LAYOUT / name).read_bytes() == (BRAND / name).read_bytes()
+def test_the_integrations_brand_folder_mirrors_brand(name: str) -> None:
+    assert (INTEGRATION_BRAND / name).read_bytes() == (BRAND / name).read_bytes()
+
+
+def test_the_hacs_brands_check_finds_the_icon_where_it_looks() -> None:
+    """The HACS action passes its brands check on `<content path>/brand/icon.png` (L78).
+
+    The content path is `custom_components/<domain>` because `hacs.json` does not set
+    `content_in_root`. The check reads the repository tree, so the icon must not be
+    ignored by git; it asks the brands repository only when the file is missing.
+    """
+    hacs = load_json(REPO_ROOT / "hacs.json")
+    domain = load_json(COMPONENT / "manifest.json")["domain"]
+    asset = f"custom_components/{domain}/brand/icon.png"
+    ignored = subprocess.run(
+        ["git", "check-ignore", "--quiet", "--no-index", asset], cwd=REPO_ROOT, check=False
+    )
+
+    assert not hacs.get("content_in_root")
+    assert (REPO_ROOT / asset).is_file()
+    assert ignored.returncode == 1, "the brand icon must not be ignored"
+
+
+def test_the_hacs_job_ignores_no_check() -> None:
+    """Every HACS check runs, brands included, since the icon ships in the integration (L78)."""
+    jobs = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())["jobs"]
+    action = next(
+        step for step in jobs["hacs"]["steps"] if step.get("uses", "").startswith("hacs/action")
+    )
+
+    assert action["with"] == {"category": "integration"}
+
+
+def test_the_release_zip_carries_the_brand_folder() -> None:
+    """The zip is the whole integration folder, so `brand/` ships in it (L78)."""
+    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "release.yml").read_text())
+    steps = {step.get("name"): step for step in workflow["jobs"]["release"]["steps"]}
+    command = steps["Zip the integration"]["run"]
+    excluded = re.findall(r"-x '([^']+)'", command)
+
+    assert "(cd custom_components/device_routines && zip -r ../../device_routines.zip ." in command
+    assert excluded == ["*__pycache__*", ".deployed"]
+    for name in make_brand.ASSET_NAMES:
+        assert not any(fnmatch.fnmatch(f"brand/{name}", pattern) for pattern in excluded)
 
 
 @pytest.mark.parametrize("name", make_brand.ASSET_NAMES)
@@ -490,7 +539,7 @@ def test_make_brand_draws_the_committed_image_data(
 
 
 def test_make_brand_reproduces_the_committed_files_byte_for_byte() -> None:
-    """`python -m tools.make_brand --check` passes: every file, both places, no strays.
+    """`python -m tools.make_brand --check` passes: every file, both folders, no strays.
 
     The image data is pinned above everywhere. The bytes also depend on the zlib inside
     Pillow, so where re-encoding a committed image's own data does not give its bytes

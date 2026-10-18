@@ -20,18 +20,20 @@ def drawn_files() -> dict[Path, bytes]:
     return make_brand.render_files()
 
 
-def test_main_writes_every_image_to_brand_and_to_the_brands_layout(
+def test_main_writes_every_image_to_brand_and_to_the_integrations_brand_folder(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert make_brand.main(["--root", str(tmp_path)]) == make_brand.EXIT_OK
 
     printed = capsys.readouterr().out.split()
+    shipped = Path("custom_components") / "device_routines" / "brand"
     for name in make_brand.ASSET_NAMES:
         top = tmp_path / "brand" / name
-        layout = tmp_path / "brand" / "brands" / "custom_integrations" / "device_routines" / name
-        assert top.read_bytes() == layout.read_bytes()
+        assert top.read_bytes() == (tmp_path / shipped / name).read_bytes()
         assert str(Path("brand") / name) in printed
+        assert str(shipped / name) in printed
     assert len(printed) == 2 * len(make_brand.ASSET_NAMES)
+    assert not (tmp_path / "brand" / "brands").exists(), "the brands layout is gone (L78)"
 
 
 def test_check_passes_on_a_tree_it_wrote(tmp_path: Path) -> None:
@@ -45,15 +47,15 @@ def test_check_names_a_changed_a_missing_and_a_stray_file(
 ) -> None:
     make_brand.write(tmp_path)
     (tmp_path / make_brand.BRAND_DIR / "icon.png").write_bytes(b"not the drawing")
-    (tmp_path / make_brand.BRANDS_LAYOUT_DIR / "logo@2x.png").unlink()
-    (tmp_path / make_brand.BRANDS_LAYOUT_DIR / "old_icon.png").write_bytes(b"left over")
+    (tmp_path / make_brand.INTEGRATION_BRAND_DIR / "logo@2x.png").unlink()
+    (tmp_path / make_brand.INTEGRATION_BRAND_DIR / "old_icon.png").write_bytes(b"left over")
 
     assert make_brand.main(["--check", "--root", str(tmp_path)]) == make_brand.EXIT_DIFFERENT
 
     assert capsys.readouterr().out.splitlines() == [
         f"{make_brand.BRAND_DIR / 'icon.png'}: differs from a fresh drawing",
-        f"{make_brand.BRANDS_LAYOUT_DIR / 'logo@2x.png'}: missing",
-        f"{make_brand.BRANDS_LAYOUT_DIR / 'old_icon.png'}: not drawn by tools/make_brand.py",
+        f"{make_brand.INTEGRATION_BRAND_DIR / 'logo@2x.png'}: missing",
+        f"{make_brand.INTEGRATION_BRAND_DIR / 'old_icon.png'}: not drawn by tools/make_brand.py",
     ]
 
 
