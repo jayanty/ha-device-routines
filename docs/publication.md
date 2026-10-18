@@ -10,7 +10,7 @@ been opened, submitted or changed on GitHub.
 
 | Owner log | Item | Gates |
 | --- | --- | --- |
-| O10 | Approve the icon and logo | The images that ship in `v1.0.0`; nothing outward facing |
+| O10 | Approve the icon and logo (done 2026-10-18) | The images that ship in `v1.0.0`; nothing outward facing |
 | O11 | Go ahead for the HACS default submission, including the repository description and topics | Listing in HACS without a custom repository |
 | O12 | The console look that gates the `v1.0.0` tag | The release the HACS submission points at |
 
