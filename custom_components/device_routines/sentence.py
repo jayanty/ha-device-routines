@@ -450,6 +450,15 @@ class Writer:
         """Return the state of a routine whose Routine switch is off: "Routine off"."""
         return self.capped(self.say("state_routine_off"))
 
+    def automations_off(self, count: int) -> str:
+        """Return the state of a device whose automations are all off: "Automation off".
+
+        "Automations off" for several; nothing they would do is planned. A routine that is
+        off reads "Routine off" instead (`routine_off`).
+        """
+        key = "state_automation_off" if count == 1 else "state_automations_off"
+        return self.capped(self.say(key))
+
     def routine_kind(self, *, detached: bool = False) -> str:
         """Return how a routine item is labeled: Routine, or Detached routine."""
         return self.say("kind_detached" if detached else "kind_routine")

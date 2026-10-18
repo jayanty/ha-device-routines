@@ -11,11 +11,12 @@ else (PRD P16). It owns:
   shown at once; the write is debounced one second per device, compiled, written through
   the adapter with the file hash guard, reloaded (the adapter reloads the one id) and its
   hash recorded, so sync back can tell its own writes from foreign ones.
-- Sync back (PRD 7.3, 8.2): on every `automation_reloaded` the file is read once and every
-  entry carrying M1 is judged on the file entry (decision L43): a hash the manager wrote
-  is skipped, a foreign valid edit becomes the settings, an invalid one turns the routine
-  off and raises `invalid_inputs`, an entry without M2 is detached, a missing one resets
-  the routine.
+- Sync back (PRD 7.3, 8.2): on every `automation_reloaded`, and when a routine's
+  automation loses its registry entry (the automation editor's delete reloads nothing,
+  live validation A, F1), the file is read once and every entry carrying M1 is judged on
+  the file entry (decision L43): a hash the manager wrote is skipped, a foreign valid
+  edit becomes the settings, an invalid one turns the routine off and raises
+  `invalid_inputs`, an entry without M2 is detached, a missing one resets the routine.
 - The runtime state of each routine (Paused until, the skipped action, the Manual
   override and the source of the last change): the manager is its source of truth, the
   device page entities render it and call back (decision 1 of the lane brief), and the
@@ -78,7 +79,6 @@ from homeassistant.util import dt as dt_util
 
 from . import compiler, ha_adapter, maintenance, markers, migration, nextrun, repairs
 from .attribution import Attributor, OverrideSink, RoutineLookup, RoutineRuntime
-from .conflicts import OFF_IN_ON_WINDOW, SAME_MINUTE
 from .const import (
     CONF_SYSTEM_USER_ID,
     DOMAIN,
@@ -92,7 +92,6 @@ from .domains import Candidate, pick_targets, profile_for
 from .models import (
     PAUSING_STATUSES,
     CompileError,
-    Conflict,
     Days,
     DomainProfile,
     Occurrence,
@@ -114,9 +113,10 @@ from .summary import (
     KIND_DETACHED,
     KIND_ROUTINE,
     SOURCE_PARSER,
-    DeviceSummary,
     RoutineSummary,
     SummaryCoordinator,
+    stated,
+    sun_marks,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -552,6 +552,8 @@ class RoutineManager:
         self._stopping = False
         self._schedule_handle: CALLBACK_TYPE | None = None
         self._unsubscribe_schedule: CALLBACK_TYPE = _nothing
+        # The automations the manager is deleting itself, which sync back leaves to it.
+        self._deleting: set[str] = set()
 
     # ----------------------------------------------------------------------------------
     # Lifecycle
@@ -900,51 +902,13 @@ class RoutineManager:
             next_action=upcoming[0] if upcoming else None,
             sentence=summary.state if summary else None,
             items=summary.items if summary else (),
-            conflicts=self._conflicts(routine, upcoming, summary) if summary else (),
+            # The Schedule reads the routine's settings as held here (RoutineSummary
+            # settings, L69), so its conflicts hold for a change at once.
+            conflicts=summary.conflicts if summary else (),
             override=routine.override,
             last_change_source=routine.last_change_source,
             opted_in=device_id in self._store.data.opted_in,
         )
-
-    def _conflicts(
-        self, routine: _Routine, upcoming: Iterable[Occurrence], summary: DeviceSummary
-    ) -> tuple[Conflict, ...]:
-        """Return the Schedule's conflicts that hold for the settings the routine has now.
-
-        The Schedule reads a routine's actions from its automation's inputs, which follow a
-        patch about a second later (the debounced write) and the summary's index two
-        seconds after that, while a view shows the new settings and items at once. So the
-        conflicts of the routine's own item are checked again against its settings, by the
-        rules of `conflicts.find`: one in the same minute holds while the routine still
-        acts in that minute, one against its window while the window still expects there
-        what the conflict found. A conflict that no longer holds is left out; a conflict
-        the patch brings appears once the Schedule reads the written inputs, a few
-        seconds later, with a `routine_changed` event. `upcoming` is the routine's coming
-        actions, as `_occurrences` gives them.
-        """
-        entity_id = self._automation_entity(routine.automation_id)
-        own = next(
-            (
-                index
-                for index, item in enumerate(summary.items)
-                if item.kind == KIND_ROUTINE and item.automation_entity == entity_id
-            ),
-            None,
-        )
-        settings = routine.settings
-        if own is None or settings is None:
-            return summary.conflicts
-        acting = {_minute(occurrence.at) for occurrence in upcoming if occurrence.verb is not None}
-
-        def holds(conflict: Conflict) -> bool:
-            if own not in {conflict.a, conflict.b} or conflict.at is None:
-                return True
-            if conflict.reason_key == SAME_MINUTE:
-                return _minute(conflict.at) in acting
-            expected = "on" if conflict.reason_key == OFF_IN_ON_WINDOW else "off"
-            return nextrun.expected_state(settings, conflict.at) == expected
-
-        return tuple(conflict for conflict in summary.conflicts if holds(conflict))
 
     def list(self) -> tuple[RoutineView, ...]:
         """Return every routine the manager knows, by device name."""
@@ -1115,6 +1079,7 @@ class RoutineManager:
             routine.skipped_action if status is Status.SKIPPING else None,
             status,
             upcoming[0] if upcoming else None,
+            routine.settings,
         )
 
     def _writer(self, settings: RoutineSettings) -> Writer:
@@ -2233,7 +2198,8 @@ class RoutineManager:
                 await self.async_sync_back(automation_id, config)
             elif self._device_of_automation(automation_id) is not None:
                 await self.async_handle_detached(automation_id)
-        for automation_id in [key for key in self._store.data.owned if key not in by_id]:
+        gone = by_id.keys() | self._deleting
+        for automation_id in [key for key in self._store.data.owned if key not in gone]:
             await self.async_handle_removed(automation_id)
         for routine in list(self._routines.values()):
             if routine.detached and routine.automation_id not in by_id:
@@ -2560,12 +2526,28 @@ class RoutineManager:
                         self.hass, self._async_entity_renamed(routine, old, new)
                     )
         elif data["action"] in {"create", "remove"}:
+            if data["action"] == "remove" and self._lost_automation():
+                # The automation editor deletes through the core's config view, which only
+                # removes the registry entry and reloads nothing (live validation A, F1).
+                self._request_sync()
             for routine in self._routines.values():
                 if (
                     routine.settings is not None
                     and routine.settings.target_entity == data["entity_id"]
                 ):
                     self.entry.async_create_task(self.hass, self._async_check_target(routine))
+
+    def _lost_automation(self) -> bool:
+        """Tell whether an owned or detached routine's automation has no registry entry.
+
+        The manager's own deletions do not count: they reset the routine themselves.
+        """
+        return any(
+            self._automation_entity(routine.automation_id) is None
+            for routine in self._routines.values()
+            if (routine.detached or routine.automation_id in self._store.data.owned)
+            and routine.automation_id not in self._deleting
+        )
 
     def _names(self, routine: _Routine, entity_id: str) -> bool:
         """Tell whether a routine's automation names an entity (its target or a helper)."""
@@ -2795,13 +2777,21 @@ class RoutineManager:
         for automation_id, record in list(data.owned.items()):
             if record.device_id != device_id:
                 continue
-            await ha_adapter.async_delete_automation(self.hass, automation_id)
-            for issue_id in _ROUTINE_ISSUES:  # they end with the routine (lane 11)
-                repairs.async_sync_issue(self.hass, issue_id, present=False, subject=automation_id)
-            await self._async_delete_helpers(
-                _refs(record.last_valid_inputs) or compiler.HelperRefs(device_id)
-            )
-            del data.owned[automation_id]
+            # Its registry entry goes with the file entry, as in the editor's delete: a
+            # sync back meanwhile must not reset the routine a second time (F1).
+            self._deleting.add(automation_id)
+            try:
+                await ha_adapter.async_delete_automation(self.hass, automation_id)
+                for issue_id in _ROUTINE_ISSUES:  # they end with the routine (lane 11)
+                    repairs.async_sync_issue(
+                        self.hass, issue_id, present=False, subject=automation_id
+                    )
+                await self._async_delete_helpers(
+                    _refs(record.last_valid_inputs) or compiler.HelperRefs(device_id)
+                )
+                del data.owned[automation_id]
+            finally:
+                self._deleting.discard(automation_id)
             data.suspended.pop(automation_id, None)
             self._store.async_delay_save()
         await self._async_delete_own_helpers(device_id)
@@ -2993,7 +2983,8 @@ class RoutineManager:
         Managed means an owned automation, or one that was detached; a device with
         routine controls but no automation yet is not listed. `summary` is the routine's
         own line of the Schedule summary and `next_action` the next action that really
-        runs, worded as the Schedule state words it ("On at 5:00 PM").
+        runs, worded as the Schedule state words it ("On at 5:00 PM"; a sun instant to
+        the whole minute).
         """
         now = dt_util.now()
         areas = ar.async_get(self.hass)
@@ -3008,12 +2999,13 @@ class RoutineManager:
                 None,
             )
             writer = self._writer(view.settings)
+            marks = sun_marks(nextrun.routine_lines(view.settings, "", ""))
             rows.append(
                 HubRoutine(
                     device=view.device_name,
                     area=area.name if area else None,
                     summary=line.summary if line else None,
-                    next_action=writer.state(view.next_action, None, now),
+                    next_action=writer.state(stated(view.next_action, marks, self._sun), None, now),
                     status=view.status,
                     automation=view.automation_entity_id,
                 )
@@ -3178,11 +3170,6 @@ def _ids(value: Any) -> Iterable[str]:
     if isinstance(value, str):
         return (value,)
     return tuple(str(item) for item in value)
-
-
-def _minute(moment: datetime) -> datetime:
-    """Return the minute a moment falls in, as conflicts are found per minute (FR-S6)."""
-    return moment.replace(second=0, microsecond=0)
 
 
 def _moment(value: Any) -> datetime | None:

@@ -1506,9 +1506,9 @@ async def test_an_update_answers_only_the_conflicts_its_new_settings_have(
 ) -> None:
     """The answer of a patch (`routines/set`) is consistent at once (FR-S6).
 
-    The Schedule reads the routine from its written inputs a few seconds later; until
-    then its conflicts are those of the old settings, and the view leaves out the ones
-    the new settings no longer have.
+    The Schedule reads the routine's settings from the manager (L69), not from the inputs
+    the debounced write gives a second later, so the answer and the Schedule carry the
+    conflicts of the new settings at once, and the written inputs say the same.
     """
     clock.set(clock.at(0, "16:00"))  # Monday
     five, eight, eleven = clock.at(0, "17:00"), clock.at(0, "20:00"), clock.at(0, "23:00")
@@ -1524,7 +1524,10 @@ async def test_an_update_answers_only_the_conflicts_its_new_settings_have(
 
     assert result.view is not None
     assert result.view.conflicts == ()
-    assert found(manager.summary.summaries[home.fan].conflicts) != set()  # not read yet
+    assert manager.summary.summaries[home.fan].conflicts == ()  # before the write
+    provided = manager.routine_summary(home.fan)
+    assert provided is not None
+    assert provided.settings == result.view.settings
     await flush(hass, freezer)
     await tick(hass, freezer, 3)
     assert manager.summary.summaries[home.fan].conflicts == ()

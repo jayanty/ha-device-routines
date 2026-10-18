@@ -47,6 +47,7 @@ from custom_components.device_routines.models import (
 )
 from custom_components.device_routines.sentence import Writer, load_phrases
 from custom_components.device_routines.store import STORAGE_KEY, OwnedRecord, StoreData
+from custom_components.device_routines.summary import schedule_unique_id
 from tests.blueprint.conftest import async_install_blueprint, sun_instant
 from tests.integration.conftest import (
     ALIAS,
@@ -111,6 +112,11 @@ async def enable(
 async def call(hass: HomeAssistant, domain: str, service: str, **data: Any) -> None:
     await hass.services.async_call(domain, service, data, blocking=True)
     await hass.async_block_till_done()
+
+
+def to_the_minute(instant: datetime) -> str:
+    """A sun instant as the Schedule state names it: its local time to the whole minute."""
+    return WRITER.clock(instant.time().replace(second=0, microsecond=0, tzinfo=None))
 
 
 def at(hass: HomeAssistant, event: str, day: int, minutes: int) -> datetime:
@@ -544,8 +550,7 @@ async def test_next_action_and_sentence_of_a_sun_routine(
     view = manager.get(home.fan)
     assert view is not None
     assert view.next_action == Occurrence(sunset, Verb.ON)
-    clock_text = WRITER.clock(sunset.time().replace(tzinfo=None))
-    assert view.sentence == f"On at {clock_text}"
+    assert view.sentence == f"On at {to_the_minute(sunset)}"
     (item,) = (item for item in view.items if item.automation_entity == AUTOMATION)
     assert item.parts == (
         "Sunset + 30 min, Weekdays only: on",
@@ -566,6 +571,57 @@ async def test_next_action_and_sentence_of_a_sun_routine(
     view = manager.get(home.fan)
     assert view is not None
     assert view.next_action == Occurrence(at(hass, "sunset", 7, 30), Verb.ON)  # Monday
+
+
+async def test_a_sun_instant_reads_to_the_minute(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, clock: Clock, freezer: Any
+) -> None:
+    """L69's third carry over: the Schedule state names a sun instant to the whole minute.
+
+    Sunrise plus 30 minutes runs at a second the astral helper gives (7:26:28 AM at the
+    test location on day 0). The view's sentence, the Schedule sensor and the hub read
+    "On at 7:26 AM", a skipped start reads alike, and `next_action`, `next_run`, the
+    Schedule's next refresh, Paused until and the switch itself keep the exact instant.
+    """
+    clock.set(clock.at(0, "04:00"))
+    await give_routine(hass, manager, home.fan, freezer, **DAYLIGHT)
+    start, end = at(hass, "sunrise", 0, 30), at(hass, "sunrise", 1, 30)
+    assert start.second or start.microsecond  # the test location's sunrise has seconds
+    schedule = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, schedule_unique_id(home.fan)
+    )
+    assert schedule is not None
+
+    view = manager.get(home.fan)
+    assert view is not None
+    assert view.sentence == f"On at {to_the_minute(start)}"
+    assert state_of(hass, schedule) == view.sentence
+    (hub,) = manager.hub_routines()
+    assert hub.next_action == view.sentence
+    assert view.next_action == Occurrence(start, Verb.ON)
+    (item,) = (item for item in view.items if item.automation_entity == AUTOMATION)
+    assert item.next_run == start
+    assert manager.summary.summaries[home.fan].next_change == start
+
+    # Skip next: tomorrow's start is named, the skipped one too, both to the minute; the
+    # pause still ends a minute after the exact end it skips.
+    await call(hass, "button", "press", entity_id=page(hass, home.fan)["skip_next"].entity_id)
+    view = manager.get(home.fan)
+    assert view is not None
+    assert view.sentence == f"Skipped, on Tue {to_the_minute(end)}"
+    assert view.paused_until == at(hass, "sunset", 0, -30) + timedelta(minutes=1)
+    skipped = hass.states.get(schedule)
+    assert skipped is not None
+    assert skipped.attributes["skipped_action"] == f"{to_the_minute(start)}: on"
+    (hub,) = manager.hub_routines()
+    assert hub.next_action == f"On Tue {to_the_minute(end)}"
+
+    # Resumed, the blueprint runs the start at its exact instant, not at the named minute.
+    await call(hass, "button", "press", entity_id=page(hass, home.fan)["resume"].entity_id)
+    await clock.to(start - SECOND)
+    assert home.switch.state_now == "off"
+    await clock.to(start + SECOND)
+    assert home.switch.state_now == "on"
 
 
 async def test_only_when_gates_the_starts_in_the_schedule_line(

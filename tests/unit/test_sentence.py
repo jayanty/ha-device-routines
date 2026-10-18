@@ -428,6 +428,19 @@ def test_state_reads_skipped_paused_and_off_under_40_characters() -> None:
     assert len(w12.routine_off()) <= sentence.STATE_CAP
 
 
+def test_a_device_whose_automations_are_all_off_reads_automation_off() -> None:
+    """Live validation A, F2: nothing a turned off automation says is planned."""
+    w = writer()
+    assert w.automations_off(1) == "Automation off"
+    assert w.automations_off(2) == "Automations off"
+    assert w.automations_off(7) == "Automations off"
+    wordy = sentence.Writer(
+        {**PHRASES, "state_automations_off": "Every automation of this device is off now"}, "12h"
+    )
+    assert wordy.automations_off(3) == "Every automation of this device is of..."
+    assert len(wordy.automations_off(3)) == sentence.STATE_CAP
+
+
 def test_routine_states_drop_the_weekday_then_cut() -> None:
     thursday_5pm = datetime(2026, 10, 22, 17, tzinfo=LA)
     medium = sentence.Writer({**PHRASES, "verb_dock": "return to the dock now"}, "12h")
@@ -543,6 +556,8 @@ def test_every_phrase_is_used() -> None:
         w.skipped(verb, NOW, NOW)
     w.paused(NOW, NOW)
     w.routine_off()
+    w.automations_off(1)
+    w.automations_off(2)
     w.routine_kind()
     w.routine_kind(detached=True)
     markers.presentation("Example", recording)

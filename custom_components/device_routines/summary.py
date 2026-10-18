@@ -30,6 +30,13 @@ markers, never from the provider:
 - A detached routine (M1 without M2, Stage 0 V8) is parsed like any automation with the
   kind `detached_routine`; a line the parser cannot read is the translated kind phrase.
 
+The provider also hands over the routine's settings as the manager holds them (Build B
+lane 22, L69): the routine's next actions, its conflicts and its Today rows read them
+rather than the inputs, which follow a change only after the debounced write and the
+index rebuild, so a conflict a change creates is answered at once. The state names a
+sun instant to the whole minute (`stated`); a device whose automations are all off reads
+"Automation off" or "Automations off".
+
 The optional AI path (Build A lane 14, PRD FR-S5) lives in `AiSummaries`: after every
 index rebuild it queues the hand written automations with a line the parser could not
 fully read, asks the chosen AI Task entity about them one at a time, and the views show
@@ -106,6 +113,7 @@ from .models import (
     RoutineSettings,
     Status,
     SummaryItem,
+    SunTrigger,
     TimeTrigger,
     Verb,
     Weekday,
@@ -154,6 +162,53 @@ def schedule_unique_id(device_id: str) -> str:
     return f"device_routines_{device_id}_{SCHEDULE_KEY}"
 
 
+# The sun events and offsets lines run at: ("sunset", 30 minutes) for "Sunset + 30 min".
+type SunMarks = frozenset[tuple[str, timedelta]]
+
+
+def sun_marks(lines: Iterable[ParsedLine]) -> SunMarks:
+    """Return the sun events and offsets of the lines' sun triggers and their follow ups.
+
+    A routine's lines (`nextrun.routine_lines`) carry its sun bounds as sun triggers, so
+    a routine and a hand written automation give their marks alike.
+    """
+    marks: set[tuple[str, timedelta]] = set()
+    for line in lines:
+        for trigger in line.triggers:
+            if not isinstance(trigger, SunTrigger):
+                continue
+            offset = trigger.offset
+            marks.add((trigger.event, offset))
+            for follow_up in line.follow_ups:
+                offset += follow_up.delay
+                marks.add((trigger.event, offset))
+    return frozenset(marks)
+
+
+def stated(
+    occurrence: Occurrence | None, marks: SunMarks, sun: nextrun.SunLookup
+) -> Occurrence | None:
+    """Return an occurrence as the Schedule state names it: a sun instant to the minute.
+
+    A sun bound runs at the second the astral helper gives (7:26:28 AM); the state reads
+    "On at 7:26 AM" (L69's third carry over). Only the words change: scheduling, skip
+    targets, `next_action` and `next_run` keep the exact instant, and a time written by
+    hand with seconds keeps them. An instant is a sun one when it is a marked event of
+    its day (or a day either side) plus the offset, on the local wall clock, as
+    `nextrun` places it.
+    """
+    if occurrence is None or not marks or not (occurrence.at.second or occurrence.at.microsecond):
+        return occurrence
+    at = occurrence.at
+    for event, offset in marks:
+        day = (at - offset).date()
+        for nearby in (day - timedelta(days=1), day, day + timedelta(days=1)):
+            moment = sun(nearby, event)
+            if moment is not None and moment.astimezone(at.tzinfo) + offset == at:
+                return replace(occurrence, at=at.replace(second=0, microsecond=0))
+    return occurrence
+
+
 @dataclass(frozen=True, slots=True)
 class RoutineSummary:
     """A device's routine as the manager hands it to the summary (plan Section 4.2).
@@ -168,7 +223,11 @@ class RoutineSummary:
     `next_action` (plan A4.0, L43) is the manager's own next action that really runs,
     after any pause: the summary falls back to it when the inputs alone cannot tell,
     which is the case while Skip next skips weekly schedule blocks (the schedule entity
-    names only its next change, L53).
+    names only its next change, L53). `settings` (Build B lane 22, L69) are the routine's
+    settings as the manager holds them: they move with a change at once, while the owned
+    automation's inputs follow after the debounced write and the index rebuild, so the
+    routine's rows, its conflicts and the Today view read them in preference to the
+    inputs.
     """
 
     items: tuple[SummaryItem, ...]
@@ -176,6 +235,7 @@ class RoutineSummary:
     skipped_action: Occurrence | None
     status: Status
     next_action: Occurrence | None = None
+    settings: RoutineSettings | None = None
 
 
 class RoutineItemsProvider(Protocol):
@@ -307,12 +367,17 @@ class _Index:
 
 @dataclass(frozen=True, slots=True)
 class _Row:
-    """One item with the occurrences the state, the timer and the conflicts read."""
+    """One item with the occurrences the state, the timer and the conflicts read.
+
+    `sun` holds the sun events and offsets the item runs at, so the state names such an
+    instant to the whole minute (`stated`).
+    """
 
     item: SummaryItem
     occurrences: Sequence[Occurrence]
     entity_ids: tuple[str, ...]
     routine: RoutineSettings | None = None
+    sun: SunMarks = frozenset()
 
 
 class SummaryCoordinator:
@@ -728,12 +793,19 @@ class SummaryCoordinator:
         rows.sort(key=_row_order)
         items = tuple(row.item for row in rows)
         upcoming = nextrun.earliest(row.occurrences[0] for row in rows if row.occurrences)
-        fallback = next((item.summary for item in items if item.enabled), items[0].summary)
+        enabled = [item for item in items if item.enabled]
+        fallback = (
+            enabled[0].summary
+            if enabled
+            # Every automation on the device is off: nothing its lines say is planned.
+            else writer.automations_off(len({item.automation_entity for item in items}))
+        )
         planned = [
             conflicts.Planned(index, row.entity_ids, tuple(row.occurrences), row.routine)
             for index, row in enumerate(rows)
         ]
         changes = [m for m in (upcoming.at if upcoming else None, pause_end) if m is not None]
+        marks: SunMarks = frozenset().union(*(row.sun for row in rows))
         return DeviceSummary(
             device_id=device.id,
             device_name=device.name_by_user or device.name,
@@ -745,16 +817,18 @@ class SummaryCoordinator:
                 writer,
                 routine,
                 pause_end=pause_end,
-                routine_next=routine_next,
-                upcoming=upcoming,
+                routine_next=stated(routine_next, marks, self._sun),
+                upcoming=stated(upcoming, marks, self._sun),
                 fallback=fallback,
                 now=now,
             ),
             items=items,
-            conflicts=tuple(conflicts.find(planned, now, now + CONFLICT_WINDOW)),
+            conflicts=tuple(conflicts.find(planned, now, now + CONFLICT_WINDOW, lookups)),
             next_change=min(changes, default=None),
             paused_until=pause_end,
-            skipped_action=_skipped_line(writer, routine, pause_end, now),
+            skipped_action=_skipped_line(
+                writer, stated(_skipped(routine, pause_end), marks, self._sun), now
+            ),
             has_routine=routine is not None or any(e.kind == KIND_ROUTINE for e in indexed),
         )
 
@@ -783,7 +857,7 @@ class SummaryCoordinator:
             custom_logic=entry.line.custom_logic,
         )
         item = self.ai.item(entry, item)
-        return _Row(item, occurrences, entry.line.entity_ids)
+        return _Row(item, occurrences, entry.line.entity_ids, sun=sun_marks((entry.line,)))
 
     def _routine_rows(
         self, device_id: str, routine: RoutineSummary, pause_end: datetime | None, now: datetime
@@ -791,36 +865,41 @@ class SummaryCoordinator:
         """Return the provider's items as rows.
 
         The first item stands for the owned automation: while it runs, its next actions
-        are computed from its inputs after Paused until; while it does not, it has none.
-        Every other item, and every item before the owned automation is indexed, counts
-        its own next run with its action unknown.
+        are computed from the manager's settings (its inputs, for a provider without
+        them) after Paused until; while it does not, it has none. Every other item, and
+        every item before the owned automation is indexed, counts its own next run with
+        its action unknown.
         """
+        owned = self._index.routines.get(device_id)
+        settings = routine.settings or (owned.settings if owned else None)
+        marks = sun_marks(nextrun.routine_lines(settings, "", "")) if settings else frozenset()
         rows = [
-            _Row(item, [Occurrence(item.next_run, None)] if item.next_run else [], ())
+            _Row(item, [Occurrence(item.next_run, None)] if item.next_run else [], (), sun=marks)
             for item in routine.items
         ]
-        owned = self._index.routines.get(device_id)
-        if owned is None:
+        if owned is None or settings is None:
             return rows
         first = rows[0].item
         if routine.status in _RUNNING_STATUSES and _is_on(
             self.hass.states.get(owned.automation_entity)
         ):
-            settings = owned.settings
-            occurrences = self._routine_occurrences(owned, pause_end, now)
+            occurrences = self._routine_occurrences(owned, settings, pause_end, now)
             if not occurrences and routine.next_action is not None:
                 # The inputs cannot see past a skipped weekly block; the manager can.
                 occurrences = [routine.next_action]
-            rows[0] = _Row(first, occurrences, (settings.target_entity,), settings)
+            rows[0] = _Row(first, occurrences, (settings.target_entity,), settings, marks)
         else:
             rows[0] = _Row(first, [], ())
         return rows
 
     def _routine_occurrences(
-        self, owned: _OwnedRoutine, pause_end: datetime | None, now: datetime
+        self,
+        owned: _OwnedRoutine,
+        settings: RoutineSettings,
+        pause_end: datetime | None,
+        now: datetime,
     ) -> list[Occurrence]:
         """Return the routine's coming actions from its settings and its helpers' states."""
-        settings = owned.settings
         schedule_state: str | None = None
         entity_times: dict[str, time | datetime] = {}
         if settings.schedule_entity is not None:
@@ -1046,7 +1125,7 @@ class SummaryCoordinator:
             if device is None:
                 continue
             rows = self._day_rows(device_id, start, end, now, lookups)
-            found.extend(_day_items(device, rows, start, end))
+            found.extend(_day_items(device, rows, start, end, lookups))
         return sorted(found, key=lambda item: (item.time, item.device_id, item.automation))
 
     def _day_rows(
@@ -1100,9 +1179,10 @@ class SummaryCoordinator:
         """Return the provider's items as rows, the way `_routine_rows` reads them.
 
         The first item stands for the owned automation: while it runs, its actions come
-        from its inputs, less those its pause skips; while it does not, it has none. Every
-        other item, and every item before the owned automation is indexed, counts its next
-        run with its action unknown.
+        from the manager's settings (its inputs, for a provider without them), less those
+        its pause skips; while it does not, it has none. Every other item, and every item
+        before the owned automation is indexed, counts its next run with its action
+        unknown.
         """
         owned = self._index.routines.get(device_id)
         pause_end = _pause_end(routine, now)
@@ -1116,13 +1196,13 @@ class SummaryCoordinator:
             elif routine.status in _RUNNING_STATUSES and _is_on(
                 self.hass.states.get(owned.automation_entity)
             ):
-                planned = self._routine_occurrences(owned, None, start - _INSTANT)
+                settings = routine.settings or owned.settings
+                planned = self._routine_occurrences(owned, settings, None, start - _INSTANT)
                 runs = tuple(
                     run
                     for run in planned
                     if pause_end is None or not now < run.at < pause_end  # skipped by the pause
                 )
-                settings = owned.settings
                 rows.append(
                     _DayRow(
                         item.kind,
@@ -1576,19 +1656,17 @@ def _state(  # noqa: PLR0913  # every input of the FR-S4 state
     return writer.state(upcoming, fallback, now)
 
 
-def _skipped_line(
-    writer: Writer, routine: RoutineSummary | None, pause_end: datetime | None, now: datetime
-) -> str | None:
-    """Return the skipped action as a line ("5:00 PM: on") while the routine skips."""
-    if (
-        pause_end is None
-        or routine is None
-        or routine.status is not Status.SKIPPING
-        or routine.skipped_action is None
-        or routine.skipped_action.verb is None
-    ):
+def _skipped(routine: RoutineSummary | None, pause_end: datetime | None) -> Occurrence | None:
+    """Return the action Skip next skipped while the routine skips, else None."""
+    if pause_end is None or routine is None or routine.status is not Status.SKIPPING:
         return None
-    action = routine.skipped_action
+    return routine.skipped_action
+
+
+def _skipped_line(writer: Writer, action: Occurrence | None, now: datetime) -> str | None:
+    """Return the skipped action as a line ("5:00 PM: on") while the routine skips."""
+    if action is None or action.verb is None:
+        return None
     moment = action.at.astimezone(now.tzinfo)
     weekdays = None if moment.date() == now.date() else frozenset({Weekday.of(moment)})
     line = ParsedLine(
@@ -1696,12 +1774,17 @@ class _DayRow:
 
 
 def _day_items(
-    device: dr.AnyDeviceEntry, rows: Sequence[_DayRow], start: datetime, end: datetime
+    device: dr.AnyDeviceEntry,
+    rows: Sequence[_DayRow],
+    start: datetime,
+    end: datetime,
+    lookups: nextrun.Lookups,
 ) -> list[DayItem]:
     """Return a device's runs inside the day as items, each once, with its conflict flag.
 
     `conflicts.find` reports one conflict per pair and reason in a window, so it is asked
-    minute by minute: every run in a conflicting minute of a conflicting row is marked.
+    minute by minute: every run in a conflicting minute of a conflicting row is marked. A
+    sun window is placed with the day's lookups, as the occurrences were.
     """
     inside = [tuple(run for run in row.runs if start <= run.at < end) for row in rows]
     planned = [
@@ -1710,7 +1793,7 @@ def _day_items(
     ]
     marked: set[tuple[int, datetime]] = set()
     for minute in sorted({_minute_of(run.at) for runs in inside for run in runs}):
-        for found in conflicts.find(planned, minute, minute + timedelta(minutes=1)):
+        for found in conflicts.find(planned, minute, minute + timedelta(minutes=1), lookups):
             marked.update(((found.a, minute), (found.b, minute)))
     items: dict[tuple[Any, ...], DayItem] = {}
     for index, (row, runs) in enumerate(zip(rows, inside, strict=True)):

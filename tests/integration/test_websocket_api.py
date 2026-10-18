@@ -567,6 +567,59 @@ async def test_schedule_today_lists_routines_and_automations_with_conflicts(
     assert invalid["code"] == "invalid_format"
 
 
+async def test_a_conflict_a_change_creates_is_answered_at_once(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    at_four: Clock,
+    freezer: Any,
+    hass_ws_client: Any,
+) -> None:
+    """L69's second carry over: `routines/set` and `schedule/today` read the new settings.
+
+    The fan's routine runs from 17:00 to 20:00 and an automation turns the fan off at
+    21:00, after the window: no conflict. Moving the end to 22:00 puts that off inside
+    the window, and both commands say so before the debounced write and the Schedule's
+    index rebuild, as they do for a conflict the change ends.
+    """
+    automation_id = await give_routine(
+        hass, manager, home.fan, freezer, on_time=time(17), off_time=time(20)
+    )
+    await add_automations(hass, freezer, timed("evening_fan_off", "21:00", "switch.turn_off", FAN))
+    client = await hass_ws_client(hass)
+    view = await call(client, {"type": f"{PREFIX}/routines/get", "device_id": home.fan})
+    assert view["conflicts"] == []
+
+    view = await call(
+        client,
+        {
+            "type": f"{PREFIX}/routines/set",
+            "device_id": home.fan,
+            "settings": {"off_time": "22:00"},
+        },
+    )
+    today = await call(client, {"type": f"{PREFIX}/schedule/today"})
+
+    assert inputs_of(hass, automation_id)["off_time"] == "20:00:00"  # not written yet
+    assert view["conflicts"] == [
+        {"a": 0, "b": 1, "reason_key": "off_in_on_window", "at": "2026-10-19T21:00:00-07:00"}
+    ]
+    assert [
+        (item["time"][11:16], item["action"], item["kind"], item["conflict"])
+        for item in today["items"]
+        if item["device_id"] == home.fan
+    ] == [
+        ("17:00", "on", "routine", False),
+        ("21:00", "off", "automation", True),
+        ("22:00", "off", "routine", False),
+    ]
+    # The written inputs and the index rebuild say the same.
+    await flush(hass, freezer)
+    await settle_summary(hass, freezer)
+    assert await call(client, {"type": f"{PREFIX}/routines/get", "device_id": home.fan}) == view
+    assert await call(client, {"type": f"{PREFIX}/schedule/today"}) == today
+
+
 # --------------------------------------------------------------------------------------
 # conversions/list and conversions/convert (Build B lane 20: PRD FR-M1)
 # --------------------------------------------------------------------------------------

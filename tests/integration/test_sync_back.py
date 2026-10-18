@@ -2,7 +2,9 @@
 
 Each test edits `automations.yaml` the way the automation editor or a person does (replace
 the entry, reload its id; or restore the whole file and reload everything) and checks
-what the manager made of it. Every id and name is synthetic.
+what the manager made of it. A delete in the automation editor goes through the core's
+own config view, which reloads nothing (live validation A, F1). Every id and name is
+synthetic.
 """
 
 from __future__ import annotations
@@ -12,10 +14,15 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import entity_registry as er
+from homeassistant.setup import async_setup_component
 import pytest
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
+from pytest_homeassistant_custom_component.common import (
+    async_capture_events,
+    async_fire_time_changed,
+)
 
-from custom_components.device_routines import markers
+from custom_components.device_routines import ha_adapter, markers
 from custom_components.device_routines.manager import RoutineManager
 from custom_components.device_routines.models import Status
 from tests.integration.conftest import (
@@ -262,6 +269,115 @@ async def test_a_deleted_automation_resets_the_settings_and_keeps_the_device_opt
     # A new setting creates the routine again.
     await give_routine(hass, manager, home.fan, freezer, off_time=time(23))
     assert inputs_of(hass, automation_id)["off_time"] == "23:00:00"
+
+
+async def delete_in_the_editor(hass: HomeAssistant, hass_client: Any, automation_id: str) -> None:
+    """Delete an automation as the automation editor does, through the core's config view.
+
+    The core removes the entry from the file and the entity's registry entry, and reloads
+    nothing: no `automation_reloaded` fires.
+    """
+    assert await async_setup_component(hass, "config", {})
+    reloads = async_capture_events(hass, ha_adapter.EVENT_AUTOMATION_RELOADED)
+    client = await hass_client()
+    response = await client.delete(f"/api/config/automation/config/{automation_id}")
+    assert response.status == 200, await response.text()
+    await hass.async_block_till_done()
+    assert reloads == []
+    assert file_entry(hass, automation_id) is None
+    assert er.async_get(hass).async_get_entity_id("automation", "automation", automation_id) is None
+
+
+async def test_an_owned_routine_deleted_in_the_editor_resets_at_once(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any, hass_client: Any
+) -> None:
+    """F1: the editor's delete resets the routine (PRD 8.2) without waiting for a reload."""
+    automation_id = await give_routine(
+        hass, manager, home.fan, freezer, on_time=time(17), turn_off_after_min=30
+    )
+
+    await delete_in_the_editor(hass, hass_client, automation_id)
+
+    view = manager.get(home.fan)
+    assert view is not None
+    assert view.settings.on_time is None
+    assert view.status is Status.OFF
+    assert home.fan in manager.store.data.opted_in
+    assert automation_id not in manager.store.data.owned
+    assert state_of(hass, TIMER) is None
+    assert manager.routine_summary(home.fan) is None
+
+
+async def test_a_detached_routine_deleted_in_the_editor_clears_its_issue(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any, hass_client: Any
+) -> None:
+    """F1: a deleted detached routine closes `detached_routine` and frees the controls."""
+    automation_id = await give_routine(hass, manager, home.fan, freezer, on_time=time(17))
+    await save_entry(hass, {"id": automation_id, "alias": "Mine", "triggers": [], "actions": []})
+    assert issue_of(hass, "detached_routine", automation_id) is not None
+    assert manager.unavailable_reason(home.fan) == "detached"
+
+    await delete_in_the_editor(hass, hass_client, automation_id)
+
+    view = manager.get(home.fan)
+    assert view is not None
+    assert view.status is Status.OFF
+    assert issue_of(hass, "detached_routine", automation_id) is None
+    assert manager.unavailable_reason(home.fan) != "detached"
+    # The device takes a new routine at the first setting, under the same id.
+    await give_routine(hass, manager, home.fan, freezer, off_time=time(23))
+    assert inputs_of(hass, automation_id)["off_time"] == "23:00:00"
+
+
+async def test_deleting_another_automation_in_the_editor_leaves_the_routine_alone(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any, hass_client: Any
+) -> None:
+    automation_id = await give_routine(hass, manager, home.fan, freezer, on_time=time(17))
+    await save_entry(hass, {"id": "lamp_evening", "alias": "Lamp", "triggers": [], "actions": []})
+    owned = file_entry(hass, automation_id)
+
+    await delete_in_the_editor(hass, hass_client, "lamp_evening")
+
+    view = manager.get(home.fan)
+    assert view is not None
+    assert view.status is Status.ACTIVE
+    assert view.settings.on_time == time(17)
+    assert file_entry(hass, automation_id) == owned
+
+
+async def test_a_sync_during_the_managers_own_delete_leaves_the_routine_to_it(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    freezer: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """F1: the manager's own delete removes the registry entry too; it resets alone.
+
+    A sync back that runs in the middle (here forced while the helpers are deleted) finds
+    the entry gone from the file and leaves the routine to the delete in progress.
+    """
+    automation_id = await give_routine(
+        hass, manager, home.fan, freezer, on_time=time(17), turn_off_after_min=30
+    )
+    await manager.async_opt_out(home.fan)
+    delete_helpers = manager._async_delete_helpers
+
+    async def racing(refs: Any) -> None:
+        manager._request_sync()
+        assert manager._sync_task is not None
+        await manager._sync_task
+        assert automation_id in manager.store.data.owned  # left to the delete
+        await delete_helpers(refs)
+
+    monkeypatch.setattr(manager, "_async_delete_helpers", racing)
+    await manager.async_delete_routine(home.fan)
+    await hass.async_block_till_done()
+
+    assert automation_id not in manager.store.data.owned
+    assert manager.get(home.fan) is None
+    assert file_entry(hass, automation_id) is None
+    assert state_of(hass, TIMER) is None
 
 
 async def test_a_restore_of_automations_yaml_from_git_rebuilds_the_index_and_the_entities_follow(

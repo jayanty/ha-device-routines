@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ast
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -19,6 +19,7 @@ from homeassistant.helpers import (
     floor_registry as fr,
     label_registry as lr,
 )
+from homeassistant.helpers.sun import get_astral_event_date
 from homeassistant.setup import async_setup_component
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
@@ -32,12 +33,14 @@ from custom_components.device_routines.models import (
     RoutineSettings,
     Status,
     SummaryItem,
+    TimeKind,
     Verb,
 )
-from custom_components.device_routines.sentence import STATE_CAP, load_phrases
+from custom_components.device_routines.sentence import STATE_CAP, Writer, load_phrases
 from custom_components.device_routines.settings import GlobalSettings
 from custom_components.device_routines.summary import (
     DEBOUNCE_SECONDS,
+    KIND_AUTOMATION,
     KIND_ROUTINE,
     SOURCE_PARSER,
     RoutineItemsProvider,
@@ -353,8 +356,31 @@ async def test_turning_an_automation_off_marks_its_items(
     assert state is not None
     assert [item["enabled"] for item in state.attributes["items"]] == [False, False]
     assert all(item["next_run"] is None for item in state.attributes["items"])
-    # No enabled item: the state falls back to the first line.
-    assert state.state in {"9:00 AM: off", "5:00 PM: on"}
+    # No enabled item: nothing is planned, and the state says why (live validation A, F2).
+    # One automation reads in the singular, however many lines it has.
+    assert state.state == "Automation off"
+
+
+async def test_a_device_whose_automations_are_all_off_reads_automations_off(
+    hass: HomeAssistant, home: dict[str, Any]
+) -> None:
+    """F2: two automations off read "Automations off"; one turned back on names its action."""
+    early = automation("early_off", [at("08:30")], [action("fan.turn_off", {"entity_id": FAN})])
+    await start(hass, [WINDOW, early])
+    entity_id = schedule_entity(hass, home["fan"].id) or ""
+
+    for automation_entity in ("automation.fan_window", "automation.early_off"):
+        await hass.services.async_call(
+            "automation", "turn_off", {"entity_id": automation_entity}, blocking=True
+        )
+    await hass.async_block_till_done()
+    assert hass.states.get(entity_id).state == "Automations off"  # type: ignore[union-attr]
+
+    await hass.services.async_call(
+        "automation", "turn_on", {"entity_id": "automation.early_off"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(entity_id).state == "Off at 8:30 AM"  # type: ignore[union-attr]
 
 
 async def test_a_reload_rebuilds_the_index_after_the_debounce(
@@ -759,12 +785,14 @@ def routine_summary(
     paused_until: datetime | None = None,
     skipped: Occurrence | None = None,
     items: tuple[SummaryItem, ...] | None = None,
+    settings: RoutineSettings | None = None,
 ) -> RoutineSummary:
     return RoutineSummary(
         items=(routine_item(),) if items is None else items,
         paused_until=paused_until,
         skipped_action=skipped,
         status=status,
+        settings=settings,
     )
 
 
@@ -1128,6 +1156,121 @@ async def test_a_running_countdown_feeds_the_state(
     state = sensor_state(hass, fan)
     assert state.state == "Paused until 8:31 AM"
     assert state.attributes["skipped_action"] == "8:30 AM: off"
+
+
+async def test_the_routine_rows_prefer_the_managers_settings(
+    hass: HomeAssistant, home: dict[str, Any], routine_blueprint: None
+) -> None:
+    """L69's second carry over: the settings the provider hands over win over the inputs.
+
+    The inputs say 17:00 to 19:00; the manager already holds 10:00 to 21:00, a change the
+    debounced write has not written yet. The state, the conflicts and the Today view read
+    the manager's, so an automation turning the fan off at 20:00, outside the written
+    window, already conflicts.
+    """
+    fan = home["fan"].id
+    written = RoutineSettings(target_entity=FAN, on_time=time(17), off_time=time(19))
+    held = RoutineSettings(target_entity=FAN, on_time=time(10), off_time=time(21))
+    evening = automation("evening_off", [at("20:00")], [action("fan.turn_off", {"entity_id": FAN})])
+    entry = await start(hass, [routine_config(fan, written), evening])
+    provider = FakeProvider()
+    provider.summaries[fan] = routine_summary()
+    summary = await with_provider(entry, provider)
+    assert sensor_state(hass, fan).state == "On at 5:00 PM"
+    assert summary.summaries[fan].conflicts == ()
+
+    provider.summaries[fan] = routine_summary(settings=held)
+    summary.async_refresh_device(fan)
+
+    state = sensor_state(hass, fan)
+    assert state.state == "On at 10:00 AM"
+    assert state.attributes["conflicts"] == [
+        {"items": [0, 1], "reason": "off_in_on_window", "at": "2026-10-19T20:00:00-07:00"}
+    ]
+    assert [
+        (item.time, item.action, item.kind, item.conflict)
+        for item in summary.day_schedule(date(2026, 10, 19))
+    ] == [
+        (local(19, 10), Verb.ON, KIND_ROUTINE, False),
+        (local(19, 20), Verb.OFF, KIND_AUTOMATION, True),
+        (local(19, 21), Verb.OFF, KIND_ROUTINE, False),
+    ]
+
+
+async def test_a_sun_window_routine_gets_window_conflicts(
+    hass: HomeAssistant, home: dict[str, Any], routine_blueprint: None
+) -> None:
+    """L69's first carry over: the Schedule places a sun window with its sun lookups.
+
+    From sunset to sunrise, on Monday at 08:00: an automation turning the fan off at
+    10:00 PM acts inside the window and one turning it on at noon outside it; both
+    conflict, in the Schedule and in the Today view.
+    """
+    fan = home["fan"].id
+    dusk = RoutineSettings(target_entity=FAN, on_kind=TimeKind.SUNSET, off_kind=TimeKind.SUNRISE)
+    late = automation("late_off", [at("22:00")], [action("fan.turn_off", {"entity_id": FAN})])
+    noon = automation("noon_on", [at("12:00")], [action("fan.turn_on", {"entity_id": FAN})])
+    entry = await start(hass, [routine_config(fan, dusk), late, noon])
+    provider = FakeProvider()
+    provider.summaries[fan] = routine_summary()
+    summary = await with_provider(entry, provider)
+
+    found = summary.summaries[fan]
+    assert [(found.items[c.b].alias, c.reason_key, c.at) for c in found.conflicts] == [
+        ("Noon On", "on_in_off_window", local(19, 12)),
+        ("Late Off", "off_in_on_window", local(19, 22)),
+    ]
+    assert {
+        (item.automation, item.conflict)
+        for item in summary.day_schedule(date(2026, 10, 19))
+        if item.kind == KIND_AUTOMATION
+    } == {("automation.noon_on", True), ("automation.late_off", True)}
+
+
+async def test_a_hand_written_sun_trigger_reads_to_the_minute(
+    hass: HomeAssistant, home: dict[str, Any], freezer: Any
+) -> None:
+    """L69's third carry over for a hand written line: at sunset, "On at 6:10 PM".
+
+    The sun instant keeps its seconds where it is scheduled (`next_run`, the next view
+    refresh); the follow up of a sun trigger reads to the minute too, and a time written
+    with seconds keeps them.
+    """
+    moment = get_astral_event_date(hass, "sunset", date(2026, 10, 19))
+    assert moment is not None
+    sunset = moment.astimezone(LA)
+    assert sunset.second or sunset.microsecond  # the test location's sunset has seconds
+    at_sunset = automation(
+        "at_sunset",
+        [{"trigger": "sun", "event": "sunset"}],
+        [
+            action("fan.turn_on", {"entity_id": FAN}),
+            {"delay": {"minutes": 3}},
+            action("fan.turn_off", {"entity_id": FAN}),
+        ],
+    )
+    precise = automation(
+        "precise_lamp", [at("17:30:15")], [action("light.turn_on", {"entity_id": LAMP})]
+    )
+    entry = await start(hass, [at_sunset, precise])
+    fan, lamp = home["fan"].id, home["lamp"].id
+    writer = Writer(load_phrases("en"), "12h")
+
+    def minute(instant: datetime) -> str:
+        return writer.clock(instant.time().replace(second=0, microsecond=0, tzinfo=None))
+
+    state = sensor_state(hass, fan)
+    assert state.attributes["items"][0]["summary"] == "Sunset: on for 3 min, then off"
+    assert state.state == f"On at {minute(sunset)}"
+    assert state.attributes["items"][0]["next_run"] == sunset.isoformat()
+    assert coordinator(entry).summaries[fan].next_change == sunset
+    assert sensor_state(hass, lamp).state == "On at 5:30:15 PM"
+
+    # A minute after sunset (no trigger runs: no time change fires), the off comes next.
+    freezer.move_to(sunset + timedelta(minutes=1))
+    coordinator(entry)._refresh_views()
+    await hass.async_block_till_done()
+    assert sensor_state(hass, fan).state == f"Off at {minute(sunset + timedelta(minutes=3))}"
 
 
 async def test_a_weekly_schedule_feeds_the_state(

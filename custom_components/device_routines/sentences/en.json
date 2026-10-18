@@ -28,6 +28,8 @@
   "state_skipped": "Skipped, {action} {when}",
   "state_paused": "Paused until {when}",
   "state_routine_off": "Routine off",
+  "state_automation_off": "Automation off",
+  "state_automations_off": "Automations off",
   "weekday_mon": "Mon",
   "weekday_tue": "Tue",
   "weekday_wed": "Wed",

@@ -3,6 +3,10 @@
 Two kinds: opposite actions on the same entity in the same minute, and an automation
 action that contradicts a routine window (an off inside an on window, an on inside an off
 window). Pure and O(n log n) in the number of occurrences.
+
+A window with a sun bound (FR-R10) is placed with the caller's lookups, the ones the
+occurrences were computed with; without them it has no expected state and nothing
+contradicts it.
 """
 
 from __future__ import annotations
@@ -13,7 +17,7 @@ from datetime import datetime
 from itertools import combinations, groupby
 
 from .models import ACTIVATING, DEACTIVATING, OPPOSITES, Conflict, Occurrence, RoutineSettings
-from .nextrun import expected_state
+from .nextrun import Lookups, expected_state
 
 SAME_MINUTE = "opposite_same_minute"
 OFF_IN_ON_WINDOW = "off_in_on_window"
@@ -34,8 +38,13 @@ def _minute(moment: datetime) -> datetime:
     return moment.replace(second=0, microsecond=0)
 
 
-def find(planned: Sequence[Planned], start: datetime, end: datetime) -> list[Conflict]:
-    """Return every conflict among occurrences in [start, end), one per pair and reason."""
+def find(
+    planned: Sequence[Planned], start: datetime, end: datetime, lookups: Lookups | None = None
+) -> list[Conflict]:
+    """Return every conflict among occurrences in [start, end), one per pair and reason.
+
+    `lookups` give a routine's sun bounds, so a sun window has its window conflicts too.
+    """
     events = sorted(
         (
             (entity, _minute(occurrence.at), item.index, occurrence)
@@ -52,7 +61,7 @@ def find(planned: Sequence[Planned], start: datetime, end: datetime) -> list[Con
         _same_minute([(index, occurrence) for _, _, index, occurrence in group], found)
 
     for routine_item in (item for item in planned if item.routine is not None):
-        _against_window(routine_item, planned, start, end, found)
+        _against_window(routine_item, planned, (start, end), lookups, found)
     return sorted(found.values(), key=lambda c: (c.a, c.b, c.reason_key))
 
 
@@ -70,10 +79,11 @@ def _same_minute(
 def _against_window(
     routine_item: Planned,
     planned: Sequence[Planned],
-    start: datetime,
-    end: datetime,
+    span: tuple[datetime, datetime],
+    lookups: Lookups | None,
     found: dict[tuple[int, int, str], Conflict],
 ) -> None:
+    start, end = span
     routine = routine_item.routine
     assert routine is not None  # noqa: S101  # the caller filters on it
     for other in planned:
@@ -82,7 +92,7 @@ def _against_window(
         for occurrence in other.occurrences:
             if not start <= occurrence.at < end:
                 continue
-            expected = expected_state(routine, occurrence.at)
+            expected = expected_state(routine, occurrence.at, lookups=lookups)
             if occurrence.verb in DEACTIVATING and expected == "on":
                 reason = OFF_IN_ON_WINDOW
             elif occurrence.verb in ACTIVATING and expected == "off":

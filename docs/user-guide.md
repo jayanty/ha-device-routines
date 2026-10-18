@@ -58,8 +58,11 @@ The state is the next thing that will happen to the device, in at most 40 charac
 | Skipped, on Thu 5:00 PM | The device's routine skipped its next action; this is the next one that will really run. |
 | Paused until Sun 6:00 PM | The device's routine is paused until then. |
 | Routine off | The device's routine is turned off, or cannot run (see [Troubleshooting](#troubleshooting)). |
+| Automation off, Automations off | Every automation acting on the device is turned off, so nothing is planned; a routine that is off reads Routine off instead. |
 
-A turned off automation never supplies the next action. A device with no automation
+A turned off automation never supplies the next action. A time that follows sunrise or
+sunset reads to the whole minute ("On at 7:26 AM"), although the action runs at the
+second the sun gives it; a time an automation writes with seconds keeps them. A device with no automation
 acting on it has no Schedule sensor at all. A routine's pause or skip never changes the
 lines of hand written automations on the same device.
 
@@ -79,7 +82,10 @@ then timed lines, then event driven ones:
 | `enabled` | Whether the automation is turned on. |
 
 `conflicts` lists pairs of items that drive the device in opposite directions in the same
-minute within the next day. `paused_until` holds the end of the routine's pause or skip,
+minute within the next day, and actions of other automations that go against the
+routine's window (an off while it should be on, an on while it should be off), a window
+that follows sunrise or sunset included. A change to the routine shows its conflicts at
+once, before it is written. `paused_until` holds the end of the routine's pause or skip,
 and `skipped_action` names the action Skip next skipped; both are empty otherwise.
 
 ### How lines are written
@@ -368,7 +374,8 @@ choose one. In the routine's automation form the same choice is "Turn on at, kin
 Example: a patio light with **Turn on timing** Sunset, **Turn on sun offset** 15 and
 **Turn off at** 11:00 PM turns on a quarter of an hour after sunset and off at 11:00 PM.
 Its Schedule line reads "Sunset + 15 min: on, 11:00 PM: off", and before the light
-turns on its state names the moment of today's sunset plus the offset.
+turns on its state names the moment of today's sunset plus the offset, to the whole
+minute.
 
 - **Across midnight.** Sunset to sunrise is a window across midnight, which belongs to the
   day it starts, as for times: with Weekdays, Friday's sunset turns the light on and

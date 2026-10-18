@@ -105,7 +105,7 @@ One routine as every surface sees it (TECH_SPEC 4.1).
 | `paused_until` | datetime or null | While paused or skipping |
 | `skipped_action` | Occurrence or null | What Skip next skipped, while skipping |
 | `next_action` | Occurrence or null | The next action that really runs, after any pause |
-| `sentence` | string or null | The Schedule sensor's state |
+| `sentence` | string or null | The Schedule sensor's state; it names a sunrise or sunset time to the whole minute, which `next_action` keeps exact |
 | `items` | list of SummaryItem | The Schedule items of the device, routine first |
 | `conflicts` | list of Conflict | FR-S6 conflicts among the items |
 | `override` | bool | The Manual override |
@@ -451,11 +451,11 @@ compiler, shown at once and written about a second later (the manager's debounce
 ```
 
 The result is the RoutineView with the new settings (`"off_time": "22:30:00"`,
-`"days": "weekdays"`) and the Schedule items they give. Its `conflicts` hold for the new
-settings at once: a conflict the change ends is left out (the fan's `opposite_same_minute`
-at 11:00 PM against the automation turning it on then; `on_in_off_window` stays), and one
-the change brings appears when the Schedule reads the written routine, a few seconds
-later, with a `routine_changed` event:
+`"days": "weekdays"`) and the Schedule items they give. Its `conflicts` are those of the
+new settings at once, before the routine is written a second later: a conflict the change
+ends is gone (the fan's `opposite_same_minute` at 11:00 PM against the automation turning
+it on then; `on_in_off_window` stays), and one the change brings is already there, as it
+is in [`schedule/today`](#scheduletoday) right after:
 
 ```json
 {
@@ -855,7 +855,7 @@ automations alike, for the console's Today view (PRD 4.5).
 ```
 
 Each item is a [DayItem](#dayitem). Items are sorted by time, then device and automation.
-The day reads the schedule as it stands now: an action earlier in the day is listed as planned (here the 7:00 AM lamp),
+The day reads the schedule as it stands now, a routine's settings from the moment a change is answered: an action earlier in the day is listed as planned (here the 7:00 AM lamp),
 a routine action its pause skips (after now and before Paused until) and every action of
 an automation that is turned off are left out. `action` is null when it is not known yet
 (a routine whose automation is not loaded). `area_id` is the device's area. `conflict`

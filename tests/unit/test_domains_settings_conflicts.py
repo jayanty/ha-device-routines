@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.device_routines import conflicts, domains, settings
+from custom_components.device_routines import conflicts, domains, nextrun, settings
 from custom_components.device_routines.models import (
     Conflict,
     Days,
@@ -16,6 +16,7 @@ from custom_components.device_routines.models import (
     Option,
     ParseError,
     RoutineSettings,
+    TimeKind,
     Verb,
     Weekday,
 )
@@ -315,6 +316,44 @@ def test_a_one_shot_routine_has_no_window_to_contradict() -> None:
         [planned(0, routine=one_shot), planned(1, Occurrence(at(12), Verb.OFF))], START, END
     )
     assert found == []
+
+
+def sun(day: date, event: str) -> datetime | None:
+    """Sunrise at 7:05:20 AM and sunset at 6:12:40 PM, as the astral helper gives them."""
+    at = time(7, 5, 20) if event == "sunrise" else time(18, 12, 40)
+    return datetime.combine(day, at, tzinfo=LA).astimezone(UTC)
+
+
+def test_a_sun_window_routine_gets_window_conflicts() -> None:
+    """A window with a sun bound reads its bounds from the lookups (L69's first carry over).
+
+    From 30 minutes after sunset to sunrise: 10:00 PM is inside the window, noon outside.
+    Without the lookups the window cannot be placed, so nothing contradicts it.
+    """
+    dusk = RoutineSettings(
+        target_entity=FAN,
+        on_kind=TimeKind.SUNSET,
+        on_sun_offset_min=30,
+        off_kind=TimeKind.SUNRISE,
+    )
+    items = [
+        planned(0, Occurrence(at(18, 42, 40), Verb.ON), routine=dusk),
+        planned(1, Occurrence(at(22), Verb.OFF)),
+        planned(2, Occurrence(at(12), Verb.ON)),
+        planned(3, Occurrence(at(18, 42, 40), Verb.ON), Occurrence(at(19), Verb.ON)),
+    ]
+
+    assert conflicts.find(items, START, END) == []
+    assert conflicts.find(items, START, END, nextrun.Lookups(sun=sun)) == [
+        Conflict(0, 1, conflicts.OFF_IN_ON_WINDOW, at(22)),
+        Conflict(0, 2, conflicts.ON_IN_OFF_WINDOW, at(12)),
+    ]
+    # The start itself is not inside its window's off period: an on at the sun instant
+    # agrees with it, as an on at a time start does.
+    one_minute_early = [items[0], planned(1, Occurrence(at(18, 41), Verb.ON))]
+    assert conflicts.find(one_minute_early, START, END, nextrun.Lookups(sun=sun)) == [
+        Conflict(0, 1, conflicts.ON_IN_OFF_WINDOW, at(18, 41))
+    ]
 
 
 def test_parse_error_carries_its_placeholders() -> None:
