@@ -10,14 +10,16 @@ routine checks (`blueprint_schema`, `blueprint_status`, `owned_count`, `loaded_c
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, time
 import json
 from pathlib import Path
 from typing import Any
 
-from homeassistant.core import CALLBACK_TYPE, CoreState, HomeAssistant, callback
+from homeassistant.const import EVENT_STATE_CHANGED
+from homeassistant.core import CALLBACK_TYPE, CoreState, Event, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
@@ -28,7 +30,17 @@ from custom_components.device_routines import compiler, ha_adapter, health, mark
 from custom_components.device_routines.const import DOMAIN
 from custom_components.device_routines.maintenance import MaintenanceAction, async_run
 from custom_components.device_routines.manager import HealthInputs, ManagerEvent, RoutineManager
-from tests.integration.conftest import Home, give_routine, issue_of
+from tests.integration.conftest import (
+    AUTOMATION,
+    Home,
+    file_entry,
+    flush,
+    give_routine,
+    inputs_of,
+    issue_of,
+    save_entry,
+)
+from tests.integration.test_schema_2_first_load import on_schema_1, set_up
 
 HEALTH = "sensor.device_routines_health"
 SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -532,3 +544,156 @@ async def test_health_stops_following_when_the_entry_unloads(
     await hass.async_block_till_done()
 
     assert monitor.report.issues == ()
+
+
+# --------------------------------------------------------------------------------------
+# A routine's reload (live finding F4)
+# --------------------------------------------------------------------------------------
+
+
+def follow(hass: HomeAssistant, *entity_ids: str) -> list[tuple[str, str, Mapping[str, Any]]]:
+    """Record every state these entities take from now on: (entity id, state, attributes)."""
+    seen: list[tuple[str, str, Mapping[str, Any]]] = []
+
+    @callback
+    def remember(event: Event[Any]) -> None:
+        new = event.data["new_state"]
+        if event.data["entity_id"] in entity_ids and new is not None:
+            seen.append((event.data["entity_id"], new.state, dict(new.attributes)))
+
+    hass.bus.async_listen(EVENT_STATE_CHANGED, remember)
+    return seen
+
+
+def health_seen(seen: list[tuple[str, str, Mapping[str, Any]]]) -> list[tuple[str, int, int]]:
+    """The Health states recorded: (state, owned_count, loaded_count)."""
+    return [
+        (state, attributes["owned_count"], attributes["loaded_count"])
+        for entity_id, state, attributes in seen
+        if entity_id == HEALTH
+    ]
+
+
+async def test_a_routine_reload_does_not_flicker_health(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any
+) -> None:
+    """The core reloads one id by removing its entity, which leaves a restored
+    `unavailable` state for a moment, and adding it again. Health read `degraded` with
+    `loaded_count: 0` for that moment on every settings write (live validation A, F4);
+    an automation the core has taken out to reload counts as loaded until it is back."""
+    automation_id = await give_routine(
+        hass, manager, home.fan, freezer, on_time=time(17), off_time=time(9)
+    )
+    seen = follow(hass, HEALTH, AUTOMATION)
+
+    result = await manager.async_update(home.fan, {"off_time": time(10)})
+    assert result.problem is None
+    await flush(hass, freezer)
+
+    # The write was reloaded: the automation left the state machine and came back.
+    assert [state for entity_id, state, _ in seen if entity_id == AUTOMATION] == [
+        "unavailable",
+        "on",
+    ]
+    assert inputs_of(hass, automation_id)["off_time"] == "10:00:00"
+    # Health never read anything but `ok` with the one automation loaded.
+    assert all(entry == ("ok", 1, 1) for entry in health_seen(seen)), health_seen(seen)
+    state = hass.states.get(HEALTH)
+    assert state is not None
+    assert (state.state, state.attributes["loaded_count"]) == ("ok", 1)
+
+
+async def test_a_reload_another_writer_makes_does_not_flicker_health_either(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any
+) -> None:
+    """The hold follows the core's reload, not who asked for it: a person saving the
+    routine's automation in the editor reloads it too, and so does the manager's write
+    of the derived inputs that save left stale."""
+    automation_id = await give_routine(
+        hass, manager, home.fan, freezer, on_time=time(17), off_time=time(23)
+    )
+    entry = file_entry(hass, automation_id)
+    assert entry is not None
+    seen = follow(hass, HEALTH, AUTOMATION)
+
+    entry["use_blueprint"]["input"]["off_time"] = "09:00:00"
+    await save_entry(hass, entry)
+
+    assert [state for entity_id, state, _ in seen if entity_id == AUTOMATION] == [
+        "unavailable",
+        "on",
+        "unavailable",
+        "on",
+    ]
+    assert inputs_of(hass, automation_id)["crosses_midnight"] is True
+    assert all(entry == ("ok", 1, 1) for entry in health_seen(seen)), health_seen(seen)
+
+
+async def test_the_schema_2_rewrite_at_a_start_does_not_flicker_health(
+    hass: HomeAssistant, home: Home, hass_storage: dict[str, Any]
+) -> None:
+    """The other case live validation saw: the first start on schema 2 installs the new
+    blueprint, whose reload takes every routine's automation out at once, and rewrites
+    each of them."""
+    await on_schema_1(hass, home, hass_storage)
+    hass.set_state(CoreState.not_running)
+    entry = await set_up(hass)
+    seen = follow(hass, HEALTH)
+
+    await hass.async_start()
+    await hass.async_block_till_done()
+
+    manager: RoutineManager = entry.runtime_data.manager
+    assert manager.store.data.blueprint_schema == compiler.BLUEPRINT_SCHEMA_VERSION
+    assert {record.schema for record in manager.store.data.owned.values()} == {
+        compiler.BLUEPRINT_SCHEMA_VERSION
+    }
+    assert health_seen(seen), "the start reconciles, so Health is written"
+    assert all(entry == ("ok", 3, 3) for entry in health_seen(seen)), health_seen(seen)
+
+
+async def test_a_write_that_does_not_load_turns_health_degraded_when_its_reload_ends(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any
+) -> None:
+    """L50 holds: the hold ends with the reload, so a write the core cannot load reads
+    `degraded` at once, before any reconcile looks at it."""
+    await give_routine(hass, manager, home.fan, freezer, on_time=time(17))
+    seen = follow(hass, HEALTH, AUTOMATION)
+
+    # A condition the core does not know keeps the automation from loading.
+    result = await manager.async_update(
+        home.fan, {"extra_conditions": [{"condition": "no_such_condition"}]}
+    )
+    assert result.problem is None
+    await flush(hass, freezer)
+
+    # The reload left the automation unavailable, not restored: it does not load.
+    _, state, attributes = [item for item in seen if item[0] == AUTOMATION][-1]
+    assert (state, attributes.get("restored")) == ("unavailable", None)
+    # Health changed once, to `degraded`, when the reload ended.
+    assert health_seen(seen) == [("degraded", 1, 0)]
+
+
+async def test_a_reload_that_raises_ends_the_hold_at_once(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    freezer: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reload that fails after the core removed the entity leaves it out; Health reads
+    that at once instead of keeping the count it held during the reload."""
+    await give_routine(hass, manager, home.fan, freezer, on_time=time(17))
+
+    async def removed_then_raises(hass: HomeAssistant, *_args: Any) -> None:
+        hass.states.async_set(AUTOMATION, "unavailable", {"restored": True})
+        raise HomeAssistantError("the reload failed")
+
+    monkeypatch.setattr(ha_adapter, "async_write_automation", removed_then_raises)
+    seen = follow(hass, HEALTH)
+
+    result = await manager.async_update(home.fan, {"on_time": time(18)})
+    assert result.problem is None
+    await flush(hass, freezer)
+
+    assert health_seen(seen) == [("degraded", 1, 0)]

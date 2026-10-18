@@ -27,6 +27,11 @@ else (PRD P16). It owns:
 - Reconcile and self healing (TECH_SPEC 7, PRD 3.1), the registry reactions, the D28
   cleanup with one point in time listener, and the timers that ran out during a restart
   (L20).
+- What Health reads (TECH_SPEC 10.3). An owned automation the core has taken out to
+  reload it (for a settings write, an editor save, the reload after a blueprint install)
+  counts as loaded until it is back or the reload ends, so Health holds steady through a
+  reload (live finding F4); one that comes back unavailable, or never comes back, does
+  not.
 
 Results. Every public method returns a result dataclass; the only exception raised to a
 caller is `ServiceValidationError` with a translation key. A patch problem is returned as
@@ -46,6 +51,7 @@ from typing import Any, Final, Literal
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ENTITY_ID,
+    ATTR_RESTORED,
     EVENT_STATE_CHANGED,
     STATE_ON,
     STATE_UNAVAILABLE,
@@ -554,6 +560,9 @@ class RoutineManager:
         self._unsubscribe_schedule: CALLBACK_TYPE = _nothing
         # The automations the manager is deleting itself, which sync back leaves to it.
         self._deleting: set[str] = set()
+        # The owned automations the core took out to reload them, which Health counts as
+        # loaded until they are back or the reload ends (live finding F4).
+        self._reloading: set[str] = set()
 
     # ----------------------------------------------------------------------------------
     # Lifecycle
@@ -1027,11 +1036,17 @@ class RoutineManager:
         )
 
     def health_inputs(self) -> HealthInputs:
-        """Return what Health reports about routines (Build A lane 15 reads it)."""
+        """Return what Health reports about routines (Build A lane 15 reads it).
+
+        An automation the core is reloading counts as loaded (see `_taken_out`).
+        """
         owned = self._store.data.owned
         return HealthInputs(
             owned_count=len(owned),
-            loaded_count=sum(self._loaded(automation_id) for automation_id in owned),
+            loaded_count=sum(
+                automation_id in self._reloading or self._loaded(automation_id)
+                for automation_id in owned
+            ),
             issues=tuple(repairs.problem_issue_ids(self.hass)),
             last_reconcile=self._last_reconcile,
             blueprint_status=self._blueprint_status,
@@ -1401,7 +1416,17 @@ class RoutineManager:
         if current is not None and not markers.is_owned(current):
             raise ha_adapter.NotOwnedError(automation_id)
         config = self._entry_config(routine, current, inputs)
-        result = await ha_adapter.async_write_automation(self.hass, automation_id, config, guard)
+        try:
+            result = await ha_adapter.async_write_automation(
+                self.hass, automation_id, config, guard
+            )
+        except Exception:
+            # The reload this write asked for is over, so Health stops holding the
+            # automation as loaded and reads it as the failure left it (F4).
+            if automation_id in self._reloading:
+                self._reloading.discard(automation_id)
+                self._notify(ManagerEvent("health_changed", None))
+            raise
         self._record_write(routine, config, inputs)
         if result.created:
             self._present(routine, automation_id)
@@ -2166,6 +2191,11 @@ class RoutineManager:
 
     @callback
     def _automations_reloaded(self, _event: Event[Any]) -> None:
+        if self._reloading:
+            # The reload is over (the core runs one at a time): an automation still out
+            # did not come back, or came back unavailable, and Health reads it so (F4).
+            self._reloading.clear()
+            self._notify(ManagerEvent("health_changed", None))
         self._request_sync()
 
     @callback
@@ -2631,11 +2661,20 @@ class RoutineManager:
 
     @callback
     def _automation_changed(self, event: Event[Any]) -> None:
-        """Follow the automation's on and off state: the Routine switch (PRD 8.2)."""
+        """Follow the automation's on and off state: the Routine switch (PRD 8.2).
+
+        It also notes when the core takes the automation out to reload it, before the
+        listeners hear of the change, so Health does not read the reload as a failed
+        load (live finding F4).
+        """
         entry = er.async_get(self.hass).async_get(event.data["entity_id"])
         assert entry is not None  # noqa: S101  # the filter checked
         device_id = self._device_of_automation(entry.unique_id)
         assert device_id is not None  # noqa: S101  # the filter checked
+        if _taken_out(event.data["new_state"]):
+            self._reloading.add(entry.unique_id)
+        else:
+            self._reloading.discard(entry.unique_id)
         self._changed(device_id)
 
     @callback
@@ -3131,6 +3170,22 @@ def _filled(state: State | None) -> bool:
 def _has_blocks(event_data: Mapping[str, Any]) -> bool:
     """Filter state changes down to schedule helpers that have blocks."""
     return _filled(event_data.get("new_state"))
+
+
+def _taken_out(state: State | None) -> bool:
+    """Tell whether an automation's state is the one it has while the core reloads it.
+
+    The core reloads an automation by removing its entity and adding a new one. Removing
+    an entity whose registry entry stays enabled leaves the registry's restored
+    `unavailable` state in its place until the new entity is added (live finding F4).
+    An automation whose config fails to load is a real entity that reads `unavailable`
+    without `restored`, and a deleted or disabled one has no state at all.
+    """
+    return (
+        state is not None
+        and state.state == STATE_UNAVAILABLE
+        and state.attributes.get(ATTR_RESTORED) is True
+    )
 
 
 def _pause_end(until: datetime | None, duration: timedelta | None) -> datetime:

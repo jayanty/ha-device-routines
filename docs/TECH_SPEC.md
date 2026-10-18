@@ -450,6 +450,8 @@ Claude Code never calls `homeassistant.restart`. The automations above are the o
 
 `sensor.device_routines_health`: state `ok` (all checks pass), `degraded` (blueprint modified, an automation failed to load, or an adapter fallback is active) or `error` (adapter incompatible). Attributes: `version`, `commit`, `branch`, `deployed_at`, `channel`, `blueprint_schema`, `blueprint_status` (ok, modified, missing), `owned_count`, `loaded_count`, `issues`, `ha_version`, `last_reconcile`.
 
+A reload is not a failed load (live finding F4). The core reloads an automation by removing its entity, which leaves the entity registry's restored `unavailable` state in its place, and adding a new one; a settings write, a person's save in the automation editor and the reload after a blueprint install all do it. `loaded_count` counts an owned automation in that restored state as loaded until its entity is back or the reload ends (`automation_reloaded`), so Health holds steady through a reload. An automation that comes back `unavailable` (its config does not load) or is still out reads as not loaded when the reload ends, one whose write raised as soon as the write fails, and Health turns `degraded` as before.
+
 ### 10.4 Stable channel
 
 HACS custom repository until the default submission; `hacs.json` per PRD 11.1; releases carry `device_routines.zip`. The HACS update entity plus an optional user automation can auto install; the restart decision belongs to each user.
@@ -506,7 +508,11 @@ Compiler round trip in both directions; refusals never produced; the sentence le
 
 ### 11.6 Live suite (read only)
 
-Schedule sensors exist where expected; owned automations carry M1 to M8; the share of `source: none` lines; Health `commit` equals the deployed sha; no open Repairs issues from this integration; the adapter report is clean.
+Schedule sensors exist where expected; owned automations carry M1 to M8; the share of `source: none` lines; Health runs a deployed tag (below); no open Repairs issues from this integration; the adapter report is clean.
+
+The instance moves only by hand deploys of tags (decision L58), so Health's `commit` must be the commit of a release tag (`git tag --points-at` on it names a `v*` tag) or of `dev-stable`, and its `version` that tag's version without its pre release suffix (`v1.0.0-beta.2` is `1.0.0`), or, for `dev-stable` alone, the manifest's version at that commit. The check reads only the local clone's tags and Health's state.
+
+The suite runs with `pytest -m live` under the Home Assistant test plugin, which blocks sockets and host name lookups in every test and fails a test that tried one at cleanup (live finding F5). `tests/live/conftest.py` gives the real socket functions back to tests marked `live`, for their duration only; every other test keeps the plugin's guard, and without `local/live.env` every live test skips. `tests/live/test_harness.py` proves both in a separate pytest session that never reaches an instance, and checks the tag rules above against a scratch repository.
 
 ### 11.7 Acceptance scenarios
 

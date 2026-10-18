@@ -15,7 +15,9 @@ state follows three rules, the first that applies winning:
 - `error` while the adapter is incompatible (a capability the routines need is missing
   on this core: editing is off, routines keep running);
 - `degraded` while the blueprint was edited by hand, an owned automation does not load
-  (fewer loaded than owned), or an `automation_load_failed` issue is open;
+  (fewer loaded than owned), or an `automation_load_failed` issue is open. The manager
+  counts an automation the core is reloading as loaded until it is back or the reload
+  ends, so a settings write never reads as a failed load (live finding F4);
 - `ok` otherwise. Issues a person settles in Repairs (an invalid form edit, a detached
   routine, a conflict) are the routine's, not the integration's, and do not degrade it.
 

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import subprocess
 from typing import Any
 
 import pytest
 
-from tests.live.conftest import Live
+from tests.live.conftest import Live, deployed_versions, manifest_version, tags_at
 
 pytestmark = pytest.mark.live
 
@@ -25,13 +24,21 @@ def schedule_sensors(states: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def test_health_runs_the_deployed_commit(live: Live) -> None:
+    """The instance moves only by hand deploys of tags (L58): Health's commit is a tag's.
+
+    A release tag's commit, or `dev-stable`'s, as this clone's tags say (fetch the tags
+    first), and the version that tag names.
+    """
     health = live.get("/api/states/sensor.device_routines_health")
-    deployed = subprocess.run(
-        ["git", "rev-parse", "refs/tags/dev-stable"], capture_output=True, text=True, check=True
-    ).stdout.strip()
+    attributes = health["attributes"]
+    commit = attributes["commit"]
+    assert commit, "Health names no commit: the instance has no deploy record"
+    tags = tags_at(commit)
+    versions = deployed_versions(tags, manifest_version(commit))
 
     assert health["state"] == "ok"
-    assert health["attributes"]["commit"] == deployed
+    assert versions, f"no release tag and no dev-stable points at {commit} here: {tags}"
+    assert attributes["version"] in versions, (attributes["version"], tags)
 
 
 def test_schedule_sensors_exist_with_valid_states(live: Live) -> None:
