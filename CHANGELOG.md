@@ -8,10 +8,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- Turn on at and Turn off at accept sunrise or sunset, up to three hours before or after,
-  in a routine's automation form (routine blueprint input schema 2). A window from sunset
-  to sunrise runs across midnight and belongs to the day it starts on, like any other
-  window. The device page controls for it follow in a later build.
+- Turn on at and Turn off at accept sunrise or sunset, up to three hours before or after
+  (routine blueprint input schema 2). Each time has two advanced device page controls,
+  disabled by default: a timing select (Time, Sunrise, Sunset, in the device's own words,
+  such as Start timing or Lock timing) and a sun offset in minutes; the routine's
+  automation form offers the same choice. A window from sunset to sunrise runs across
+  midnight and belongs to the day it starts on, like any other window.
+- Only when conditions show in the Schedule line of the actions they gate: "Weekdays
+  9:45 AM: start (if 1 condition passes)".
+- RoutineView carries `opted_in`, and the `ignored` targets of a routine action carry
+  `placeholders` for their message.
 - Conversion offers: a hand written automation that does exactly what a routine does (two
   times that turn one device on and off, or Turn off after) is offered in Repairs as "can
   become a routine", showing both sentences. Confirming creates the routine, turns the
@@ -36,6 +42,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- A routine whose Turn off at is midnight (12:00 AM) no longer counts as on for the whole
+  next day: a restart, a reconnect or a cleared manual override on that day turned the
+  device on. Version 0.3.0 has this fault.
+- An automation with a time condition holding only `before: 00:00:00` reads as the core
+  runs it (always true) in the Schedule summary.
+- Open conversion offers no longer count as problems: the hub Problem sensor stays off and
+  Health does not list them.
+- The answer to a routine change no longer lists conflicts the change has ended.
 - A hand written automation with a duration too large to represent no longer stops the
   Schedule summary from reading the other automations.
 
