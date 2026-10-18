@@ -15,9 +15,11 @@ And it answers, on every device page, what will happen to that device next, whic
 automation does it.
 
 Every example below uses made up devices (a living room fan, a desk lamp, a robot
-vacuum) and is a routine the project's test suite runs. Routines ship in version 0.3.0;
-version 0.1.0 has the Schedule sensor only.
+vacuum, a patio light) and is a routine the project's test suite runs. The Schedule sensor
+arrived in version 0.1.0 and routines in 0.3.0; version 1.0.0 adds sun times, Only when,
+conversion offers and the console.
 
+- [Installing](#installing)
 - [Reading the Schedule sensor](#reading-the-schedule-sensor)
 - [Giving a device a routine](#giving-a-device-a-routine)
 - [Skip, pause and resume](#skip-pause-and-resume)
@@ -33,11 +35,67 @@ version 0.1.0 has the Schedule sensor only.
 - [Daylight saving nights](#daylight-saving-nights)
 - [Dashboards and scripts](#dashboards-and-scripts)
 - [Console](#console)
+- [The hub device](#the-hub-device)
 - [Supported devices](#supported-devices)
 - [Settings](#settings)
 - [Removing the integration](#removing-the-integration)
 - [Troubleshooting](#troubleshooting)
+- [Privacy](#privacy)
+- [Frequently asked questions](#frequently-asked-questions)
 - [Limitations](#limitations)
+
+## Installing
+
+Device Routines needs Home Assistant 2026.10.2 or newer. It is distributed through
+[HACS](https://hacs.xyz/) as a custom repository until it reaches the HACS default list,
+and every release can also be installed by hand.
+
+### Through HACS
+
+1. In Home Assistant open HACS, then the three dot menu, then **Custom repositories**.
+2. Add `https://github.com/jayanty/ha-device-routines` with the category **Integration**.
+3. Find **Device Routines** in HACS and download it.
+4. Restart Home Assistant.
+
+### By hand
+
+1. Download `device_routines.zip` from the
+   [latest release](https://github.com/jayanty/ha-device-routines/releases).
+2. In your Home Assistant configuration folder (the one with `configuration.yaml`), create
+   `custom_components/device_routines`.
+3. Unpack the zip into that folder, so that `manifest.json` ends up at
+   `custom_components/device_routines/manifest.json`.
+4. Restart Home Assistant.
+
+### Setting it up
+
+Open **Settings**, **Devices & services**, **Add integration** and choose **Device
+Routines**. Setup has no fields. It ends with one optional screen that lists the devices
+your automations already switch at set times, all unchecked: tick the ones that should
+get routine controls, or skip it (the same screen is in the options later).
+
+Setting up installs the routine blueprint (`device_routines/device_routine.yaml` among
+the automation blueprints), creates the `Routines` label and the `Device Routines`
+automation category, adds [the hub device](#the-hub-device), and gives every device an
+automation acts on its Schedule sensor (as the Schedule sensor scope setting allows). No
+routine exists until you give a device one (see
+[Giving a device a routine](#giving-a-device-a-routine)).
+
+### Updating
+
+HACS shows a new release as an update; install it and restart Home Assistant. By hand,
+replace the folder's contents with the new zip's and restart. Until the restart Home
+Assistant still runs the old version, so restart before you open the options, Repairs
+fixes or diagnostics of Device Routines. The first start of a new version installs the
+new blueprint when it changed. When its inputs changed too (as in 1.0.0, which added sun
+times), that start also rewrites every routine's automation to the new inputs with the
+same behavior and keeps the previous inputs in its store. After an update, reload the
+browser page to load the new [console](#console).
+
+Pre releases are named like `v1.0.0-beta.1`. To try one, let HACS show pre releases when
+you download Device Routines; to go back, download the latest full release.
+
+To uninstall, see [Removing the integration](#removing-the-integration).
 
 ## Reading the Schedule sensor
 
@@ -78,7 +136,7 @@ then timed lines, then event driven ones:
 | `alias` | The automation's name. |
 | `summary` | The line, for example `Weekdays 9:45 AM: start (if 6 conditions pass)`. A routine reads like `Weekdays 5:00 PM: on, Weekdays 11:00 PM: off`. |
 | `next_run` | When the line runs next, or null for event driven lines. |
-| `source` | `parser` when the line was read from the automation, `none` when it could not be. |
+| `source` | `parser` when the line was read from the automation, `ai` when the optional [AI summary](#settings) wrote it (shown with "(AI)"), `none` when it could not be read. |
 | `enabled` | Whether the automation is turned on. |
 
 `conflicts` lists pairs of items that drive the device in opposite directions in the same
@@ -743,6 +801,22 @@ The console updates by itself while it is open: a routine that changes anywhere 
 device page, from an automation, from another browser) is read again at once. After
 Device Routines is updated, reload the browser page to load the new console.
 
+## The hub device
+
+Device Routines adds one device of its own, also named **Device Routines**, for the
+things that belong to the whole house. Open it from Settings, Devices and services,
+Device Routines.
+
+| Entity | Kind | What it shows or does |
+| --- | --- | --- |
+| **Routines** | Sensor | The number of active routines. Its `routines` attribute lists every routine with its device, area, summary, next action and status; see [A card listing every routine](#a-card-listing-every-routine). |
+| **Problem** | Binary sensor | On while any Repairs issue of Device Routines is open, except conversion offers, which are suggestions. Its `issues` attribute lists the open issue ids. |
+| **Health** | Sensor, diagnostic | `ok`, `degraded` or `error`, with the version, the blueprint state and the routine counts; see [Health](#health). |
+| **Clean up now** | Button | Runs the cleanup of routines whose device was opted out or removed now, instead of after the cleanup period; see [Settings](#settings). |
+
+There is no house wide pause switch; pause an area, a floor or a label with the
+[actions](#actions) instead.
+
 ## Supported devices
 
 The routine drives one entity of the device: the only one in a supported domain without
@@ -834,14 +908,16 @@ Its attributes: `version`; `commit`, `branch` and `deployed_at` (development ins
 only); `channel` (`hacs`, `dev` or `unknown`); `ha_version`; `blueprint_schema`;
 `blueprint_status` (`ok`, `modified`, or empty before the first check); `owned_count` (the
 routines' automations) and `loaded_count` (how many of them loaded); `issues` (the open
-Repairs issues of Device Routines); `last_reconcile` (the last self check). The self check
+Repairs issues of Device Routines, conversion offers aside); `last_reconcile` (the last
+self check). The self check
 runs at every start and after maintenance, and the attributes follow every change in
 between.
 
 ### Repairs issues
 
 Device Routines repairs what it can on its own and raises an issue only when a person has
-to decide. The hub's **Problem** sensor is on while any of these is open.
+to decide. The hub's **Problem** sensor is on while any of these but a conversion offer is
+open.
 
 Each fixable issue opens one confirmation step that does exactly one thing; a conversion
 offer shows both summaries first. If the fix does not take, the step says why and the
@@ -873,6 +949,90 @@ report. It holds counts, settings, the adapter report, the Health report and one
 per routine. Entity ids, device ids, device and area names, aliases and anything that
 looks like a token or an address are redacted.
 
+### Known issue in version 0.3.0: routines that end at midnight
+
+In 0.3.0 a routine whose **Turn off at** is midnight (12:00 AM) counts as on for the whole
+of the next day. A restart, a reconnect of the device or a cleared Manual override on that
+day turns the device on, although the window ended at midnight. Version 1.0.0 fixes it:
+update, and the same routine behaves as its settings say, with nothing to change. Until
+then, Turn off at 11:59 PM avoids it.
+
+## Privacy
+
+Device Routines keeps everything inside your Home Assistant.
+
+- **No cloud, no telemetry, no outbound calls.** Nothing is sent anywhere unless you turn
+  on the AI summary yourself.
+- **The AI summary** is off by default. When you pick one of your own AI Task entities,
+  only the hand written automations the parser could not fully read are sent to it, as
+  described under [Settings](#settings): their trigger, condition and action blocks, with
+  entities named by entity id, devices, areas, floors and labels replaced by numbered
+  placeholders, and no states, attributes, names, aliases or descriptions. Where that
+  entity sends them is up to the entity you chose.
+- **What is stored.** Routines live in `automations.yaml` as ordinary automations. Device
+  Routines' own store holds only what it can rebuild or does without: which automations
+  are routines with their last valid settings, which devices are opted in and since when
+  others were opted out, the installed blueprint's fingerprint, the helpers it created and
+  the cached AI summaries. It never stores a password, token or other secret.
+- **Diagnostics** redact entity ids, device ids, device and area names, automation aliases
+  and anything that looks like a token or an address before you download them. Attach
+  those to a bug report rather than your own automations.
+- **The project itself** is a public repository that contains no data from any real home:
+  no entity ids, device, area or floor names, automation text, addresses, host names or
+  tokens. Its documentation and examples use generic names only, test fixtures recorded on
+  a real installation are anonymized by a tool before they are committed, and a privacy
+  check runs on every commit and in CI.
+
+## Frequently asked questions
+
+**Do my routines stop if I disable or remove Device Routines?** No. Each routine is an
+ordinary automation, and Home Assistant runs it. See
+[When the integration is off](#when-the-integration-is-off) for the few things that need
+the integration, and [Removing the integration](#removing-the-integration) for what
+removal does.
+
+**Will it change my own automations?** No. It reads them for the Schedule sensor and never
+writes to an automation it did not create, even one with the same alias, label or
+category. The only exception is a [conversion](#converting-automations) you confirm, which
+turns the original off and labels it; turning it back on undoes that.
+
+**How do I give a device a routine, and take it away?** Add the `Routines` label on its
+page, or pick it in the options or the console. Removing the label takes the controls
+away and turns the routine off; adding it back restores the settings. See
+[Choosing devices](#choosing-devices).
+
+**Why does my device have no Schedule sensor?** No automation acts on it, or the
+**Schedule sensor scope** setting limits the sensors to devices with routines or turns
+them off. An automation that only reads the device in a trigger or a condition does not
+count.
+
+**Why does the Schedule say "custom logic"?** The summary never guesses. Templates,
+scripts, repeats, waits and events are reported as custom logic instead of being described
+wrongly. The optional AI summary can describe them.
+
+**Can I set seconds, or a different time on each day?** Times are whole minutes. For
+different times per day, set Days to [Weekly schedule](#weekly-schedules).
+
+**Can a routine follow the sun?** Yes, see [Sun times](#sun-times).
+
+**Can I skip tonight for a whole room, or go on vacation?** Skip and pause take an area, a
+floor or a label through the [actions](#actions), so one dashboard button can skip or pause
+every routine in a room. There is no vacation mode in this version: pause the routines
+until the day you return.
+
+**Where do I see every routine at once?** In the [console](#console), in the automation
+list filtered by the `Routines` label or the `Device Routines` category, or in the hub's
+Routines sensor on a dashboard.
+
+**I edited the routine's automation and it turned off.** The edit cannot run as a routine
+(an unknown or missing input, or a refused action). Nothing was overwritten; Repairs
+offers the last valid settings, and correcting the form works too. See
+[If you edit the automation yourself](#if-you-edit-the-automation-yourself).
+
+**Does it work with my garage door or lock?** It closes and locks on a schedule, and never
+opens a garage door, gate or door, never unlocks and never disarms. See
+[Supported devices](#supported-devices).
+
 ## Limitations
 
 - **Comments in `automations.yaml`.** Every routine write rewrites the file and drops its
@@ -895,3 +1055,22 @@ looks like a token or an address are redacted.
   automation, which the Schedule sensor still summarizes.
 - **Summaries never guess.** Templates, scripts, repeats and events in a hand written
   automation read as "custom logic".
+- **Sun times keep a fixed order.** Whether a window with a sun time crosses midnight is
+  decided once, with sunrise read as 6:00 AM and sunset as 6:00 PM plus their offsets, not
+  from each day's real times. A fixed time the sun passes over in the course of the year
+  keeps that order: sunset to 8:00 PM is a window on the same evening, so on summer
+  evenings whose sunset is after 8:00 PM it does not run. See [Sun times](#sun-times).
+- **Days without a sunrise or sunset**, near the poles, run nothing for that side of the
+  routine, and where sunset plus its offset falls after midnight the window still follows
+  the fixed order above.
+- **A sun time on the night the clocks change.** The Schedule adds the offset to the
+  day's sunrise or sunset on the wall clock, while Home Assistant's sun trigger adds it to
+  the moment of the event. The two are an hour apart only when the clock change falls
+  between the event and the offset, which with offsets of at most three hours means a
+  sunrise or sunset within three hours of the change.
+- **Only when never holds back a turn off.** Its conditions gate every start, Turn back on
+  after, the catch up that would turn the device on and the pulse, but Turn off at and
+  Turn off after always run, and a start it blocks fires no skipped action event. See
+  [Only when](#only-when).
+- **Weekly schedule drops sun times.** Setting Days to Weekly schedule drops the sun times
+  as it drops the times, because the schedule's blocks give them.
