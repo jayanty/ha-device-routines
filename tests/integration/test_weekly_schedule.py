@@ -471,6 +471,19 @@ async def test_a_device_rename_renames_the_weekly_schedule(
     assert hass.states.get(SCHEDULE).name == "Bedroom fan routine"  # type: ignore[union-attr]
 
 
+async def test_turn_back_on_after_is_unavailable_outside_the_blocks(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, clock: Clock, freezer: Any
+) -> None:
+    """Plan A4.0 item 9 (PRD 4.3): the weekly schedule says off between its blocks."""
+    clock.set(clock.at(0, "15:00"))
+    await weekly_routine(hass, manager, home, freezer)
+    await add_blocks(hass, manager, monday=MONDAY_EVENING)
+
+    assert manager.unavailable_reason(home.fan, "turn_back_on_after") == "schedule_off"
+    await clock.to(clock.at(0, "18:00"))
+    assert manager.unavailable_reason(home.fan, "turn_back_on_after") is None
+
+
 # --------------------------------------------------------------------------------------
 # Skip next outside a block (L38)
 # --------------------------------------------------------------------------------------

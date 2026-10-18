@@ -27,6 +27,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 
 from custom_components.device_routines import compiler, ha_adapter, maintenance
 from custom_components.device_routines.const import DOMAIN, PLATFORMS
+from custom_components.device_routines.domains import PROFILES
 from custom_components.device_routines.entity import (
     DeviceRoutinesDeviceEntity,
     RuntimeExtraData,
@@ -841,6 +842,79 @@ async def test_a_missing_target_makes_every_control_unavailable_with_reason_miss
         assert (state.state, state.attributes["reason"]) == ("unavailable", "missing_target")
 
 
+async def test_a_missing_target_leaves_the_target_select_to_pick_another(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any
+) -> None:
+    """Plan A4.0 item 9 (L52): Routine controls stays, and picking another target heals.
+
+    The select stays even with one candidate left, since the routine's own target is
+    not among the candidates any more.
+    """
+    add_entity(hass, home, home.lamp, "switch.desk_lamp_plug")
+    await give_routine(hass, manager, home.lamp, freezer, on_time=time(17))
+    view = manager.get(home.lamp)
+    assert view is not None
+    automation = view.automation_entity_id
+    assert automation is not None
+
+    hass.states.async_remove(LAMP)
+    er.async_get(hass).async_remove(LAMP)
+    await hass.async_block_till_done()
+
+    target = entity_of(hass, home.lamp, "target")
+    assert shown(hass, target).state != "unavailable"
+    assert shown(hass, target).attributes["options"] == ["switch.desk_lamp_plug"]
+    assert manager.unavailable_reason(home.lamp, "target") is None
+    assert manager.unavailable_reason(home.lamp, "days") == "missing_target"
+    assert state_of(hass, automation) == "off"
+
+    await call(hass, "select", "select_option", entity_id=target, option="switch.desk_lamp_plug")
+    await flush(hass, freezer)
+
+    view = manager.get(home.lamp)
+    assert view is not None
+    assert view.settings.target_entity == "switch.desk_lamp_plug"
+    assert view.status is Status.ACTIVE
+    assert state_of(hass, automation) == "on"
+    assert manager.unavailable_reason(home.lamp, "days") is None
+    assert "target" not in page(hass, home.lamp)  # one candidate again, and it is the target
+
+
+async def test_turn_back_on_after_is_unavailable_while_the_schedule_says_off(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    routines: MockConfigEntry,
+    clock: Clock,
+    freezer: Any,
+) -> None:
+    """Plan A4.0 item 9 (PRD 4.3, FR-R4): keep alive never fires while the schedule says off."""
+    clock.set(clock.at(0, "15:00"))
+    await give_routine(hass, manager, home.fan, freezer, on_time=time(17), off_time=time(23))
+    keep_alive = page(hass, home.fan)["turn_back_on_after"].entity_id
+    er.async_get(hass).async_update_entity(keep_alive, disabled_by=None)
+    freezer.tick(timedelta(seconds=31))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    manager = routines.runtime_data.manager
+
+    state = shown(hass, keep_alive)
+    assert (state.state, state.attributes["reason"]) == ("unavailable", "schedule_off")
+    assert manager.unavailable_reason(home.fan, "turn_off_after") is None
+
+    # The control follows the window by itself, at its start and at its end.
+    await clock.to(clock.at(0, "17:00:05"))
+    assert shown(hass, keep_alive).state == "0"
+    assert manager.unavailable_reason(home.fan, "turn_back_on_after") is None
+    await clock.to(clock.at(0, "23:00:05"))
+    assert shown(hass, keep_alive).state == "unavailable"
+
+    # Without a window there is no schedule to say off.
+    await manager.async_update(home.fan, {"off_time": None})
+    assert manager.unavailable_reason(home.fan, "turn_back_on_after") is None
+    assert shown(hass, keep_alive).state == "0"
+
+
 # --------------------------------------------------------------------------------------
 # The registry: opt out, the manager's accessors, a device that is gone
 # --------------------------------------------------------------------------------------
@@ -1027,6 +1101,34 @@ async def test_the_hub_clean_up_now_button_runs_the_maintenance_action(
     run.assert_awaited_once_with(hass, manager, MaintenanceAction.CLEAN_UP_NOW, dry_run=False)
     assert file_entry(hass, automation_id) is None
     assert home.fan not in manager.store.data.opted_out_at
+
+
+def test_every_reason_a_control_can_show_is_translated() -> None:
+    """Each control's `reason` names a translated state, under every key it can take.
+
+    Config controls lose editing on an incompatible adapter; every control but Routine
+    controls reads a missing target (L52); the times read `weekly_schedule` and Turn back
+    on after `schedule_off` (PRD 4.2 and 4.3, plan A4.0 item 9).
+    """
+    strings = json.loads((COMPONENT / "strings.json").read_text(encoding="utf-8"))["entity"]
+    words: dict[str, set[str]] = {
+        "on_time": {"on_time"} | {p.on_label_key for p in PROFILES.values() if p.on_label_key},
+        "off_time": {"off_time"} | {p.off_label_key for p in PROFILES.values()},
+        "turn_off_after": {p.off_after_label_key for p in PROFILES.values()},
+    }
+    for key, (platform, category, _enabled) in TABLE.items():
+        reasons = {"detached"}
+        if category is EntityCategory.CONFIG:
+            reasons.add("adapter_incompatible")
+        if key != "target":
+            reasons.add("missing_target")
+        if key in {"on_time", "off_time"}:
+            reasons.add("weekly_schedule")
+        if key == "turn_back_on_after":
+            reasons.add("schedule_off")
+        for name in words.get(key, {key}):
+            states = strings[platform][name]["state_attributes"]["reason"]["state"]
+            assert reasons <= set(states), (platform, name, reasons - set(states))
 
 
 def test_the_platforms_are_the_platform_modules() -> None:

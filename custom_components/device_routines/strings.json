@@ -151,7 +151,8 @@
             "state": {
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
-              "missing_target": "The entity the routine drives is missing"
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
             }
           }
         }
@@ -164,7 +165,8 @@
             "state": {
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
-              "missing_target": "The entity the routine drives is missing"
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
             }
           }
         }
@@ -177,7 +179,8 @@
             "state": {
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
-              "missing_target": "The entity the routine drives is missing"
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
             }
           }
         }
@@ -190,7 +193,8 @@
             "state": {
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
-              "missing_target": "The entity the routine drives is missing"
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
             }
           }
         }
@@ -203,7 +207,8 @@
             "state": {
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
-              "missing_target": "The entity the routine drives is missing"
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
             }
           }
         }
@@ -216,7 +221,8 @@
             "state": {
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
-              "missing_target": "The entity the routine drives is missing"
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
             }
           }
         }
@@ -229,7 +235,8 @@
             "state": {
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
-              "missing_target": "The entity the routine drives is missing"
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
             }
           }
         }
@@ -242,7 +249,8 @@
             "state": {
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
-              "missing_target": "The entity the routine drives is missing"
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
             }
           }
         }
@@ -255,7 +263,8 @@
             "state": {
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
-              "missing_target": "The entity the routine drives is missing"
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
             }
           }
         }
@@ -344,7 +353,8 @@
             "state": {
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
-              "missing_target": "The entity the routine drives is missing"
+              "missing_target": "The entity the routine drives is missing",
+              "schedule_off": "The schedule says off now, so nothing would turn the device back on"
             }
           }
         }

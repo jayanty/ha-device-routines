@@ -1378,3 +1378,10 @@ def test_the_entity_keys_are_the_platform_keys_longest_first() -> None:
     assert set(ENTITY_KEYS) == set(ENTITY_PLATFORMS)
     assert len(ENTITY_KEYS) == len(ENTITY_PLATFORMS)
     assert [len(key) for key in ENTITY_KEYS] == sorted(map(len, ENTITY_KEYS), reverse=True)
+
+
+async def test_a_device_without_a_routine_has_no_unavailable_reason(
+    hass: HomeAssistant, home: Home, manager: RoutineManager
+) -> None:
+    for key in (None, "days", "on_time", "turn_back_on_after", "target"):
+        assert manager.unavailable_reason(home.garage, key) is None, key

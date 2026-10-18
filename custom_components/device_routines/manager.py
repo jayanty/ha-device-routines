@@ -175,6 +175,10 @@ _CONFIG_KEYS: Final = frozenset(
 # The device page entities a weekly schedule greys out, and why (PRD 4.2, FR-R2).
 _TIME_KEYS: Final = frozenset({"on_time", "off_time"})
 REASON_WEEKLY_SCHEDULE: Final = "weekly_schedule"
+# Turn back on after is unavailable while the routine's schedule says off (PRD 4.3,
+# FR-R4: keep alive never fires then).
+_KEEP_ALIVE_KEY: Final = "turn_back_on_after"
+REASON_SCHEDULE_OFF: Final = "schedule_off"
 
 # Why the manager turned an automation off, so it turns it back on when that ends.
 _OFF_INVALID: Final = "invalid"
@@ -884,24 +888,33 @@ class RoutineManager:
         `adapter_incompatible`, `detached` or `missing_target` (TECH_SPEC 4.5); the
         platforms show the entity unavailable with this `reason` attribute. With a `key`
         the answer is for that control: an adapter that cannot write takes away the
-        config controls only (TECH_SPEC 4.2), and the two time entities read
+        config controls only (TECH_SPEC 4.2); a missing target leaves Routine controls,
+        so a person can pick another target (L52); the two time entities read
         `weekly_schedule` while Days is Weekly schedule (PRD 4.2: the schedule's blocks
-        give the times); without a key it is for the device.
+        give the times); Turn back on after reads `schedule_off` while the routine's
+        window or weekly schedule says off (PRD 4.3). Without a key it is for the device.
         """
         editing = key is None or key in _CONFIG_KEYS
         if editing and not self._adapter.works(ha_adapter.CAPABILITY_WRITE):
             return "adapter_incompatible"
         routine = self._routines.get(device_id)
-        if routine is not None and routine.detached:
+        if routine is None:
+            return None
+        if routine.detached:
             return "detached"
-        if routine is not None and routine.missing_target:
+        if routine.missing_target and key != _TARGET_KEY:
             return "missing_target"
-        if (
-            key in _TIME_KEYS
-            and routine is not None
-            and self._settings_of(routine).days is Days.WEEKLY_SCHEDULE
-        ):
+        return None if key is None else self._key_reason(routine, key)
+
+    def _key_reason(self, routine: _Routine, key: str) -> str | None:
+        """Return the reason one control is unavailable by its own rule (PRD 4.2, 4.3)."""
+        settings = self._settings_of(routine)
+        if key in _TIME_KEYS and settings.days is Days.WEEKLY_SCHEDULE:
             return REASON_WEEKLY_SCHEDULE
+        if key == _KEEP_ALIVE_KEY:
+            schedule_state, _lookups = self._schedule_lookup(settings)
+            if nextrun.expected_state(settings, dt_util.now(), schedule_state) == "off":
+                return REASON_SCHEDULE_OFF
         return None
 
     def page_keys(self, device_id: str) -> frozenset[str]:
@@ -917,7 +930,11 @@ class RoutineManager:
         profile = self.profile(device_id)
         options = profile.options & _PAGE_OPTIONS if profile is not None else frozenset()
         keys = _EVERY_PAGE_KEYS | {option.value for option in options}
-        return keys | {_TARGET_KEY} if len(self.candidates(device_id)) > 1 else keys
+        candidates = self.candidates(device_id)
+        routine = self._routines.get(device_id)
+        # A missing target keeps Routine controls while another entity could take over.
+        orphaned = routine is not None and routine.missing_target and bool(candidates)
+        return keys | {_TARGET_KEY} if len(candidates) > 1 or orphaned else keys
 
     def entity_id_for(self, device_id: str, key: str) -> str | None:
         """Return the entity id of one of a device's page entities, if registered."""
@@ -1287,6 +1304,9 @@ class RoutineManager:
         if failure is not None:
             await self._async_write_failed(routine, failure)
             return False
+        if routine.missing_target:
+            # Another target was picked (Routine controls stays for that, L52).
+            await self._async_check_target(routine)
         self._changed(routine.device_id)
         return True
 
