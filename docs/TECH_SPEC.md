@@ -100,7 +100,7 @@ class Conflict:          a: int, b: int, reason_key: str, at: datetime | None
 
 ### 3.5 parser.py and parser\_grammar.py
 
-`summarize(config, device, lang) -> list[SummaryItem]`, one item per action on the device. The grammar is data: tables of trigger kinds, condition kinds and action verbs per domain, each with a test. Any construct outside the grammar in a branch marks the item `custom_logic`; an item with no understood part becomes the single translated line `automation_custom` (Automation: alias, custom logic). No heuristics, no defaults, no guessing: every line is produced by a rule with a test, which is how G5 (zero wrong lines) is kept.
+`summarize(config, device) -> list[ParsedLine]`, one line per action on the device, structure only; `sentence.Writer` renders it and `summary.py` builds the `SummaryItem` (decision L28). The grammar is data: tables of trigger kinds, condition kinds and action verbs per domain, each with a test. Any construct outside the grammar in a branch marks the item `custom_logic`; an item with no understood part becomes the single translated line `automation_custom` (Automation: alias, custom logic). No heuristics, no defaults, no guessing: every line is produced by a rule with a test, which is how G5 (zero wrong lines) is kept.
 
 ### 3.6 nextrun.py
 
@@ -115,7 +115,7 @@ class Conflict:          a: int, b: int, reason_key: str, at: datetime | None
 
 ### 3.8 sentence.py
 
-`state_sentence(view, now, fmt, lang) -> str` and `item_line(item, fmt, lang) -> str` build every user visible sentence from translation tables (`translations/<lang>.json`, `sentence` section). Hard cap of 40 characters for the state: the formatter drops, in order, the weekday, then the action adjective, then falls back to Next: time. A test generates every combination and asserts the cap. Time format: `12h` gives 9:00 AM, `24h` gives 09:00; `auto` resolves once at startup from the Home Assistant country (a short list in `const.py` uses 12 hour: US, CA, AU, NZ, IN, PH, EG, SA and a few others).
+`Writer(phrases, time_format, names)` with `state(upcoming, fallback, now) -> str | None` and `line(parsed) -> str` builds every user visible sentence from a phrase table (`sentences/<lang>.json`, decision L27). Hard cap of 40 characters for the state: the formatter drops, in order, the weekday, then the action adjective, then falls back to Next: time. A test generates every combination and asserts the cap. Time format: `12h` gives 9:00 AM, `24h` gives 09:00; `auto` resolves once at startup from the Home Assistant country (a short list in `settings.py`, `TWELVE_HOUR_COUNTRIES`, uses 12 hour: US, CA, AU, NZ, IN, PH, EG, SA and a few others).
 
 ### 3.9 settings.py
 

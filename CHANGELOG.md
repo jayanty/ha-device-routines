@@ -14,6 +14,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The schedule summary's pure core (Phase 1 task 1.1): domain profiles with the refused
+  actions, a deterministic automation parser whose grammar is data, next runs that follow
+  the core time trigger on daylight saving nights, the sentence writer with its English
+  phrase table and the 40 character state cap, conflict detection and the global settings
+  catalog with defaults and validation.
 - Stage 0 harness probes in `tests/stage0/`: restored timers, schedule blocks at midnight,
   daylight saving nights, `datetime` entities in time triggers and conditions, the area,
   floor and label reference helpers, blueprint install and features, the automation write

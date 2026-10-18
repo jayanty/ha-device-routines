@@ -264,3 +264,33 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Consequence | Plan Section 0 rule 2, the Phase 2 to 4 validation lines, the kickoff prompt, TECH_SPEC 11.7 and CLAUDE.md rule 2 now say so. Every live write is still recorded with its read before and after in the phase's validation record. |
 | PRD register entry | no |
 
+## 2026-10-17 L27: the sentence phrase table lives in sentences/<lang>.json
+
+| Field | Content |
+| --- | --- |
+| Context | TECH_SPEC 3.8 puts the sentence tables in a `sentence` section of `translations/<lang>.json`. hassfest validates `strings.json` against a fixed schema of sections (config, options, entity, exceptions, issues, services and the like) and rejects others, and the translations must equal `strings.json` (a repository test). |
+| Options | (a) Abuse an allowed section, such as `exceptions`, for sentence fragments; (b) a flat phrase table per language in `custom_components/device_routines/sentences/<lang>.json`, loaded once by the summary and handed to the pure `sentence.Writer`. |
+| Choice | (b). Every phrase is still a key in a per language file, so a language is added without code; a test fails when a phrase is missing or unused. |
+| Consequence | TECH_SPEC 3.8 reads the table from `sentences/` instead; the hub and entity names stay in `strings.json` as before. A missing language falls back to English. |
+| PRD register entry | no |
+
+## 2026-10-17 L28: the parser returns structure; the writer and the summary build the item
+
+| Field | Content |
+| --- | --- |
+| Context | TECH_SPEC 3.5 gives `summarize(config, device, lang) -> list[SummaryItem]`, which would make the parser format times and know languages and time formats, and 3.6 lists `skip_target`, which needs the Paused until semantics of Phase 2. |
+| Options | (a) As written; (b) `parser.summarize(config, device) -> list[ParsedLine]` (structure only), `sentence.Writer` turns a line into text and a next run into the state, and `summary.py` assembles `SummaryItem`; `skip_target` arrives with the compiler in task 2.1. |
+| Choice | (b). Each module has one job and the parser's tests do not depend on wording. `DeviceContext` carries the device's entities with their effective area, floor and labels and the registry id map, so registry id references resolve in the parser without Home Assistant. |
+| Consequence | TECH_SPEC 3.5 and 3.6 signatures read as above. `nextrun.earliest` picks the state's action; two lines with opposite actions at the same instant show "Next: <time>", because their conditions decide. |
+| PRD register entry | no |
+
+## 2026-10-17 L29: grammar edges the PRD leaves open
+
+| Field | Content |
+| --- | --- |
+| Context | FR-S2 lists what the parser understands but not how it treats keys it does not know, delays before the first action, else and default branches, or how durations read. G5 asks for zero wrong lines. |
+| Options | (a) Read what looks familiar and ignore the rest; (b) refuse anything not listed. |
+| Choice | (b), with these rules: a trigger or condition with an option the grammar does not list is outside the grammar; a delay before the first action on the device, any repeat, wait, variables or event step, and a default branch after non trigger conditions make "plus custom logic"; an else branch after understood conditions counts one more condition; a trigger condition inside and, or or not is custom logic; time patterns with seconds other than a fixed second are not read (minute precision); durations under two hours read in minutes ("60 min"), longer ones in hours. |
+| Consequence | Every rule has a unit test in `tests/unit/test_parser.py` or `test_sentence.py`; the golden corpus review of task 1.6 may refine wording, never by special case. |
+| PRD register entry | no |
+
