@@ -57,7 +57,7 @@ from custom_components.device_routines import (
     summary as summary_module,
 )
 from custom_components.device_routines.domains import PROFILES, profile_for
-from custom_components.device_routines.manager import RoutineManager, routine_lines
+from custom_components.device_routines.manager import RoutineManager
 from custom_components.device_routines.models import (
     Days,
     DomainProfile,
@@ -67,6 +67,7 @@ from custom_components.device_routines.models import (
     Status,
     Weekday,
 )
+from custom_components.device_routines.nextrun import routine_lines
 from custom_components.device_routines.sentence import Writer, load_phrases
 from custom_components.device_routines.summary import (
     DEBOUNCE_SECONDS as SUMMARY_DEBOUNCE,
@@ -1290,23 +1291,6 @@ async def test_the_manager_writes_compile_and_the_schedule_shows_its_sentence(
     assert (item.kind, item.summary) == (KIND_ROUTINE, expected)
 
 
-SUMMARY_CANNOT_READ_A_ROUTINE: Final = (
-    "PRD 12 round trip: the Schedule reads a routine's sentence only from the manager's "
-    "item. Without it (a routine the manager does not hold yet or any more: summary.py "
-    "SummaryCoordinator._summary then keeps the indexed lines) the summary shows "
-    "parser.summarize's reading of the rendered blueprint, one line per branch action "
-    "(13 for a plain window, ten items after deduplication), each with custom logic, never "
-    "the settings sentence; the parser cannot read the shipped blueprint. Fix: the summary "
-    "reads an owned routine through its inputs, as it already does for its next runs "
-    "(summary.py _owned_routine): routine_lines moves from manager.py into a pure module "
-    "(sentence.py or parser.py), and _build_index indexes routine_lines(decompile(inputs)) "
-    "for an owned automation instead of parsing it (a decisions log entry then records that "
-    "PRD 12's round trip reads the inputs, not the rendered blueprint). Route to summary.py "
-    "and manager.py (carry over lane)."
-)
-
-
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=SUMMARY_CANNOT_READ_A_ROUTINE)
 @harness(4)
 @given(settings=home_routines())
 async def test_the_summary_reads_a_routine_as_its_sentence_without_the_manager(
@@ -1350,25 +1334,6 @@ async def test_the_manager_holds_a_time_with_an_offset_in_the_form_it_reads_back
     assert view.settings.on_time is None or view.settings.on_time.tzinfo is None
 
 
-TAKE_CONTROL_STAYS_OWNED_IN_THE_SUMMARY: Final = (
-    "summary.py judges ownership on the loaded entity's blueprint block "
-    "(ha_adapter.automation_blueprint, decision L43), but on a reload by id the core keeps "
-    "an automation entity whose name and rendered raw_config did not change "
-    "(homeassistant/components/automation/__init__.py automation_matches_config), and "
-    "Take control saves exactly that rendered config: the entity keeps its blueprint "
-    "inputs until the next start. The manager reads the file and reports the routine "
-    "detached; the summary keeps it as an owned routine (kind routine) and, with no "
-    "provider item, shows the parser's reading of the rendered blueprint, ten lines, "
-    "where PRD 8.2 lists one Detached routine. Fix: in SummaryCoordinator._summary, the "
-    "lines of the device's own routine automation take KIND_DETACHED while the provider "
-    "says Status.DETACHED (or the index judges ownership on the file entry, as the "
-    "manager does). Route to summary.py (carry over lane)."
-)
-
-
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason=TAKE_CONTROL_STAYS_OWNED_IN_THE_SUMMARY
-)
 async def test_a_routine_taken_over_reads_as_detached_in_the_schedule(
     hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any
 ) -> None:

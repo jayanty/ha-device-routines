@@ -19,10 +19,13 @@ from .domains import PROFILES
 from .models import (
     ALL_DAYS,
     Days,
+    FollowUp,
+    NamedTrigger,
     Occurrence,
     ParsedLine,
     PatternTrigger,
     RoutineSettings,
+    StateTrigger,
     SunTrigger,
     TimeTrigger,
     TimeWindow,
@@ -292,13 +295,63 @@ class _Action:
     kind: _Kind
 
 
-def _verbs(target_entity: str) -> tuple[Verb, Verb]:
-    """Return the verbs of the target's on and off actions, as the sentences name them."""
+def routine_verbs(target_entity: str) -> tuple[Verb, Verb]:
+    """Return the verbs of a target's on and off actions, as the sentences name them."""
     profile = PROFILES.get(target_entity.partition(".")[0])
     if profile is None:
         return Verb.ON, Verb.OFF
     on = ACTION_VERBS[profile.on_action.partition(".")[2]] if profile.on_action else Verb.ON
     return on, ACTION_VERBS[profile.off_action.partition(".")[2]]
+
+
+def routine_lines(settings: RoutineSettings, automation_id: str, alias: str) -> list[ParsedLine]:
+    """Return the routine's actions as parsed lines the Writer renders, one per action.
+
+    The Schedule summary reads an owned routine this way, from its inputs, rather than
+    parsing the rendered blueprint (PRD 12's round trip; the parser cannot read the
+    shipped blueprint): the manager's item and the summary's index say the same.
+    """
+    target = settings.target_entity
+    on, off = routine_verbs(target)
+    profile = PROFILES.get(target.partition(".")[0])
+    inactive = profile.inactive_state if profile else "off"
+
+    def line(verb: Verb, *triggers: Any, follow_ups: tuple[FollowUp, ...] = ()) -> ParsedLine:
+        return ParsedLine(
+            automation_id=automation_id,
+            alias=alias,
+            entity_ids=(target,),
+            verb=verb,
+            triggers=triggers,
+            follow_ups=follow_ups,
+        )
+
+    def days(day_set: frozenset[Weekday]) -> frozenset[Weekday] | None:
+        return None if day_set == ALL_DAYS else day_set
+
+    lines: list[ParsedLine] = []
+    if settings.on_time is not None:
+        lines.append(
+            line(on, TimeTrigger(at=settings.on_time, weekdays=days(settings.effective_days)))
+        )
+    if settings.off_time is not None:
+        lines.append(line(off, TimeTrigger(at=settings.off_time, weekdays=days(settings.end_days))))
+    if settings.days is Days.WEEKLY_SCHEDULE and settings.schedule_entity is not None:
+        blocks = (settings.schedule_entity,)
+        lines.append(line(on, NamedTrigger("schedule.block_started", blocks)))
+        lines.append(line(off, NamedTrigger("schedule.block_ended", blocks)))
+    active = "on" if inactive == "off" else None
+    if settings.turn_off_after_min:
+        period = timedelta(minutes=settings.turn_off_after_min)
+        moved = None if active else inactive
+        lines.append(line(off, StateTrigger(target, active, moved, period)))
+    if settings.turn_back_on_after_min:
+        period = timedelta(minutes=settings.turn_back_on_after_min)
+        lines.append(line(on, StateTrigger(target, inactive, None, period)))
+    if settings.pulse is not None:
+        back = (FollowUp(timedelta(minutes=settings.pulse.minutes), Verb.TOGGLE),)
+        lines.append(line(Verb.TOGGLE, TimeTrigger(at=settings.pulse.at), follow_ups=back))
+    return lines
 
 
 def _block_change(
@@ -347,7 +400,7 @@ def _upcoming(  # noqa: PLR0913  # the routine's whole runtime picture
     start = now
     if not_before is not None and not_before.astimezone(tz) > now:
         start = not_before.astimezone(tz)
-    verbs = _verbs(settings.target_entity)
+    verbs = routine_verbs(settings.target_entity)
     window = settings.on_time is not None and settings.off_time is not None
     timed: list[tuple[time, frozenset[Weekday], Verb, _Kind]] = []
     if settings.on_time is not None:

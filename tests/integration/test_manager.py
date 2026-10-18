@@ -48,7 +48,6 @@ from custom_components.device_routines.manager import (
     RestoredRuntime,
     RoutineManager,
     apply_patch,
-    routine_lines,
 )
 from custom_components.device_routines.models import (
     Days,
@@ -60,6 +59,7 @@ from custom_components.device_routines.models import (
     Verb,
     Weekday,
 )
+from custom_components.device_routines.nextrun import routine_lines
 from custom_components.device_routines.sentence import Writer, load_phrases
 from tests.integration.conftest import (
     ALIAS,

@@ -1003,33 +1003,44 @@ async def test_a_detached_routine_reads_as_detached_through_the_parser(
     assert state.state == "On at 5:00 PM"
 
 
-async def test_an_owned_routine_without_a_provider_item_reads_as_a_parsed_routine(
+async def test_an_owned_routine_without_a_provider_item_reads_as_its_settings(
     hass: HomeAssistant, home: dict[str, Any], routine_blueprint: None
 ) -> None:
+    """Plan A4.0 item 20 (PRD 12): the index reads an owned routine through its inputs.
+
+    Not through the rendered blueprint (here a stand in that only turns the fan on), so
+    the lines are those of the settings, as the manager's item has them.
+    """
     fan = home["fan"].id
     early = automation("early_off", [at("08:30")], [action("fan.turn_off", {"entity_id": FAN})])
     entry = await start(hass, [routine_config(fan), early])
 
-    expected = [
+    routine = {
         ("routine", "5:00 PM: on", ROUTINE_ALIAS),
-        ("automation", "8:30 AM: off", "Early Off"),
-    ]
+        ("routine", "9:00 AM: off", ROUTINE_ALIAS),
+    }
+    other = [("automation", "8:30 AM: off", "Early Off")]
+
+    def read(items: list[dict[str, Any]]) -> None:
+        shown = [(i["kind"], i["summary"], i["alias"]) for i in items]
+        assert set(shown[:2]) == routine
+        assert shown[2:] == other
+
     items = sensor_state(hass, fan).attributes["items"]
-    assert [(i["kind"], i["summary"], i["alias"]) for i in items] == expected
+    read(items)
     assert items[0]["automation"] == ROUTINE_ENTITY
 
-    # A provider that does not know the routine leaves the parsed line in place.
+    # A provider that does not know the routine leaves the indexed lines in place.
     provider = FakeProvider()
     summary = await with_provider(entry, provider)
-    items = sensor_state(hass, fan).attributes["items"]
-    assert [(i["kind"], i["summary"], i["alias"]) for i in items] == expected
+    read(sensor_state(hass, fan).attributes["items"])
     assert fan in provider.asked
 
     # So does one that knows it but has no line for it; its status still reads.
     provider.summaries[fan] = routine_summary(Status.OFF, items=())
     summary.async_refresh_device(fan)
     state = sensor_state(hass, fan)
-    assert [(i["kind"], i["summary"], i["alias"]) for i in state.attributes["items"]] == expected
+    read(state.attributes["items"])
     assert state.state == "Routine off"
 
 

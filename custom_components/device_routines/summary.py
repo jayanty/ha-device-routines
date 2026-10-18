@@ -452,11 +452,16 @@ class SummaryCoordinator:
                 context = contexts.get(device_id)
                 if context is None:
                     context = contexts[device_id] = self._device_context(device_id, registry_ids)
-                try:
-                    parsed = parser.summarize(refs.config, context)
-                except ParseError:
-                    _LOGGER.debug("%s is not an automation config", refs.entity_id)
-                    break
+                if owned is not None:
+                    # Read through its inputs, as the manager reads it (PRD 12, plan A4.0
+                    # item 20): the parser cannot read the rendered blueprint.
+                    parsed = _routine_lines(owned, refs.config, context)
+                else:
+                    try:
+                        parsed = parser.summarize(refs.config, context)
+                    except ParseError:
+                        _LOGGER.debug("%s is not an automation config", refs.entity_id)
+                        break
                 lines.setdefault(device_id, []).extend(
                     IndexedLine(refs.entity_id, line, kind) for line in parsed
                 )
@@ -626,9 +631,16 @@ class SummaryCoordinator:
         )
         owned_routine = self._index.routines.get(device.id)
         own_id = owned_routine.automation_id if owned_routine else markers.automation_id(device.id)
+        # Take control saved the rendered config under the same id, so the core kept the
+        # loaded entity with its blueprint block until the next start; the manager read
+        # the file and says detached, and its word wins (PRD 8.2, plan A4.0 item 22).
+        detached = routine is not None and routine.status is Status.DETACHED
         for entry in indexed:
-            if provided and entry.kind == KIND_ROUTINE and entry.line.automation_id == own_id:
+            own = entry.kind == KIND_ROUTINE and entry.line.automation_id == own_id
+            if provided and own:
                 continue
+            if detached and own:
+                entry = replace(entry, kind=KIND_DETACHED)  # noqa: PLW2901  # read as detached
             row = self._parsed_row(entry, now, lookups, writer)
             # One automation acting several times on a device the same way reads once.
             if any(existing.item == row.item for existing in rows):
@@ -1272,6 +1284,22 @@ def _owned_routine(entity_id: str, config: Mapping[str, Any]) -> _OwnedRoutine |
         automation_id=str(config.get("id", "")),
         device_id=refs.device_id,
     )
+
+
+def _routine_lines(
+    owned: _OwnedRoutine, config: Mapping[str, Any], context: DeviceContext
+) -> list[ParsedLine]:
+    """Return an owned routine's lines from its settings, on the device it drives only.
+
+    A routine with nothing set yet has one line that reads as its kind ("Routine"), as
+    the manager's item does.
+    """
+    target = owned.settings.target_entity
+    if all(ref.entity_id != target for ref in context.entities):
+        return []
+    alias = str(config.get("alias") or "")
+    lines = nextrun.routine_lines(owned.settings, owned.automation_id, alias)
+    return lines or [ParsedLine(owned.automation_id, alias, (target,), None, understood=False)]
 
 
 def _pause_end(routine: RoutineSummary | None, now: datetime) -> datetime | None:

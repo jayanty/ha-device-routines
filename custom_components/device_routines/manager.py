@@ -85,31 +85,23 @@ from .const import (
     KEY_MANUAL_OVERRIDE,
     KEY_PAUSED_UNTIL,
 )
-from .domains import PROFILES, Candidate, pick_targets, profile_for
+from .domains import Candidate, pick_targets, profile_for
 from .models import (
-    ALL_DAYS,
     PAUSING_STATUSES,
     CompileError,
     Days,
     DomainProfile,
-    FollowUp,
-    NamedTrigger,
     Occurrence,
     Option,
-    ParsedLine,
     Problem,
     Pulse,
     RoutineSettings,
     RoutineView,
     Source,
-    StateTrigger,
     Status,
     SummaryItem,
-    TimeTrigger,
-    Verb,
     Weekday,
 )
-from .parser_grammar import ACTION_VERBS
 from .sentence import Writer
 from .settings import GlobalSettings, from_options
 from .store import OwnedRecord, RoutineStore, own_helpers_named
@@ -433,65 +425,6 @@ def apply_patch(base: RoutineSettings, patch: Patch) -> tuple[RoutineSettings, P
         except ValueError, TypeError, KeyError:
             return base, Problem(key, "invalid_value", {"setting": key})
     return replace(base, **values), None
-
-
-# --------------------------------------------------------------------------------------
-# Routine lines for the Schedule summary item
-# --------------------------------------------------------------------------------------
-
-
-def routine_verbs(target_entity: str) -> tuple[Verb, Verb]:
-    """Return the verbs of a target's on and off actions, as the sentences name them."""
-    profile = PROFILES.get(target_entity.partition(".")[0])
-    if profile is None:
-        return Verb.ON, Verb.OFF
-    on = ACTION_VERBS[profile.on_action.partition(".")[2]] if profile.on_action else Verb.ON
-    return on, ACTION_VERBS[profile.off_action.partition(".")[2]]
-
-
-def routine_lines(settings: RoutineSettings, automation_id: str, alias: str) -> list[ParsedLine]:
-    """Return the routine's actions as parsed lines the Writer renders, one per action."""
-    target = settings.target_entity
-    on, off = routine_verbs(target)
-    profile = PROFILES.get(target.partition(".")[0])
-    inactive = profile.inactive_state if profile else "off"
-
-    def line(verb: Verb, *triggers: Any, follow_ups: tuple[FollowUp, ...] = ()) -> ParsedLine:
-        return ParsedLine(
-            automation_id=automation_id,
-            alias=alias,
-            entity_ids=(target,),
-            verb=verb,
-            triggers=triggers,
-            follow_ups=follow_ups,
-        )
-
-    def days(day_set: frozenset[Weekday]) -> frozenset[Weekday] | None:
-        return None if day_set == ALL_DAYS else day_set
-
-    lines: list[ParsedLine] = []
-    if settings.on_time is not None:
-        lines.append(
-            line(on, TimeTrigger(at=settings.on_time, weekdays=days(settings.effective_days)))
-        )
-    if settings.off_time is not None:
-        lines.append(line(off, TimeTrigger(at=settings.off_time, weekdays=days(settings.end_days))))
-    if settings.days is Days.WEEKLY_SCHEDULE and settings.schedule_entity is not None:
-        blocks = (settings.schedule_entity,)
-        lines.append(line(on, NamedTrigger("schedule.block_started", blocks)))
-        lines.append(line(off, NamedTrigger("schedule.block_ended", blocks)))
-    active = "on" if inactive == "off" else None
-    if settings.turn_off_after_min:
-        period = timedelta(minutes=settings.turn_off_after_min)
-        moved = None if active else inactive
-        lines.append(line(off, StateTrigger(target, active, moved, period)))
-    if settings.turn_back_on_after_min:
-        period = timedelta(minutes=settings.turn_back_on_after_min)
-        lines.append(line(on, StateTrigger(target, inactive, None, period)))
-    if settings.pulse is not None:
-        back = (FollowUp(timedelta(minutes=settings.pulse.minutes), Verb.TOGGLE),)
-        lines.append(line(Verb.TOGGLE, TimeTrigger(at=settings.pulse.at), follow_ups=back))
-    return lines
 
 
 # --------------------------------------------------------------------------------------
@@ -1042,7 +975,7 @@ class RoutineManager:
         state = self.hass.states.get(entity_id) if entity_id else None
         history = self._store.data.owned[routine.automation_id].alias_history
         alias = state.name if state is not None else (history[-1] if history else "")
-        lines = routine_lines(routine.settings, routine.automation_id, alias)
+        lines = nextrun.routine_lines(routine.settings, routine.automation_id, alias)
         writer = self._writer(routine.settings)
         text = writer.say("list_separator").join(writer.line(line) for line in lines)
         item = SummaryItem(
@@ -2987,5 +2920,5 @@ def _is_window_end(settings: RoutineSettings, target: nextrun.SkipTarget) -> boo
     return (
         window
         and target.paired_end is None
-        and target.verb is routine_verbs(settings.target_entity)[1]
+        and target.verb is nextrun.routine_verbs(settings.target_entity)[1]
     )
