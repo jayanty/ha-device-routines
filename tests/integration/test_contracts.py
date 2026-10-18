@@ -1335,22 +1335,6 @@ async def test_the_summary_reads_a_routine_as_its_sentence_without_the_manager(
     assert shown == (expected or [WRITER.routine_kind()])
 
 
-MANAGER_KEEPS_THE_FORM_IT_WAS_SENT: Final = (
-    "manager.py RoutineManager.async_update keeps the merged settings as sent "
-    "(`routine.settings = merged`) instead of the canonical form it writes and reads back "
-    "after a restart (decision L38). A time with an offset next to one without (the "
-    'WebSocket command routines/set passes `"17:00:00+00:00"` through apply_patch\'s '
-    "`time.fromisoformat`) then breaks every read of the routine until the next start: "
-    "RoutineView.settings.crosses_midnight compares an aware and a naive time, so "
-    "manager.get raises TypeError, as do the entities, the Schedule provider and "
-    "_automation_changed. Fix: `routine.settings = compiler.canonical(merged)` in "
-    "async_update (the in memory form then equals the form read back; the Days select "
-    "also stops showing Some days for a named set until a restart), or apply_patch "
-    "refuses a time with an offset as invalid_value. Route to manager.py (carry over lane)."
-)
-
-
-@pytest.mark.xfail(strict=True, raises=TypeError, reason=MANAGER_KEEPS_THE_FORM_IT_WAS_SENT)
 async def test_the_manager_holds_a_time_with_an_offset_in_the_form_it_reads_back(
     hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any
 ) -> None:

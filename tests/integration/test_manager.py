@@ -1385,3 +1385,32 @@ async def test_a_device_without_a_routine_has_no_unavailable_reason(
 ) -> None:
     for key in (None, "days", "on_time", "turn_back_on_after", "target"):
         assert manager.unavailable_reason(home.garage, key) is None, key
+
+
+async def test_settings_are_held_in_the_form_the_inputs_read_back(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any
+) -> None:
+    """Plan A4.0 item 21 (L38): canonical in memory, as after a restart.
+
+    A day set chosen alone is Some days, and a named one reads as its name; a time sent
+    with an offset is held without it.
+    """
+    await give_routine(hass, manager, home.fan, freezer, on_time=time(17))
+
+    weekdays = ["mon", "tue", "wed", "thu", "fri"]
+    result = await manager.async_update(home.fan, {"day_set": weekdays})
+    assert result.view is not None
+    assert result.view.settings.days is Days.WEEKDAYS
+    result = await manager.async_update(home.fan, {"day_set": ["mon", "wed"]})
+    assert result.view is not None
+    assert (result.view.settings.days, result.view.settings.day_set) == (
+        Days.SOME_DAYS,
+        frozenset({Weekday.MON, Weekday.WED}),
+    )
+    result = await manager.async_update(home.fan, {"days": "every_day"})
+    assert result.view is not None
+    assert result.view.settings.day_set == frozenset(Weekday)
+    result = await manager.async_update(home.fan, {"off_time": "08:30:00+02:00"})
+    assert result.view is not None
+    assert result.view.settings.off_time == time(8, 30)
+    assert result.view.settings.off_time.tzinfo is None

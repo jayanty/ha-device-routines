@@ -1284,6 +1284,11 @@ class RoutineManager:
     ) -> UpdateResult:
         """Validate a patch against the merged settings, show it at once, write it soon.
 
+        The settings are held in their canonical form (`compiler.canonical`), the one the
+        written inputs read back as, so a time sent with an offset ("17:00:00+00:00", as
+        a WebSocket client may) is held as the time of day it reads, without the offset,
+        which the inputs never carry (plan A4.0 item 21).
+
         On a problem nothing changes, listeners hear the routine as it was (so an entity
         that showed the new value reverts) and the problem is returned.
         """
@@ -1292,6 +1297,13 @@ class RoutineManager:
         own_schedule: str | None = None
         if problem is None:
             merged, own_schedule = self._weekly_schedule_linked(routine, merged, patch)
+            if "day_set" in patch and "days" not in patch:
+                # A day set chosen alone (the routine form, the console, D34) is Some days:
+                # the canonical form keeps a day set for Some days only.
+                merged = replace(merged, days=Days.SOME_DAYS)
+            # The form the inputs read back after a restart (L38): a time without an offset
+            # or microseconds, a named day set by its name, no schedule unless Weekly.
+            merged = compiler.canonical(merged)
         if problem is None and merged.target_entity not in self.candidates(device_id):
             problem = Problem("target_entity", "invalid_target", {"entity": merged.target_entity})
         if problem is None:
