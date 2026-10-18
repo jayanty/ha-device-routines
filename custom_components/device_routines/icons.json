@@ -120,5 +120,25 @@
     "is_active": {
       "condition": "mdi:calendar-check"
     }
+  },
+  "services": {
+    "skip_next": {
+      "service": "mdi:skip-next"
+    },
+    "pause": {
+      "service": "mdi:pause-circle-outline"
+    },
+    "resume": {
+      "service": "mdi:play-circle-outline"
+    },
+    "enable": {
+      "service": "mdi:calendar-check"
+    },
+    "disable": {
+      "service": "mdi:calendar-remove"
+    },
+    "maintenance": {
+      "service": "mdi:broom"
+    }
   }
 }

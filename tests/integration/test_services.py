@@ -485,6 +485,16 @@ def test_every_action_and_field_in_services_yaml_is_translated() -> None:
     assert services.NOT_LOADED in strings["exceptions"]
 
 
+def test_every_action_has_an_icon() -> None:
+    """Plan A4.0 item 6: icons.json names one Material Design icon per action."""
+    icons = json.loads((COMPONENT / "icons.json").read_text(encoding="utf-8"))
+
+    assert set(icons["services"]) == set(services.SERVICES) == set(load_services_yaml())
+    for name, icon in icons["services"].items():
+        assert set(icon) == {"service"}, name
+        assert icon["service"].startswith("mdi:"), name
+
+
 def test_the_actions_and_their_fields_are_the_tech_spec_ones() -> None:
     described = load_services_yaml()
 
