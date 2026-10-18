@@ -17,6 +17,10 @@ Build A (Phases 2 and 3) is in progress; the entries below grow with it.
   label and the `Device Routines` automation category at setup, and keeps them in place:
   a missing blueprint is reinstalled, a hand edited one is left alone and reported in
   Repairs.
+- Actions `device_routines.skip_next`, `pause` (until a time or for a duration), `resume`,
+  `enable`, `disable` and `maintenance`, with device, area, floor, label and entity
+  targets and an optional response listing what each target did and which targets have
+  no routine.
 
 ## [0.1.0] - 2026-10-18
 

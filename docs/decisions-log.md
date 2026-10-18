@@ -454,3 +454,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | Additive pieces, each owned by one lane, listed in plan Section 4.5's arbitration paragraph; the orchestrator rebases in landing order. The AI disclosure is a `strings.json` description, not code in `config_flow.py`. |
 | Consequence | Lanes keep parallel; rebases may need a by hand merge in `strings.json` and the shared modules, which the orchestrator does and reruns the whole suite after. |
 | PRD register entry | no |
+
+## 2026-10-18 L46: action targets and responses
+
+| Field | Content |
+| --- | --- |
+| Context | TECH_SPEC 4.6 asks for a native target "filtered to this integration". The devices a routine drives belong to other integrations, and this integration's entities sit on its own linked device records (L25), so an integration filter would offer only those records and the hub, which the manager ignores, and would hide a label a person puts on their own device (S13). The spec's `ignored` lists "device id, reason"; the datetime selector sends a time without an offset. |
+| Options | An integration filter, or a domain filter over the supported domains plus `automation`; `ignored` as device id and reason, or the dataclass fields; an offset free `until` as UTC or local. |
+| Choice | The five routine actions take a target filtered by entity domain (`domains.SUPPORTED_DOMAINS` plus `automation`, pinned by a test), with no device filter; `ignored` serializes as `{target, kind, reason}` (for a device, `target` is the device id), the asdict convention of TECH_SPEC 4.7; an offset free `until` is local time; `maintenance` takes an optional `dry_run`; a call with no loaded entry raises the translated `not_loaded`. `services.action_response` and `services.maintenance_response` are public so the WebSocket commands answer in the same shape. |
+| Consequence | Three manager gaps go to plan A4.0: a past `until` or zero `for` must be rejected before target resolution (a strict xfail pins it), linked device records must resolve to the user's device, and maintenance errors must be translated. |
+| PRD register entry | no |
