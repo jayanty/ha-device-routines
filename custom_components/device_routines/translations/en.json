@@ -135,27 +135,87 @@
     },
     "blueprint_modified": {
       "title": "The Device Routines blueprint was changed",
-      "description": "The installed blueprint file differs from the one Device Routines ships, so it was left alone. Routines keep running on the changed file. Reinstall the shipped blueprint to undo the change."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Reinstall the shipped blueprint",
+            "description": "The installed blueprint file differs from the one Device Routines ships, so it was left alone and routines keep running on the changed file. Submit to put the shipped blueprint back and reload the automations that use it. The changes made to the file are lost."
+          }
+        },
+        "abort": {
+          "not_loaded": "Device Routines is not loaded. Enable it in Settings, Devices and services, then try again.",
+          "not_fixed": "The shipped blueprint could not be installed. The Home Assistant log names the reason."
+        }
+      }
     },
     "invalid_inputs": {
       "title": "The routine of {device} cannot run as edited",
-      "description": "An edit of {automation} left inputs a routine cannot use ({reason}). The routine was turned off and nothing was overwritten. Restore the last valid settings, or correct the automation in its form."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Restore the last valid settings",
+            "description": "An edit of {automation} left inputs a routine cannot use ({reason}). The routine of {device} was turned off and nothing was overwritten. Submit to write the last valid settings back and turn the routine on again, or close this and correct the automation in its form."
+          }
+        },
+        "abort": {
+          "not_loaded": "Device Routines is not loaded. Enable it in Settings, Devices and services, then try again.",
+          "unknown_routine": "{automation} is not a routine Device Routines manages any more, so there is nothing to do here.",
+          "no_valid_settings": "There are no earlier valid settings for the routine of {device} to restore. Correct {automation} in its form instead.",
+          "not_fixed": "The last valid settings of {device} could not be written. The Home Assistant log names the reason; try again later."
+        }
+      }
     },
     "detached_routine": {
       "title": "The routine of {device} is now a normal automation",
-      "description": "{automation} no longer uses the Device Routines blueprint, so its device page controls are unavailable and the integration never touches it again. Create a new routine for {device} if you want the controls back."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Create a new routine",
+            "description": "{automation} no longer uses the Device Routines blueprint, so the device page controls of {device} are unavailable and the integration never touches it again. Submit to create a new routine for {device} with the settings it had. {automation} stays exactly as it is: turn it off or delete it yourself if the new routine replaces it."
+          }
+        },
+        "abort": {
+          "not_loaded": "Device Routines is not loaded. Enable it in Settings, Devices and services, then try again.",
+          "unknown_routine": "{automation} is not a routine Device Routines manages any more, so there is nothing to do here.",
+          "not_fixed": "The new routine of {device} could not be created. The Home Assistant log names the reason; try again later."
+        }
+      }
     },
     "schedule_blocks_needed": {
       "title": "The weekly schedule of {device} is empty",
-      "description": "The schedule helper {schedule} had to be recreated and has no blocks yet, so the routine of {device} does nothing. Open the helper and add the blocks again."
+      "description": "The schedule helper {schedule} had to be recreated and has no blocks yet, so the routine of {device} does nothing. Open it under Settings, Devices and services, Helpers and add the blocks again. This issue clears by itself once the schedule has blocks."
     },
     "write_conflict": {
       "title": "A change to the routine of {device} was not saved",
-      "description": "{automation} was changed by something else twice while Device Routines saved it, so the change was not written. Retry to save it again."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Save the change again",
+            "description": "{automation} was changed by something else twice while Device Routines saved it, so the change to the routine of {device} was not written. Submit to write it again now."
+          }
+        },
+        "abort": {
+          "not_loaded": "Device Routines is not loaded. Enable it in Settings, Devices and services, then try again.",
+          "unknown_routine": "{automation} is not a routine Device Routines manages any more, so there is nothing to do here.",
+          "not_fixed": "{automation} changed again while Device Routines saved it. Try again in a moment."
+        }
+      }
     },
     "automation_load_failed": {
       "title": "The routine of {device} does not load",
-      "description": "{automation} did not load, even after Device Routines regenerated it once. Regenerate it from the last valid settings, or check the Home Assistant log for the reason."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Regenerate the automation",
+            "description": "{automation} did not load, even after Device Routines regenerated it once, so the routine of {device} is off. Submit to regenerate it from the last valid settings."
+          }
+        },
+        "abort": {
+          "not_loaded": "Device Routines is not loaded. Enable it in Settings, Devices and services, then try again.",
+          "unknown_routine": "{automation} is not a routine Device Routines manages any more, so there is nothing to do here.",
+          "not_fixed": "{automation} still does not load. The Home Assistant log names the reason; correct it, then try again."
+        }
+      }
     },
     "conflict": {
       "title": "Two automations drive {device} in opposite directions",

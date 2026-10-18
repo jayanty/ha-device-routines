@@ -57,7 +57,7 @@ from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.sun import get_astral_event_date
 from homeassistant.util import dt as dt_util
 
-from . import compiler, conflicts, ha_adapter, markers, nextrun, parser
+from . import compiler, conflicts, ha_adapter, markers, nextrun, parser, repairs
 from .models import (
     Conflict,
     DeviceContext,
@@ -325,6 +325,9 @@ class SummaryCoordinator:
             summaries[device_id] = summary
         self.summaries = summaries
         self._reconcile_sensors()
+        async_sync_conflict_issues(
+            self.hass, summaries, self._writer(), enabled=self.settings.raise_conflict_repairs
+        )
         if summary != previous:
             self._notify(device_id)
         self._schedule_next(now)
@@ -521,6 +524,9 @@ class SummaryCoordinator:
         }
         self.summaries = summaries
         self._reconcile_sensors()
+        async_sync_conflict_issues(
+            self.hass, summaries, writer, enabled=self.settings.raise_conflict_repairs
+        )
         for device_id in changed:
             self._notify(device_id)
         self._schedule_next(now)
@@ -732,6 +738,58 @@ class SummaryCoordinator:
         if new and self._add_sensors is not None:
             self._sensor_devices.update(new)
             self._add_sensors(new)
+
+
+@callback
+def async_sync_conflict_issues(
+    hass: HomeAssistant, summaries: Mapping[str, DeviceSummary], writer: Writer, *, enabled: bool
+) -> None:
+    """Keep the `conflict` Repairs issues in line with the views (FR-S6, Build A lane 11).
+
+    An issue is raised only for a routine against another automation that drives the same
+    entity in the opposite direction in the same minute: never for two hand written
+    automations, and never for an action that only contradicts a routine window (both stay
+    in the `conflicts` attribute). One issue per routine, keyed by its automation id
+    (decision L41), names the routine, every automation it collides with and the earliest
+    time of day they collide; it clears when the collision ends. While
+    `raise_conflict_repairs` is off, every `conflict` issue is cleared.
+    """
+    routines: dict[str, tuple[str, str]] = {}  # subject: the device and the routine
+    others: dict[str, set[str]] = {}
+    earliest: dict[str, time] = {}
+    for summary in summaries.values() if enabled else ():
+        for conflict in summary.conflicts:
+            first, second = summary.items[conflict.a], summary.items[conflict.b]
+            if first.kind != KIND_ROUTINE:
+                first, second = second, first
+            if (
+                conflict.reason_key != conflicts.SAME_MINUTE
+                or first.kind != KIND_ROUTINE
+                or first.automation_entity == second.automation_entity
+            ):
+                continue
+            assert conflict.at is not None  # noqa: S101  # same minute conflicts have a time
+            entry = er.async_get(hass).async_get(first.automation_entity)
+            subject = entry.unique_id if entry is not None else first.automation_entity
+            device = dr.async_get(hass).async_get(summary.device_id)
+            name = (device.name_by_user or device.name) if device else summary.device_name
+            at = dt_util.as_local(conflict.at).time().replace(second=0, microsecond=0)
+            routines[subject] = (name or summary.device_id, first.alias)
+            others.setdefault(subject, set()).add(second.alias)
+            earliest[subject] = min(earliest.get(subject, at), at)
+    repairs.async_sync_issues(
+        hass,
+        repairs.CONFLICT,
+        {
+            subject: {
+                "device": device_name,
+                "first": routine,
+                "second": ", ".join(sorted(others[subject])),
+                "time": writer.clock(earliest[subject]),
+            }
+            for subject, (device_name, routine) in routines.items()
+        },
+    )
 
 
 class _NameLookup(Mapping[str, str]):

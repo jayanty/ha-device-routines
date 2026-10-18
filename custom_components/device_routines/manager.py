@@ -532,6 +532,7 @@ class RoutineManager:
             bus.async_listen(
                 EVENT_STATE_CHANGED, self._automation_changed, event_filter=self._automation_filter
             ),
+            bus.async_listen(EVENT_STATE_CHANGED, self._schedule_filled, event_filter=_has_blocks),
         ]
         self.summary.set_routine_provider(self)
         await self._attributor.async_start()
@@ -1961,9 +1962,9 @@ class RoutineManager:
             return
         routine.detached = True
         self._cancel_write(routine)
-        for issue_id in (repairs.INVALID_INPUTS, repairs.WRITE_CONFLICT):
-            self._sync_issue(issue_id, routine, present=False)
-        self._sync_issue(repairs.DETACHED_ROUTINE, routine, present=True)
+        # Only an owned routine can be invalid, unsaved, empty or not loaded (lane 11).
+        for issue_id in _ROUTINE_ISSUES:
+            self._sync_issue(issue_id, routine, present=issue_id == repairs.DETACHED_ROUTINE)
         self._changed(device_id)
 
     async def _async_delete_helpers(self, refs: compiler.HelperRefs) -> None:
@@ -2200,6 +2201,14 @@ class RoutineManager:
         assert device_id is not None  # noqa: S101  # the filter checked
         self._changed(device_id)
 
+    @callback
+    def _schedule_filled(self, event: Event[Any]) -> None:
+        """Clear `schedule_blocks_needed` once the recreated schedule has blocks (PRD 3.1)."""
+        entity_id = event.data["entity_id"]
+        for routine in self._routines.values():
+            if routine.settings is not None and routine.settings.schedule_entity == entity_id:
+                self._sync_issue(repairs.SCHEDULE_BLOCKS_NEEDED, routine, present=False)
+
     # ----------------------------------------------------------------------------------
     # Reconcile (TECH_SPEC 7) and self healing (PRD 3.1)
     # ----------------------------------------------------------------------------------
@@ -2250,6 +2259,8 @@ class RoutineManager:
             self._sync_issue(
                 repairs.SCHEDULE_BLOCKS_NEEDED, routine, present=True, schedule=schedule
             )
+        elif _filled(self.hass.states.get(schedule)):
+            self._sync_issue(repairs.SCHEDULE_BLOCKS_NEEDED, routine, present=False)
 
     async def _async_check_loaded(self, routine: _Routine) -> None:
         """Regenerate an owned automation that does not load once, then report it."""
@@ -2333,6 +2344,8 @@ class RoutineManager:
             if record.device_id != device_id:
                 continue
             await ha_adapter.async_delete_automation(self.hass, automation_id)
+            for issue_id in _ROUTINE_ISSUES:  # they end with the routine (lane 11)
+                repairs.async_sync_issue(self.hass, issue_id, present=False, subject=automation_id)
             await self._async_delete_helpers(
                 _refs(record.last_valid_inputs) or compiler.HelperRefs(device_id)
             )
@@ -2397,6 +2410,21 @@ class RoutineManager:
 # --------------------------------------------------------------------------------------
 # Small helpers
 # --------------------------------------------------------------------------------------
+
+
+def _filled(state: State | None) -> bool:
+    """Tell whether a state is a schedule helper's with a block ahead (it has blocks)."""
+    return (
+        state is not None
+        and state.domain == "schedule"
+        and state.attributes.get("next_event") is not None
+    )
+
+
+@callback
+def _has_blocks(event_data: Mapping[str, Any]) -> bool:
+    """Filter state changes down to schedule helpers that have blocks."""
+    return _filled(event_data.get("new_state"))
 
 
 def _invalid(key: str, placeholders: Mapping[str, str] | None = None) -> ServiceValidationError:
