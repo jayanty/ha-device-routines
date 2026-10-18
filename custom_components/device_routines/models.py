@@ -44,6 +44,11 @@ class Weekday(StrEnum):
         """Return the weekday of a local datetime."""
         return list(cls)[moment.weekday()]
 
+    @property
+    def following(self) -> Weekday:
+        """The next day of the week; Sunday is followed by Monday."""
+        return list(Weekday)[(self.number + 1) % 7]
+
 
 ALL_DAYS: frozenset[Weekday] = frozenset(Weekday)
 WEEKDAYS: frozenset[Weekday] = frozenset(
@@ -186,6 +191,23 @@ class RoutineSettings:
         if self.days is Days.SOME_DAYS:
             return self.day_set
         return ALL_DAYS
+
+    @property
+    def crosses_midnight(self) -> bool:
+        """True when the window ends the day after it starts: on at 17:00, off at 09:00."""
+        return (
+            self.on_time is not None and self.off_time is not None and self.off_time < self.on_time
+        )
+
+    @property
+    def end_days(self) -> frozenset[Weekday]:
+        """The days the off time runs on: a window belongs to the weekday it starts on.
+
+        Across midnight these are the start days shifted by one; otherwise the same days.
+        """
+        if not self.crosses_midnight:
+            return self.effective_days
+        return frozenset(day.following for day in self.effective_days)
 
 
 @dataclass(frozen=True, slots=True)
@@ -412,3 +434,34 @@ class Conflict:
     b: int
     reason_key: str
     at: datetime | None
+
+
+# --------------------------------------------------------------------------------------
+# A routine as the platforms, actions and console see it (TECH_SPEC 4.1)
+# --------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class RoutineView:
+    """A snapshot of one routine, built by the manager and read by every surface.
+
+    `skipped_action` is what Skip next skipped while the routine is skipping; `next_action`
+    is the next action that will really run, after any pause.
+    """
+
+    device_id: str
+    device_name: str
+    area_id: str | None
+    automation_id: str
+    automation_entity_id: str | None
+    settings: RoutineSettings
+    status: Status
+    enabled: bool
+    paused_until: datetime | None
+    skipped_action: Occurrence | None
+    next_action: Occurrence | None
+    sentence: str | None
+    items: tuple[SummaryItem, ...]
+    conflicts: tuple[Conflict, ...]
+    override: bool
+    last_change_source: Source | None

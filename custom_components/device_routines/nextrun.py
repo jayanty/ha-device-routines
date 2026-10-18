@@ -12,8 +12,12 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
+from enum import IntEnum
+from typing import Final
 
+from .domains import PROFILES
 from .models import (
+    ALL_DAYS,
     Days,
     Occurrence,
     ParsedLine,
@@ -23,8 +27,10 @@ from .models import (
     TimeTrigger,
     TimeWindow,
     Trigger,
+    Verb,
     Weekday,
 )
+from .parser_grammar import ACTION_VERBS
 
 # Sunrise or sunset for a local date, as an aware datetime; None when the sun does not
 # rise or set that day. The summary passes Home Assistant's astral helper.
@@ -242,3 +248,192 @@ def expected_state(
             yesterday in days and at < settings.off_time
         )
     return "on" if inside else "off"
+
+
+# --------------------------------------------------------------------------------------
+# A routine's own actions and Skip next (PRD FR-R11, D18, D19; TECH_SPEC 3.6)
+# --------------------------------------------------------------------------------------
+
+# Skip next pauses until one minute after the last action it skips (FR-R11).
+SKIP_MARGIN: Final = timedelta(minutes=1)
+
+
+@dataclass(frozen=True, slots=True)
+class SkipTarget:
+    """What Skip next skips and the Paused until value that skips it.
+
+    `verb` and `at` are the action the Schedule state shows next; `paired_end` is the end
+    of the window that action starts (D18), None for anything skipped alone (D19);
+    `paused_until` is one minute after the last skipped action.
+    """
+
+    verb: Verb
+    at: datetime
+    paired_end: datetime | None
+    paused_until: datetime
+
+
+class _Kind(IntEnum):
+    """What a routine action is; the value orders actions that share an instant."""
+
+    WINDOW_START = 0
+    WINDOW_END = 1
+    ONE_SHOT = 2
+    BLOCK_START = 3
+    BLOCK_END = 4
+    PULSE = 5
+    COUNTDOWN = 6
+
+
+@dataclass(frozen=True, slots=True)
+class _Action:
+    at: datetime
+    verb: Verb
+    kind: _Kind
+
+
+def _verbs(target_entity: str) -> tuple[Verb, Verb]:
+    """Return the verbs of the target's on and off actions, as the sentences name them."""
+    profile = PROFILES.get(target_entity.partition(".")[0])
+    if profile is None:
+        return Verb.ON, Verb.OFF
+    on = ACTION_VERBS[profile.on_action.partition(".")[2]] if profile.on_action else Verb.ON
+    return on, ACTION_VERBS[profile.off_action.partition(".")[2]]
+
+
+def _block_change(
+    settings: RoutineSettings,
+    schedule_state: str | None,
+    lookups: Lookups | None,
+    verbs: tuple[Verb, Verb],
+    tz: tzinfo,
+) -> _Action | None:
+    """Return the weekly schedule's next change, from its `next_event` in the lookups."""
+    if settings.days is not Days.WEEKLY_SCHEDULE or settings.schedule_entity is None:
+        return None
+    held = (lookups or Lookups()).entity_times.get(settings.schedule_entity)
+    if not isinstance(held, datetime) or schedule_state not in {"on", "off"}:
+        return None
+    if schedule_state == "on":
+        return _Action(held.astimezone(tz), verbs[1], _Kind.BLOCK_END)
+    return _Action(held.astimezone(tz), verbs[0], _Kind.BLOCK_START)
+
+
+def _countdown(
+    settings: RoutineSettings, ends: datetime | None, verbs: tuple[Verb, Verb], tz: tzinfo
+) -> _Action | None:
+    """Return the running countdown's action: off after Turn off after, on after keep alive."""
+    if ends is None:
+        return None
+    if settings.turn_off_after_min:
+        return _Action(ends.astimezone(tz), verbs[1], _Kind.COUNTDOWN)
+    if settings.turn_back_on_after_min:
+        return _Action(ends.astimezone(tz), verbs[0], _Kind.COUNTDOWN)
+    return None
+
+
+def _upcoming(  # noqa: PLR0913  # the routine's whole runtime picture
+    settings: RoutineSettings,
+    now: datetime,
+    schedule_state: str | None,
+    lookups: Lookups | None,
+    *,
+    countdown_ends: datetime | None,
+    not_before: datetime | None,
+) -> list[_Action]:
+    """Return the routine's actions after `now` and at or after `not_before`, in order."""
+    tz = now.tzinfo
+    assert tz is not None  # noqa: S101  # the caller passes an aware datetime
+    start = now
+    if not_before is not None and not_before.astimezone(tz) > now:
+        start = not_before.astimezone(tz)
+    verbs = _verbs(settings.target_entity)
+    window = settings.on_time is not None and settings.off_time is not None
+    timed: list[tuple[time, frozenset[Weekday], Verb, _Kind]] = []
+    if settings.on_time is not None:
+        kind = _Kind.WINDOW_START if window else _Kind.ONE_SHOT
+        timed.append((settings.on_time, settings.effective_days, verbs[0], kind))
+    if settings.off_time is not None:
+        kind = _Kind.WINDOW_END if window else _Kind.ONE_SHOT
+        timed.append((settings.off_time, settings.end_days, verbs[1], kind))
+    if settings.pulse is not None:
+        timed.append((settings.pulse.at, ALL_DAYS, Verb.TOGGLE, _Kind.PULSE))
+    found: list[_Action] = []
+    # A day early for a window that started yesterday; two days late for its end.
+    for day in _days(start.date() - timedelta(days=1), DEFAULT_HORIZON + timedelta(days=2)):
+        weekday = Weekday.of(datetime.combine(day, time()))
+        for at, days, verb, kind in timed:
+            if weekday in days:
+                found.extend(_Action(instant, verb, kind) for instant in wall_instants(day, at, tz))
+    extras = (
+        _block_change(settings, schedule_state, lookups, verbs, tz),
+        _countdown(settings, countdown_ends, verbs, tz),
+    )
+    found.extend(extra for extra in extras if extra is not None)
+    found.sort(key=lambda action: (action.at, action.kind))
+    return [action for action in found if action.at > now and action.at >= start]
+
+
+def routine_occurrences(  # noqa: PLR0913  # the routine's whole runtime picture
+    settings: RoutineSettings,
+    now: datetime,
+    schedule_state: str | None = None,
+    lookups: Lookups | None = None,
+    *,
+    countdown_ends: datetime | None = None,
+    not_before: datetime | None = None,
+) -> list[Occurrence]:
+    """Return a routine's coming actions, the first being the one its Schedule state shows.
+
+    The actions mirror the blueprint (TECH_SPEC 5.5): the on time on the start days, the
+    off time on the end days (a window belongs to the day it starts on), the pulse every
+    day as a toggle, a weekly schedule's next change when `lookups.entity_times` holds the
+    schedule's `next_event` (its state says whether that change is an end or a start), and
+    a running countdown that ends at `countdown_ends`. Actions before `not_before` (a
+    Paused until value) do not run and are left out; one exactly at it runs. Instants are
+    in the zone of `now`, an aware local datetime.
+    """
+    return [
+        Occurrence(action.at, action.verb)
+        for action in _upcoming(
+            settings,
+            now,
+            schedule_state,
+            lookups,
+            countdown_ends=countdown_ends,
+            not_before=not_before,
+        )
+    ]
+
+
+def skip_target(  # noqa: PLR0913  # the contract's five values plus the running countdown
+    settings: RoutineSettings,
+    now: datetime,
+    paused_until: datetime | None = None,
+    schedule_state: str | None = None,
+    sun: Lookups | None = None,
+    *,
+    countdown_ends: datetime | None = None,
+) -> SkipTarget | None:
+    """Return what Skip next skips now, or None when nothing is scheduled.
+
+    The skipped action is the first of `routine_occurrences` after the current Paused until,
+    so pressing again extends the skip to the following action. A window start takes its
+    paired end along (D18); a window end, a one shot run, a pulse or a running countdown is
+    skipped alone (D19), and the manager cancels a skipped countdown's timer (FR-R11). A
+    weekly schedule's next block start cannot be skipped from here, because its block end is
+    not known, so the result is None then. `sun` carries the lookups (the schedule's
+    `next_event`; sunrise and sunset arrive with Build B).
+    """
+    upcoming = _upcoming(
+        settings, now, schedule_state, sun, countdown_ends=countdown_ends, not_before=paused_until
+    )
+    if not upcoming or upcoming[0].kind is _Kind.BLOCK_START:
+        return None
+    first = upcoming[0]
+    paired_end = None
+    if first.kind is _Kind.WINDOW_START:
+        paired_end = next(
+            (a.at for a in upcoming if a.kind is _Kind.WINDOW_END and a.at > first.at), None
+        )
+    return SkipTarget(first.verb, first.at, paired_end, (paired_end or first.at) + SKIP_MARGIN)

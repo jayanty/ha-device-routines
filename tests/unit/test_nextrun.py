@@ -6,13 +6,14 @@ time trigger: same zones, same nights, same trigger times, same answers.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from hypothesis import given, settings, strategies as st
 import pytest
 
-from custom_components.device_routines import nextrun
+from custom_components.device_routines import nextrun, sentence
 from custom_components.device_routines.models import (
     WEEKDAYS,
     WEEKEND,
@@ -21,6 +22,7 @@ from custom_components.device_routines.models import (
     Occurrence,
     ParsedLine,
     PatternTrigger,
+    Pulse,
     RoutineSettings,
     StateTrigger,
     SunTrigger,
@@ -30,6 +32,7 @@ from custom_components.device_routines.models import (
     Weekday,
 )
 from tests.stage0.test_v10_schedule_dst import DST_CASES, DstCase
+from tests.unit import strategies
 
 LA = ZoneInfo("America/Los_Angeles")
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -314,3 +317,227 @@ def test_next_runs_are_within_a_week_and_in_order(
     assert all(run > now for run in runs)
     assert runs == sorted(runs)
     assert all(Weekday.of(run) in days for run in runs)
+
+
+# --------------------------------------------------------------------------------------
+# Routine actions and skip targets (PRD FR-R11, D18, D19; TECH_SPEC 3.6 and 11.5)
+# --------------------------------------------------------------------------------------
+
+NIGHTLY = RoutineSettings(target_entity=FAN, on_time=time(17), off_time=time(9))
+WEDNESDAY_3PM = datetime(2026, 10, 21, 15, tzinfo=LA)
+THURSDAY_8AM = datetime(2026, 10, 22, 8, tzinfo=LA)
+MINUTE = timedelta(minutes=1)
+WRITER = sentence.Writer(sentence.load_phrases("en"), "12h")
+
+
+def local(day: int, hour: int, minute: int = 0) -> datetime:
+    return datetime(2026, 10, day, hour, minute, tzinfo=LA)
+
+
+def test_skip_target_window_start_pairs_its_end() -> None:
+    """D18 and the FR-R11 acceptance: at 15:00, skip tonight's whole window."""
+    target = nextrun.skip_target(NIGHTLY, WEDNESDAY_3PM)
+    assert target == nextrun.SkipTarget(
+        verb=Verb.ON, at=local(21, 17), paired_end=local(22, 9), paused_until=local(22, 9, 1)
+    )
+    following = nextrun.routine_occurrences(NIGHTLY, WEDNESDAY_3PM, not_before=target.paused_until)
+    assert following[0] == Occurrence(local(22, 17), Verb.ON)
+    assert WRITER.skipped(Verb.ON, following[0].at, WEDNESDAY_3PM) == "Skipped, on Thu 5:00 PM"
+
+    daytime = RoutineSettings(
+        target_entity=FAN,
+        on_time=time(9),
+        off_time=time(17),
+        days=Days.SOME_DAYS,
+        day_set=frozenset({Weekday.MON}),
+    )
+    assert nextrun.skip_target(daytime, local(21, 12)) == nextrun.SkipTarget(
+        Verb.ON, local(26, 9), local(26, 17), local(26, 17, 1)
+    )
+    friday_nights = replace(NIGHTLY, days=Days.WEEKDAYS)
+    assert nextrun.skip_target(friday_nights, local(23, 15)) == nextrun.SkipTarget(
+        Verb.ON, local(23, 17), local(24, 9), local(24, 9, 1)
+    )
+
+
+def test_skip_target_window_end_alone() -> None:
+    """D19: inside the window, the end is skipped alone and the device stays on."""
+    assert nextrun.skip_target(NIGHTLY, THURSDAY_8AM) == nextrun.SkipTarget(
+        Verb.OFF, local(22, 9), None, local(22, 9, 1)
+    )
+    off_only = RoutineSettings(target_entity=FAN, off_time=time(9))
+    target = nextrun.skip_target(off_only, THURSDAY_8AM)
+    assert target == nextrun.SkipTarget(Verb.OFF, local(22, 9), None, local(22, 9, 1))
+    following = nextrun.routine_occurrences(off_only, THURSDAY_8AM, not_before=target.paused_until)
+    assert WRITER.skipped(Verb.OFF, following[0].at, THURSDAY_8AM) == "Skipped, off Fri 9:00 AM"
+
+
+def test_skip_target_running_countdown() -> None:
+    timed = RoutineSettings(target_entity=FAN, turn_off_after_min=30)
+    now = local(19, 10, 10)
+    ends = local(19, 10, 30)
+    assert nextrun.skip_target(timed, now, countdown_ends=ends) == nextrun.SkipTarget(
+        Verb.OFF, ends, None, ends + MINUTE
+    )
+    in_utc = nextrun.skip_target(timed, now, countdown_ends=ends.astimezone(UTC))
+    assert in_utc is not None
+    assert in_utc.at == ends
+    assert in_utc.at.tzinfo is LA
+    kept_alive = RoutineSettings(target_entity=FAN, turn_back_on_after_min=10)
+    assert nextrun.skip_target(kept_alive, now, countdown_ends=ends) == nextrun.SkipTarget(
+        Verb.ON, ends, None, ends + MINUTE
+    )
+    assert nextrun.skip_target(timed, now, countdown_ends=now - MINUTE) is None
+    # Without a duration the timer is not the routine's, so only the window counts.
+    assert nextrun.skip_target(NIGHTLY, now, countdown_ends=ends) == nextrun.SkipTarget(
+        Verb.ON, local(19, 17), local(20, 9), local(20, 9, 1)
+    )
+    sooner = replace(NIGHTLY, turn_off_after_min=30)
+    assert nextrun.skip_target(sooner, local(19, 16, 50), countdown_ends=local(19, 17)) == (
+        nextrun.SkipTarget(Verb.ON, local(19, 17), local(20, 9), local(20, 9, 1))
+    )
+
+
+def test_skip_target_pressed_twice_extends() -> None:
+    first = nextrun.skip_target(NIGHTLY, WEDNESDAY_3PM)
+    assert first is not None
+    second = nextrun.skip_target(NIGHTLY, WEDNESDAY_3PM, first.paused_until)
+    assert second == nextrun.SkipTarget(Verb.ON, local(22, 17), local(23, 9), local(23, 9, 1))
+    assert nextrun.skip_target(NIGHTLY, WEDNESDAY_3PM, first.paused_until.astimezone(UTC)) == (
+        second
+    )
+    stale = nextrun.skip_target(NIGHTLY, WEDNESDAY_3PM, WEDNESDAY_3PM - timedelta(days=3))
+    assert stale == first
+    # An action exactly at Paused until runs, so pressing again skips it.
+    at_the_edge = nextrun.skip_target(NIGHTLY, WEDNESDAY_3PM, local(22, 17))
+    assert at_the_edge is not None
+    assert at_the_edge.at == local(22, 17)
+
+
+def test_skip_target_one_shot_pulse_and_nothing_scheduled() -> None:
+    vacuum = RoutineSettings(
+        target_entity="vacuum.robot_vacuum", on_time=time(9, 45), days=Days.WEEKDAYS
+    )
+    assert nextrun.skip_target(vacuum, local(24, 12)) == nextrun.SkipTarget(
+        Verb.START, local(26, 9, 45), None, local(26, 9, 46)
+    )
+    pulsed = RoutineSettings(target_entity=FAN, pulse=Pulse(time(8)))
+    assert nextrun.skip_target(pulsed, local(19, 12)) == nextrun.SkipTarget(
+        Verb.TOGGLE, local(20, 8), None, local(20, 8, 1)
+    )
+    assert nextrun.skip_target(RoutineSettings(target_entity=FAN), local(19, 12)) is None
+    idle_timer = RoutineSettings(target_entity=FAN, turn_off_after_min=5)
+    assert nextrun.skip_target(idle_timer, MONDAY_8) is None
+
+
+def test_skip_target_follows_a_weekly_schedule_through_its_next_event() -> None:
+    weekly = RoutineSettings(
+        target_entity=FAN, days=Days.WEEKLY_SCHEDULE, schedule_entity="schedule.fan"
+    )
+    block_ends = local(19, 18)
+    lookups = nextrun.Lookups(entity_times={"schedule.fan": block_ends.astimezone(UTC)})
+    assert nextrun.skip_target(weekly, local(19, 12), None, "on", lookups) == nextrun.SkipTarget(
+        Verb.OFF, block_ends, None, block_ends + MINUTE
+    )
+    # Outside a block the next change is a block start, whose end the core cannot know.
+    assert nextrun.skip_target(weekly, local(19, 12), None, "off", lookups) is None
+    assert nextrun.routine_occurrences(weekly, local(19, 12), "off", lookups) == [
+        Occurrence(block_ends, Verb.ON)
+    ]
+    assert nextrun.skip_target(weekly, local(19, 12), None, "on") is None
+    assert nextrun.skip_target(weekly, local(19, 12), None, "unavailable", lookups) is None
+    held_time = nextrun.Lookups(entity_times={"schedule.fan": time(18)})
+    assert nextrun.skip_target(weekly, local(19, 12), None, "on", held_time) is None
+    unlinked = replace(weekly, schedule_entity=None)
+    assert nextrun.skip_target(unlinked, local(19, 12), None, "on", lookups) is None
+    timed = replace(weekly, turn_off_after_min=30)
+    assert nextrun.skip_target(
+        timed, local(19, 12), None, "off", lookups, countdown_ends=local(19, 12, 30)
+    ) == nextrun.SkipTarget(Verb.OFF, local(19, 12, 30), None, local(19, 12, 31))
+
+
+@pytest.mark.parametrize(
+    ("target", "verbs"),
+    [
+        ("vacuum.robot_vacuum", (Verb.START, Verb.DOCK)),
+        ("lawn_mower.mower", (Verb.START, Verb.DOCK)),
+        ("cover.patio_shade", (Verb.OPEN, Verb.CLOSE)),
+        ("valve.garden_valve", (Verb.OPEN, Verb.CLOSE)),
+        ("light.patio_light", (Verb.ON, Verb.OFF)),
+        ("lock.front_door", (Verb.ON, Verb.LOCK)),
+        ("media_player.living_room_tv", (Verb.ON, Verb.OFF)),
+        ("siren.unsupported", (Verb.ON, Verb.OFF)),
+    ],
+)
+def test_routine_actions_use_the_domain_verbs(target: str, verbs: tuple[Verb, Verb]) -> None:
+    settings = RoutineSettings(target_entity=target, on_time=time(9), off_time=time(17))
+    upcoming = nextrun.routine_occurrences(settings, MONDAY_8)
+    assert upcoming[:2] == [Occurrence(local(19, 9), verbs[0]), Occurrence(local(19, 17), verbs[1])]
+
+
+def test_routine_occurrences_follow_the_start_day_rule() -> None:
+    weekdays = replace(NIGHTLY, days=Days.WEEKDAYS)
+    friday_noon = local(23, 12)
+    assert [o.at for o in nextrun.routine_occurrences(weekdays, friday_noon)[:4]] == [
+        local(23, 17),
+        local(24, 9),  # Saturday morning ends Friday's window
+        local(26, 17),  # nothing on Saturday or Sunday evening, nothing on Monday morning
+        local(27, 9),
+    ]
+
+
+def test_routine_occurrences_follow_the_core_on_dst_nights() -> None:
+    spring = RoutineSettings(target_entity=FAN, on_time=time(2, 30))
+    saturday = datetime(2026, 3, 7, 23, tzinfo=LA)
+    runs = nextrun.routine_occurrences(spring, saturday)
+    assert runs[0].at == datetime(2026, 3, 9, 2, 30, tzinfo=LA)  # not on the 8th at all
+    fall = RoutineSettings(target_entity=FAN, on_time=time(1, 30), off_time=time(4))
+    halloween = datetime(2026, 10, 31, 23, tzinfo=LA)
+    first, second, end = nextrun.routine_occurrences(fall, halloween)[:3]
+    assert second.at.astimezone(UTC) - first.at.astimezone(UTC) == timedelta(hours=1)
+    target = nextrun.skip_target(fall, halloween)
+    assert target is not None
+    assert (target.at, target.paired_end) == (first.at, end.at)
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    case=strategies.routines(),
+    now=moments,
+    countdown_in=st.none() | st.integers(1, 1440),
+    schedule_state=st.sampled_from(["on", "off", "unavailable"]),
+    next_event_in=st.integers(1, 7 * 1440),
+)
+def test_skip_target_equals_the_sentence_action(
+    case: tuple[object, object, RoutineSettings],
+    now: datetime,
+    countdown_in: int | None,
+    schedule_state: str,
+    next_event_in: int,
+) -> None:
+    """TECH_SPEC 11.5: what Skip next skips is the action the Schedule state shows."""
+    routine = case[2]
+    countdown = None if countdown_in is None else now + timedelta(minutes=countdown_in)
+    lookups = nextrun.Lookups(
+        entity_times={routine.schedule_entity or "": now + timedelta(minutes=next_event_in)}
+    )
+    target = nextrun.skip_target(
+        routine, now, None, schedule_state, lookups, countdown_ends=countdown
+    )
+    upcoming = nextrun.routine_occurrences(
+        routine, now, schedule_state, lookups, countdown_ends=countdown
+    )
+    if target is None:
+        assert not upcoming or (routine.days is Days.WEEKLY_SCHEDULE and schedule_state == "off")
+        return
+    shown = upcoming[0]
+    assert (target.verb, target.at) == (shown.verb, shown.at)
+    assert WRITER.state(Occurrence(target.at, target.verb), None, now) == WRITER.state(
+        nextrun.earliest(upcoming[:1]), None, now
+    )
+    assert target.paused_until == (target.paired_end or target.at) + MINUTE
+    assert target.paired_end is None or target.paired_end > target.at
+    again = nextrun.skip_target(
+        routine, now, target.paused_until, schedule_state, lookups, countdown_ends=countdown
+    )
+    assert again is None or again.at >= target.paused_until

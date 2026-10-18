@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from itertools import product
 import json
 from pathlib import Path
@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.device_routines import parser, sentence
+from custom_components.device_routines import markers, parser, sentence
 from custom_components.device_routines.models import (
     WEEKDAYS,
     WEEKEND,
@@ -336,6 +336,63 @@ def test_every_state_combination_fits_the_cap() -> None:
 
 
 # --------------------------------------------------------------------------------------
+# Routine states (PRD FR-S4): skipped, paused, off
+# --------------------------------------------------------------------------------------
+
+WEDNESDAY_3PM = datetime(2026, 10, 21, 15, tzinfo=LA)
+
+
+def test_state_reads_skipped_paused_and_off_under_40_characters() -> None:
+    w = writer()
+    thursday_5pm = datetime(2026, 10, 22, 17, tzinfo=LA)
+    sunday_6pm = datetime(2026, 10, 25, 18, tzinfo=LA)
+    tonight = datetime(2026, 10, 21, 18, tzinfo=LA)
+    assert w.skipped(Verb.ON, thursday_5pm, WEDNESDAY_3PM) == "Skipped, on Thu 5:00 PM"
+    assert w.skipped(Verb.OFF, tonight, WEDNESDAY_3PM) == "Skipped, off 6:00 PM"
+    assert w.skipped(Verb.DOCK, thursday_5pm, WEDNESDAY_3PM) == (
+        "Skipped, return to dock Thu 5:00 PM"
+    )
+    assert w.paused(sunday_6pm, WEDNESDAY_3PM) == "Paused until Sun 6:00 PM"
+    assert w.paused(sunday_6pm.astimezone(UTC), WEDNESDAY_3PM) == "Paused until Sun 6:00 PM"
+    assert w.paused(tonight, WEDNESDAY_3PM) == "Paused until 6:00 PM"
+    # A week or more away the weekday would be ambiguous, so the date shows instead.
+    next_wednesday = datetime(2026, 10, 28, 18, tzinfo=LA)
+    assert w.paused(next_wednesday, WEDNESDAY_3PM) == "Paused until 2026-10-28 6:00 PM"
+    assert w.routine_off() == "Routine off"
+    assert writer("24h").paused(sunday_6pm, WEDNESDAY_3PM) == "Paused until Sun 18:00"
+    assert w.routine_kind() == "Routine"
+    assert w.routine_kind(detached=True) == "Detached routine"
+
+    w12, w24 = writer("12h"), writer("24h")
+    moments = [
+        WEDNESDAY_3PM.replace(hour=0) + timedelta(days=day, hours=hour, minutes=59, seconds=second)
+        for day, hour, second in product(range(10), range(24), (0, 59))
+    ]
+    for verb, moment, w in product(Verb, moments, (w12, w24)):
+        for text in (w.skipped(verb, moment, WEDNESDAY_3PM), w.paused(moment, WEDNESDAY_3PM)):
+            assert len(text) <= sentence.STATE_CAP, text
+    assert len(w12.routine_off()) <= sentence.STATE_CAP
+
+
+def test_routine_states_drop_the_weekday_then_cut() -> None:
+    thursday_5pm = datetime(2026, 10, 22, 17, tzinfo=LA)
+    medium = sentence.Writer({**PHRASES, "verb_dock": "return to the dock now"}, "12h")
+    assert medium.skipped(Verb.DOCK, thursday_5pm, WEDNESDAY_3PM) == (
+        "Skipped, return to the dock now 5:00 PM"
+    )
+    long = sentence.Writer({**PHRASES, "verb_dock": "return to the charging dock"}, "12h")
+    assert long.skipped(Verb.DOCK, thursday_5pm, WEDNESDAY_3PM) == (
+        "Skipped, return to the charging dock..."
+    )
+    wordy = sentence.Writer(
+        {**PHRASES, "state_routine_off": "This routine is switched off for now and then"}, "12h"
+    )
+    assert wordy.routine_off() == "This routine is switched off for now..."
+    far = datetime(2026, 11, 30, 12, 59, 59, tzinfo=LA)
+    assert len(long.skipped(Verb.DOCK, far, WEDNESDAY_3PM)) == sentence.STATE_CAP - 1
+
+
+# --------------------------------------------------------------------------------------
 # The phrase table
 # --------------------------------------------------------------------------------------
 
@@ -373,5 +430,13 @@ def test_every_phrase_is_used() -> None:
     w.line(line(StateTrigger(DOOR, to="on", duration=timedelta(minutes=5))))
     w.state(None, "x" * 60, NOW)
     w.state(Occurrence(NOW, None), None, NOW)
+    for verb in Verb:
+        w.skipped(verb, NOW, NOW)
+    w.paused(NOW, NOW)
+    w.routine_off()
+    w.routine_kind()
+    w.routine_kind(detached=True)
+    markers.presentation("Example", recording)
+    markers.presentation("Example", recording, formerly=True)
 
     assert set(PHRASES) - recording.used == set()

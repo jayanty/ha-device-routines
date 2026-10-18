@@ -424,6 +424,54 @@ class Writer:
         ellipsis = self.say("ellipsis")
         return text[: STATE_CAP - len(ellipsis)].rstrip() + ellipsis
 
+    # ----------------------------------------------------------------------------------
+    # The states of a routine (PRD FR-S4): skipped, paused, off
+    # ----------------------------------------------------------------------------------
+
+    def skipped(self, verb: Verb, at: datetime, now: datetime) -> str:
+        """Return the state of a skipping routine, naming the next action that will run.
+
+        "Skipped, on Thu 5:00 PM". At most 40 characters: past the cap the weekday goes,
+        then the text is cut. A week or more ahead the date replaces the weekday.
+        """
+        action = self.say(f"verb_{verb}")
+        return self._fitting(
+            [self.say("state_skipped", action=action, when=when) for when in self._when(at, now)]
+        )
+
+    def paused(self, until: datetime, now: datetime) -> str:
+        """Return the state of a paused routine: "Paused until Sun 6:00 PM", capped alike."""
+        return self._fitting(
+            [self.say("state_paused", when=when) for when in self._when(until, now)]
+        )
+
+    def routine_off(self) -> str:
+        """Return the state of a routine whose Routine switch is off: "Routine off"."""
+        return self.capped(self.say("state_routine_off"))
+
+    def routine_kind(self, *, detached: bool = False) -> str:
+        """Return how a routine item is labeled: Routine, or Detached routine."""
+        return self.say("kind_detached" if detached else "kind_routine")
+
+    def _when(self, at: datetime, now: datetime) -> list[str]:
+        """Return the ways to say when, longest first.
+
+        Today the time; within the coming week the weekday and the time, or the time
+        alone; later the date and the time.
+        """
+        moment = at.astimezone(now.tzinfo)
+        clock = self.clock(moment.time().replace(tzinfo=None))
+        days = (moment.date() - now.date()).days
+        if days == 0:
+            return [clock]
+        if 0 < days < len(Weekday):
+            return [f"{self.say(f'weekday_{Weekday.of(moment)}')} {clock}", clock]
+        return [f"{moment.date().isoformat()} {clock}"]
+
+    def _fitting(self, candidates: Sequence[str]) -> str:
+        """Return the first candidate within the cap, or the last one cut to it."""
+        return self.capped(next((c for c in candidates if len(c) <= STATE_CAP), candidates[-1]))
+
 
 def _folded(line: ParsedLine) -> bool:
     """Tell whether a line's weekdays read as part of its fixed times."""

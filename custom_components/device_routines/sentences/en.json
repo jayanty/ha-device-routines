@@ -25,6 +25,9 @@
   "state_other_day": "{verb} {weekday} {time}",
   "state_short": "{verb} {time}",
   "state_next": "Next: {time}",
+  "state_skipped": "Skipped, {action} {when}",
+  "state_paused": "Paused until {when}",
+  "state_routine_off": "Routine off",
   "weekday_mon": "Mon",
   "weekday_tue": "Tue",
   "weekday_wed": "Wed",
@@ -93,5 +96,10 @@
   "when_vacuum_docked": "when {subject} docks",
   "when_vacuum_errored": "when {subject} reports an error",
   "subject_any": "any target",
+  "routine_alias": "Routine: {device}",
+  "routine_description": "Managed by Device Routines. Change it on the {device} device page or in this form. Take control to turn it into a normal automation.",
+  "formerly_managed": "Formerly managed by Device Routines.",
+  "kind_routine": "Routine",
+  "kind_detached": "Detached routine",
   "ellipsis": "..."
 }

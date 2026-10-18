@@ -79,5 +79,40 @@
       "title": "Device Routines cannot read automations on this Home Assistant version",
       "description": "Home Assistant {ha_version} does not offer what Device Routines needs for: {capabilities}. Schedule sensors stay as they were and routines keep running. Update Device Routines; the issue clears by itself once a compatible version loads."
     }
+  },
+  "exceptions": {
+    "refused_action": {
+      "message": "Device Routines never schedules {action}, because it would weaken safety or security."
+    },
+    "on_time_not_supported": {
+      "message": "A routine cannot turn on, open or start this {domain} device, so it has no start time. Clear the start time."
+    },
+    "same_on_and_off_time": {
+      "message": "The start and stop times are the same. Choose two different times."
+    },
+    "schedule_entity_missing": {
+      "message": "Days is set to Weekly schedule, but no schedule is linked to the routine."
+    },
+    "times_with_weekly_schedule": {
+      "message": "A routine that follows a weekly schedule takes its times from the schedule. Clear the start and stop times, or choose other days."
+    },
+    "no_days_selected": {
+      "message": "Choose at least one day."
+    },
+    "duration_not_supported": {
+      "message": "A routine for this {domain} device does not offer this run timer."
+    },
+    "both_durations": {
+      "message": "Turn off after and Turn back on after cannot both be set on one routine. Set one of them to 0."
+    },
+    "pulse_not_supported": {
+      "message": "A routine for this {domain} device cannot pulse: it needs both an on and an off action."
+    },
+    "out_of_range": {
+      "message": "{setting} must be between {min} and {max}."
+    },
+    "invalid_inputs": {
+      "message": "The routine's automation holds settings Device Routines cannot read. Fix them in the automation editor, or change any routine setting on the device page to write them again."
+    }
   }
 }
