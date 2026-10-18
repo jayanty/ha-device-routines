@@ -5,10 +5,10 @@ condition shape (Stage 0 V13): a `target` (device, area, label, floor or entity)
 manager resolves to routine devices, and the `behavior` option any or all. They read the
 manager's views and hold no rules (PRD P16):
 
-- `is_paused`: the routine's status is `paused` or `skipping` (a skip is a pause until
+- `is_paused`: the view's `is_paused`: `paused` or `skipping` (a skip is a pause until
   its paired end, D18 and D19).
-- `is_active`: the routine's status is `active`: on, valid, attached, its target present,
-  and neither paused nor skipping. A routine that is off is neither paused nor active.
+- `is_active`: the view's `is_active`: on, valid, attached, its target present, and
+  neither paused nor skipping. A routine that is off is neither paused nor active.
 - `all` asks it of every routine the target names, `any` of at least one.
 - A target that names no routine, or a config entry that is not loaded, is false.
 """
@@ -32,8 +32,10 @@ from homeassistant.helpers.condition import (
 from homeassistant.helpers.typing import ConfigType
 import probatio as vol
 
+from . import DeviceRoutinesConfigEntry
+from .const import DOMAIN
+from .manager import RoutineManager
 from .models import RoutineView
-from .trigger import loaded_manager, routine_is_active, routine_is_paused
 
 CONDITION_SCHEMA: Final = vol.Schema(
     {
@@ -43,6 +45,15 @@ CONDITION_SCHEMA: Final = vol.Schema(
         },
     }
 )
+
+
+def _loaded_manager(hass: HomeAssistant) -> RoutineManager | None:
+    """Return the manager of the loaded config entry, or None while it is not loaded."""
+    entries = hass.config_entries.async_loaded_entries(DOMAIN)
+    if not entries:
+        return None
+    entry: DeviceRoutinesConfigEntry = entries[0]
+    return entry.runtime_data.manager
 
 
 class RoutineStateCondition(Condition):
@@ -70,7 +81,7 @@ class RoutineStateCondition(Condition):
 
     def _async_check(self, **kwargs: Unpack[ConditionCheckParams]) -> bool:  # noqa: ARG002  # the core's signature
         """Ask the manager's views; false without a loaded entry or a routine."""
-        manager = loaded_manager(self._hass)
+        manager = _loaded_manager(self._hass)
         if manager is None:
             return False
         targeted = manager.resolve_targets(self._target).device_ids
@@ -86,7 +97,7 @@ class IsPausedCondition(RoutineStateCondition):
     @staticmethod
     def holds(view: RoutineView | None) -> bool:
         """Tell whether the routine is paused or skipping."""
-        return routine_is_paused(view)
+        return view is not None and view.is_paused
 
 
 class IsActiveCondition(RoutineStateCondition):
@@ -95,7 +106,7 @@ class IsActiveCondition(RoutineStateCondition):
     @staticmethod
     def holds(view: RoutineView | None) -> bool:
         """Tell whether the routine is on and not paused."""
-        return routine_is_active(view)
+        return view is not None and view.is_active
 
 
 CONDITIONS: Final[dict[str, type[Condition]]] = {

@@ -18,7 +18,6 @@ from .entity import (
 )
 from .maintenance import MaintenanceAction
 from .manager import RoutineManager
-from .models import Status
 
 # Nothing here polls, so there is nothing to serialize.
 PARALLEL_UPDATES = 0
@@ -41,17 +40,14 @@ async def async_setup_entry(
 
 
 class SkipNextButton(DeviceRoutinesDeviceEntity, ButtonEntity):
-    """Skips the action the Schedule shows next (FR-R11); unavailable with nothing next."""
+    """Skips the action the Schedule shows next (FR-R11); unavailable with nothing next.
+
+    The manager says when (`unavailable_reason`, reason `nothing_to_skip`).
+    """
 
     def __init__(self, manager: RoutineManager, device_id: str) -> None:
         """Attach to the device's page."""
         super().__init__(manager, device_id, "skip_next")
-
-    @property
-    def available(self) -> bool:
-        """Return whether an action is scheduled."""
-        view = self._view
-        return super().available and view is not None and view.next_action is not None
 
     async def async_press(self) -> None:
         """Skip the next action."""
@@ -59,21 +55,14 @@ class SkipNextButton(DeviceRoutinesDeviceEntity, ButtonEntity):
 
 
 class ResumeButton(DeviceRoutinesDeviceEntity, ButtonEntity):
-    """Ends a pause or a skip now (FR-R13); unavailable unless paused or skipping."""
+    """Ends a pause or a skip now (FR-R13); unavailable unless paused or skipping.
+
+    The manager says when (`unavailable_reason`, reason `not_paused`).
+    """
 
     def __init__(self, manager: RoutineManager, device_id: str) -> None:
         """Attach to the device's page."""
         super().__init__(manager, device_id, "resume")
-
-    @property
-    def available(self) -> bool:
-        """Return whether the routine is paused or skipping."""
-        view = self._view
-        return (
-            super().available
-            and view is not None
-            and view.status in {Status.PAUSED, Status.SKIPPING}
-        )
 
     async def async_press(self) -> None:
         """Resume the routine."""

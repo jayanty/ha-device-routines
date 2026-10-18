@@ -16,7 +16,6 @@ from .const import HEALTH_STATES
 from .entity import DeviceRoutinesHubEntity, linked_device_info
 from .health import HealthMonitor
 from .manager import ManagerEvent, RoutineManager
-from .models import Status
 from .summary import SCHEDULE_KEY, SummaryCoordinator, schedule_unique_id
 
 _LOGGER = logging.getLogger(__name__)
@@ -118,7 +117,7 @@ class RoutinesSensor(DeviceRoutinesHubEntity, SensorEntity):
 
     def _read(self) -> None:
         rows = self._manager.hub_routines()
-        self._attr_native_value = sum(row.status is Status.ACTIVE for row in rows)
+        self._attr_native_value = sum(row.active for row in rows)
         self._attr_extra_state_attributes = {
             "routines": [
                 {

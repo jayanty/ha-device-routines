@@ -88,6 +88,7 @@ from .const import (
 from .domains import PROFILES, Candidate, pick_targets, profile_for
 from .models import (
     ALL_DAYS,
+    PAUSING_STATUSES,
     CompileError,
     Days,
     DomainProfile,
@@ -179,6 +180,11 @@ REASON_WEEKLY_SCHEDULE: Final = "weekly_schedule"
 # FR-R4: keep alive never fires then).
 _KEEP_ALIVE_KEY: Final = "turn_back_on_after"
 REASON_SCHEDULE_OFF: Final = "schedule_off"
+# Skip next has nothing to skip, Resume nothing to end (PRD 4.2, FR-R11, FR-R13).
+_SKIP_KEY: Final = "skip_next"
+_RESUME_KEY: Final = "resume"
+REASON_NOTHING_TO_SKIP: Final = "nothing_to_skip"
+REASON_NOT_PAUSED: Final = "not_paused"
 
 # Why the manager turned an automation off, so it turns it back on when that ends.
 _OFF_INVALID: Final = "invalid"
@@ -321,6 +327,11 @@ class HubRoutine:
     next_action: str | None
     status: Status
     automation: str | None
+
+    @property
+    def active(self) -> bool:
+        """Whether the routine counts as active on the hub (`RoutineView.is_active`)."""
+        return self.status is Status.ACTIVE
 
 
 # --------------------------------------------------------------------------------------
@@ -911,19 +922,29 @@ class RoutineManager:
         so a person can pick another target (L52); the two time entities read
         `weekly_schedule` while Days is Weekly schedule (PRD 4.2: the schedule's blocks
         give the times); Turn back on after reads `schedule_off` while the routine's
-        window or weekly schedule says off (PRD 4.3). Without a key it is for the device.
+        window or weekly schedule says off (PRD 4.3); Skip next reads `nothing_to_skip`
+        with nothing scheduled and Resume `not_paused` unless paused or skipping (PRD 4.2).
+        Without a key it is for the device.
         """
         editing = key is None or key in _CONFIG_KEYS
         if editing and not self._adapter.works(ha_adapter.CAPABILITY_WRITE):
             return "adapter_incompatible"
         routine = self._routines.get(device_id)
-        if routine is None:
-            return None
-        if routine.detached:
+        if routine is not None and routine.detached:
             return "detached"
-        if routine.missing_target and key != _TARGET_KEY:
+        if routine is not None and routine.missing_target and key != _TARGET_KEY:
             return "missing_target"
-        return None if key is None else self._key_reason(routine, key)
+        if key in {_SKIP_KEY, _RESUME_KEY}:
+            return self._runtime_reason(routine, key)
+        return None if key is None or routine is None else self._key_reason(routine, key)
+
+    def _runtime_reason(self, routine: _Routine | None, key: str) -> str | None:
+        """Return why Skip next or Resume is unavailable: nothing to skip, or to end."""
+        status = self._status(routine) if routine is not None else Status.OFF
+        if key == _SKIP_KEY:
+            upcoming = self._occurrences(routine, status) if routine is not None else []
+            return None if upcoming else REASON_NOTHING_TO_SKIP
+        return None if status in PAUSING_STATUSES else REASON_NOT_PAUSED
 
     def _key_reason(self, routine: _Routine, key: str) -> str | None:
         """Return the reason one control is unavailable by its own rule (PRD 4.2, 4.3)."""

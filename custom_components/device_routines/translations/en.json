@@ -369,7 +369,8 @@
             "state": {
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
-              "missing_target": "The entity the routine drives is missing"
+              "missing_target": "The entity the routine drives is missing",
+              "nothing_to_skip": "Nothing is scheduled to skip"
             }
           }
         }
@@ -382,7 +383,8 @@
             "state": {
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
-              "missing_target": "The entity the routine drives is missing"
+              "missing_target": "The entity the routine drives is missing",
+              "not_paused": "The routine is neither paused nor skipping"
             }
           }
         }

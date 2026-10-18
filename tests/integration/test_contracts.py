@@ -1020,44 +1020,10 @@ def _module_param(name: str, reason: str | None = None) -> Any:
     )
 
 
-# The surfaces that break P16 today: each reason names the place and the smallest fix.
-STATUS_RULE_IN_BUTTON: Final = (
-    "P16 S4: button.py decides availability itself: SkipNextButton.available reads "
-    "view.next_action and ResumeButton.available compares view.status with "
-    "{Status.PAUSED, Status.SKIPPING}, so the console cannot ask the same question and "
-    "the buttons carry no reason. Fix: RoutineManager.unavailable_reason(device_id, key) "
-    "answers for skip_next (nothing to skip) and resume (not paused), like the time keys; "
-    "the buttons keep only DeviceRoutinesDeviceEntity.available. Route to manager.py "
-    "and button.py (carry over lane)."
-)
-STATUS_RULE_IN_SENSOR: Final = (
-    "P16 S4: sensor.py RoutinesSensor._read counts `row.status is Status.ACTIVE` itself, "
-    "a third copy of what active means (trigger.py and summary.py hold the others). Fix: "
-    "the manager reports the count (or HubRoutine carries `active`), the sensor renders it. "
-    "Route to manager.py and sensor.py (carry over lane)."
-)
-STATUS_RULE_IN_TRIGGER: Final = (
-    "P16 S4: trigger.py defines what paused and active mean (PAUSED_STATUSES, "
-    "routine_is_paused, routine_is_active: decision L47) in a surface; summary.py keeps "
-    "its own _PAUSING_STATUSES. Fix: one predicate in the service layer, for example "
-    "`is_paused` and `is_active` properties on models.RoutineView (no new field, so the "
-    "WebSocket payload is unchanged), read by trigger.py, condition.py, button.py, "
-    "sensor.py and summary.py. Route to models.py and trigger.py (carry over lane)."
-)
-SURFACE_IMPORT_IN_CONDITION: Final = (
-    "P16 S1: condition.py imports loaded_manager, routine_is_active and routine_is_paused "
-    "from trigger.py: a surface calling another surface (PRD 7.5: surfaces call the "
-    "service layer and never each other). Fix: the paused and active predicates move to "
-    "the service layer (see the trigger.py finding) and condition.py looks the loaded "
-    "manager up itself, as services.py and websocket_api.py do. Route to condition.py "
-    "(carry over lane)."
-)
-CHECKS: Final = {
-    "button": STATUS_RULE_IN_BUTTON,
-    "sensor": STATUS_RULE_IN_SENSOR,
-    "trigger": STATUS_RULE_IN_TRIGGER,
-    "condition": SURFACE_IMPORT_IN_CONDITION,
-}
+# The surfaces that break P16 today, each with a reason naming the place and the smallest
+# fix; the four found at the A4.1 dispatch (button, sensor, trigger, condition) were fixed
+# by the carry over lane (plan A4.0 items 17 to 19).
+CHECKS: Final[dict[str, str]] = {}
 
 
 @pytest.mark.parametrize("module", [_module_param(name, CHECKS.get(name)) for name in SURFACES])
@@ -1098,9 +1064,9 @@ def test_the_entity_base_hands_patches_to_the_manager() -> None:
     ("source", "expected"),
     [
         pytest.param("from .compiler import compile\n", "S1", id="a pure function"),
-        pytest.param("from .manager import routine_lines\n", "S1", id="a service module function"),
+        pytest.param("from .manager import apply_patch\n", "S1", id="a service module function"),
         pytest.param("from .summary import _marked\n", "S1", id="a private name"),
-        pytest.param("from .trigger import routine_is_paused\n", "S1", id="another surface"),
+        pytest.param("from .trigger import async_get_triggers\n", "S1", id="another surface"),
         pytest.param(
             "from custom_components.device_routines.nextrun import expected_state\n",
             "S1",

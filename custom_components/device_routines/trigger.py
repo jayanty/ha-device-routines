@@ -7,9 +7,10 @@ each, first or all. They are thin readers (PRD P16):
 
 - The moment is a bus event: the manager's `device_routines_paused` and
   `device_routines_resumed`, and the blueprint's `device_routines_action_skipped`.
-- Whether a routine is paused or active is its view's status (`RoutineManager.get`):
-  paused means `paused` or `skipping` (a skip is a pause until its paired end, D18 and
-  D19); active means `active` (on, valid and not paused).
+- Whether a routine is paused or active is its view's `is_paused` or `is_active`
+  (`RoutineManager.get`, the service layer's one reading of a status): paused means
+  `paused` or `skipping` (a skip is a pause until its paired end, D18 and D19); active
+  means `active` (on, valid and not paused).
 - `paused` fires when the event's routine reads paused, `resumed` when it reads active
   again; `action_skipped` fires for every skip, which only a paused routine makes.
 - `first` fires only while the event's routine is the one targeted routine in that state
@@ -47,10 +48,7 @@ from . import DeviceRoutinesConfigEntry
 from .compiler import EVENT_ACTION_SKIPPED
 from .const import DOMAIN, EVENT_PAUSED, EVENT_RESUMED
 from .manager import RoutineManager
-from .models import RoutineView, Status
-
-# Statuses a routine is paused in: a skip pauses until its paired end (D18, D19).
-PAUSED_STATUSES: Final = frozenset({Status.PAUSED, Status.SKIPPING})
+from .models import RoutineView
 
 TRIGGER_SCHEMA: Final = vol.Schema(
     {
@@ -64,23 +62,13 @@ TRIGGER_SCHEMA: Final = vol.Schema(
 )
 
 
-def loaded_manager(hass: HomeAssistant) -> RoutineManager | None:
+def _loaded_manager(hass: HomeAssistant) -> RoutineManager | None:
     """Return the manager of the loaded config entry, or None while it is not loaded."""
     entries = hass.config_entries.async_loaded_entries(DOMAIN)
     if not entries:
         return None
     entry: DeviceRoutinesConfigEntry = entries[0]
     return entry.runtime_data.manager
-
-
-def routine_is_paused(view: RoutineView | None) -> bool:
-    """Tell whether a routine is paused or skipping."""
-    return view is not None and view.status in PAUSED_STATUSES
-
-
-def routine_is_active(view: RoutineView | None) -> bool:
-    """Tell whether a routine is on, valid and neither paused nor skipping."""
-    return view is not None and view.status is Status.ACTIVE
 
 
 class RoutineEventTrigger(Trigger):
@@ -135,7 +123,7 @@ class RoutineEventTrigger(Trigger):
 
         @callback
         def heard(event: Event[Mapping[str, Any]]) -> None:
-            manager = loaded_manager(self._hass)
+            manager = _loaded_manager(self._hass)
             device_id = str(event.data.get("device_id"))
             if manager is None or not self.fires(manager, device_id):
                 return
@@ -160,7 +148,7 @@ class ActionSkippedTrigger(RoutineEventTrigger):
     @staticmethod
     def in_state(view: RoutineView | None) -> bool:
         """Tell whether a routine is paused: only a paused routine skips."""
-        return routine_is_paused(view)
+        return view is not None and view.is_paused
 
 
 class PausedTrigger(RoutineEventTrigger):
@@ -172,7 +160,7 @@ class PausedTrigger(RoutineEventTrigger):
     @staticmethod
     def in_state(view: RoutineView | None) -> bool:
         """Tell whether a routine is paused or skipping."""
-        return routine_is_paused(view)
+        return view is not None and view.is_paused
 
 
 class ResumedTrigger(RoutineEventTrigger):
@@ -184,7 +172,7 @@ class ResumedTrigger(RoutineEventTrigger):
     @staticmethod
     def in_state(view: RoutineView | None) -> bool:
         """Tell whether a routine is active again."""
-        return routine_is_active(view)
+        return view is not None and view.is_active
 
 
 TRIGGERS: Final[dict[str, type[Trigger]]] = {

@@ -71,6 +71,7 @@ import probatio as vol
 
 from . import ai_prompt, compiler, conflicts, ha_adapter, markers, nextrun, parser, repairs
 from .models import (
+    PAUSING_STATUSES,
     Conflict,
     DeviceContext,
     EntityRef,
@@ -113,7 +114,6 @@ AI_TASK_SERVICE: Final = "generate_data"
 _OFF_STATUSES: Final = frozenset({Status.OFF, Status.INVALID, Status.MISSING_TARGET})
 # Statuses under which the routine's automation runs its scheduled actions.
 _RUNNING_STATUSES: Final = frozenset({Status.ACTIVE, Status.PAUSED, Status.SKIPPING})
-_PAUSING_STATUSES: Final = frozenset({Status.PAUSED, Status.SKIPPING})
 
 _REGISTRY_EVENTS: Final = (
     er.EVENT_ENTITY_REGISTRY_UPDATED,
@@ -1278,7 +1278,7 @@ def _pause_end(routine: RoutineSummary | None, now: datetime) -> datetime | None
     """Return Paused until while the routine is paused or skipping and it is ahead."""
     if (
         routine is None
-        or routine.status not in _PAUSING_STATUSES
+        or routine.status not in PAUSING_STATUSES
         or routine.paused_until is None
         or routine.paused_until <= now
     ):

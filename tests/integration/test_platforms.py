@@ -785,7 +785,8 @@ async def test_the_config_controls_are_unavailable_while_the_adapter_cannot_writ
                 "adapter_incompatible",
             )
         else:
-            assert "reason" not in state.attributes, key
+            # Resume is unavailable for its own reason here: nothing is paused.
+            assert state.attributes.get("reason") in {None, "not_paused"}, key
     # Paused until and the override stay readable: the blueprint keeps reading them, and
     # skipping still works.
     for key in ("paused_until", "manual_override", "skip_next"):
@@ -1108,7 +1109,8 @@ def test_every_reason_a_control_can_show_is_translated() -> None:
 
     Config controls lose editing on an incompatible adapter; every control but Routine
     controls reads a missing target (L52); the times read `weekly_schedule` and Turn back
-    on after `schedule_off` (PRD 4.2 and 4.3, plan A4.0 item 9).
+    on after `schedule_off` (PRD 4.2 and 4.3, plan A4.0 item 9), Skip next
+    `nothing_to_skip` and Resume `not_paused` (PRD 4.2, plan A4.0 item 17).
     """
     strings = json.loads((COMPONENT / "strings.json").read_text(encoding="utf-8"))["entity"]
     words: dict[str, set[str]] = {
@@ -1126,6 +1128,10 @@ def test_every_reason_a_control_can_show_is_translated() -> None:
             reasons.add("weekly_schedule")
         if key == "turn_back_on_after":
             reasons.add("schedule_off")
+        if key == "skip_next":
+            reasons.add("nothing_to_skip")
+        if key == "resume":
+            reasons.add("not_paused")
         for name in words.get(key, {key}):
             states = strings[platform][name]["state_attributes"]["reason"]["state"]
             assert reasons <= set(states), (platform, name, reasons - set(states))

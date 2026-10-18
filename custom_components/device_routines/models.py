@@ -69,6 +69,10 @@ class Status(StrEnum):
     INVALID = "invalid"
 
 
+# The statuses a routine is paused in: a skip is a pause until its paired end (D18, D19).
+PAUSING_STATUSES: frozenset[Status] = frozenset({Status.PAUSED, Status.SKIPPING})
+
+
 class Source(StrEnum):
     """Who changed a device last (TECH_SPEC 4.3)."""
 
@@ -453,7 +457,9 @@ class RoutineView:
     """A snapshot of one routine, built by the manager and read by every surface.
 
     `skipped_action` is what Skip next skipped while the routine is skipping; `next_action`
-    is the next action that will really run, after any pause.
+    is the next action that will really run, after any pause. `is_paused` and `is_active`
+    say what paused and active mean, once, for every surface (PRD P16, L47); they are
+    properties, so a serialized view carries only the fields.
     """
 
     device_id: str
@@ -472,3 +478,13 @@ class RoutineView:
     conflicts: tuple[Conflict, ...]
     override: bool
     last_change_source: Source | None
+
+    @property
+    def is_paused(self) -> bool:
+        """Paused or skipping: a skip pauses until its paired end (D18, D19, L47)."""
+        return self.status in PAUSING_STATUSES
+
+    @property
+    def is_active(self) -> bool:
+        """On, valid, attached, its target present, and neither paused nor skipping."""
+        return self.status is Status.ACTIVE
