@@ -30,6 +30,13 @@ Build A (Phases 2 and 3) is in progress; the entries below grow with it.
   automation; every fixable one has a one step fix.
 - A WebSocket API for the coming console (routines, actions, opting devices in, the day's
   schedule, settings, maintenance and a subscription), documented in `docs/api.md`.
+- Health now reports the blueprint's status and schema, how many routines exist and load,
+  the open Repairs issues and the last reconcile, and reads `degraded` or `error` when
+  something needs attention; diagnostics cover routines with every id and name redacted.
+- The user guide covers giving a device a routine, skip, pause and resume, weekly
+  schedules, Turn back on after, pulse, the managed automation, editing it yourself,
+  removal, dashboards and scripts, supported devices, settings, troubleshooting and the
+  limitations.
 
 ## [0.1.0] - 2026-10-18
 

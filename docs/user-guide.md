@@ -574,7 +574,6 @@ content: >-
   {% endfor %}
 ```
 
-<!-- A3: lane 12 -->
 Everything the device page can do is also available over Home Assistant's WebSocket API
 for custom cards and tools; see [docs/api.md](api.md).
 
