@@ -75,6 +75,78 @@
       },
       "target": {
         "default": "mdi:target"
+      },
+      "on_kind": {
+        "default": "mdi:sun-clock-outline",
+        "state": {
+          "time": "mdi:clock-outline",
+          "sunrise": "mdi:weather-sunset-up",
+          "sunset": "mdi:weather-sunset-down"
+        }
+      },
+      "turn_on_at_kind": {
+        "default": "mdi:sun-clock-outline",
+        "state": {
+          "time": "mdi:clock-outline",
+          "sunrise": "mdi:weather-sunset-up",
+          "sunset": "mdi:weather-sunset-down"
+        }
+      },
+      "start_at_kind": {
+        "default": "mdi:sun-clock-outline",
+        "state": {
+          "time": "mdi:clock-outline",
+          "sunrise": "mdi:weather-sunset-up",
+          "sunset": "mdi:weather-sunset-down"
+        }
+      },
+      "open_at_kind": {
+        "default": "mdi:sun-clock-outline",
+        "state": {
+          "time": "mdi:clock-outline",
+          "sunrise": "mdi:weather-sunset-up",
+          "sunset": "mdi:weather-sunset-down"
+        }
+      },
+      "off_kind": {
+        "default": "mdi:sun-clock-outline",
+        "state": {
+          "time": "mdi:clock-outline",
+          "sunrise": "mdi:weather-sunset-up",
+          "sunset": "mdi:weather-sunset-down"
+        }
+      },
+      "turn_off_at_kind": {
+        "default": "mdi:sun-clock-outline",
+        "state": {
+          "time": "mdi:clock-outline",
+          "sunrise": "mdi:weather-sunset-up",
+          "sunset": "mdi:weather-sunset-down"
+        }
+      },
+      "return_to_dock_at_kind": {
+        "default": "mdi:sun-clock-outline",
+        "state": {
+          "time": "mdi:clock-outline",
+          "sunrise": "mdi:weather-sunset-up",
+          "sunset": "mdi:weather-sunset-down"
+        }
+      },
+      "close_at_kind": {
+        "default": "mdi:sun-clock-outline",
+        "state": {
+          "time": "mdi:clock-outline",
+          "sunrise": "mdi:weather-sunset-up",
+          "sunset": "mdi:weather-sunset-down"
+        }
+      },
+      "lock_at_kind": {
+        "default": "mdi:sun-clock-outline",
+        "state": {
+          "time": "mdi:clock-outline",
+          "sunrise": "mdi:weather-sunset-up",
+          "sunset": "mdi:weather-sunset-down"
+        }
       }
     },
     "number": {
@@ -89,6 +161,33 @@
       },
       "turn_back_on_after": {
         "default": "mdi:timer-refresh-outline"
+      },
+      "on_sun_offset": {
+        "default": "mdi:sun-clock"
+      },
+      "turn_on_at_sun_offset": {
+        "default": "mdi:sun-clock"
+      },
+      "start_at_sun_offset": {
+        "default": "mdi:sun-clock"
+      },
+      "open_at_sun_offset": {
+        "default": "mdi:sun-clock"
+      },
+      "off_sun_offset": {
+        "default": "mdi:sun-clock"
+      },
+      "turn_off_at_sun_offset": {
+        "default": "mdi:sun-clock"
+      },
+      "return_to_dock_at_sun_offset": {
+        "default": "mdi:sun-clock"
+      },
+      "close_at_sun_offset": {
+        "default": "mdi:sun-clock"
+      },
+      "lock_at_sun_offset": {
+        "default": "mdi:sun-clock"
       }
     },
     "button": {

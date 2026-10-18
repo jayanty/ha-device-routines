@@ -397,17 +397,23 @@ def routine_lines(settings: RoutineSettings, automation_id: str, alias: str) -> 
     parsing the rendered blueprint (PRD 12's round trip; the parser cannot read the
     shipped blueprint): the manager's item and the summary's index say the same. A sun
     bound reads as a sun trigger with its offset, its days on the line.
+
+    Only when (FR-R9) gates what the blueprint gates with its extra conditions (L64): the
+    starts, Turn back on after and the pulse, never an end or Turn off after. Those lines
+    carry the number of conditions, so they read "(if 1 condition passes)".
     """
     target = settings.target_entity
     on, off = routine_verbs(target)
     profile = PROFILES.get(target.partition(".")[0])
     inactive = profile.inactive_state if profile else "off"
+    conditions = len(settings.extra_conditions)
 
     def line(
         verb: Verb,
         *triggers: Any,
         follow_ups: tuple[FollowUp, ...] = (),
         weekdays: frozenset[Weekday] | None = None,
+        gated: bool = False,
     ) -> ParsedLine:
         return ParsedLine(
             automation_id=automation_id,
@@ -416,6 +422,7 @@ def routine_lines(settings: RoutineSettings, automation_id: str, alias: str) -> 
             verb=verb,
             triggers=triggers,
             weekdays=weekdays,
+            condition_count=conditions if gated else 0,
             follow_ups=follow_ups,
         )
 
@@ -424,16 +431,16 @@ def routine_lines(settings: RoutineSettings, automation_id: str, alias: str) -> 
 
     lines: list[ParsedLine] = []
     on_bound, off_bound = _sides(settings)
-    for verb, bound, day_set in (
-        (on, on_bound, settings.effective_days),
-        (off, off_bound, settings.end_days),
+    for verb, bound, day_set, gated in (
+        (on, on_bound, settings.effective_days, True),
+        (off, off_bound, settings.end_days, False),
     ):
         if bound is not None:
             trigger, weekdays = bound.trigger(days(day_set))
-            lines.append(line(verb, trigger, weekdays=weekdays))
+            lines.append(line(verb, trigger, weekdays=weekdays, gated=gated))
     if settings.days is Days.WEEKLY_SCHEDULE and settings.schedule_entity is not None:
         blocks = (settings.schedule_entity,)
-        lines.append(line(on, NamedTrigger("schedule.block_started", blocks)))
+        lines.append(line(on, NamedTrigger("schedule.block_started", blocks), gated=True))
         lines.append(line(off, NamedTrigger("schedule.block_ended", blocks)))
     active = "on" if inactive == "off" else None
     if settings.turn_off_after_min:
@@ -442,10 +449,11 @@ def routine_lines(settings: RoutineSettings, automation_id: str, alias: str) -> 
         lines.append(line(off, StateTrigger(target, active, moved, period)))
     if settings.turn_back_on_after_min:
         period = timedelta(minutes=settings.turn_back_on_after_min)
-        lines.append(line(on, StateTrigger(target, inactive, None, period)))
+        lines.append(line(on, StateTrigger(target, inactive, None, period), gated=True))
     if settings.pulse is not None:
         back = (FollowUp(timedelta(minutes=settings.pulse.minutes), Verb.TOGGLE),)
-        lines.append(line(Verb.TOGGLE, TimeTrigger(at=settings.pulse.at), follow_ups=back))
+        pulse = TimeTrigger(at=settings.pulse.at)
+        lines.append(line(Verb.TOGGLE, pulse, follow_ups=back, gated=True))
     return lines
 
 

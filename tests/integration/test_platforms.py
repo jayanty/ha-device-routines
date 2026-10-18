@@ -48,8 +48,8 @@ from custom_components.device_routines.models import (
     Verb,
     Weekday,
 )
-from custom_components.device_routines.number import TurnBackOnAfterNumber
-from custom_components.device_routines.select import TargetSelect
+from custom_components.device_routines.number import OffSunOffsetNumber, TurnBackOnAfterNumber
+from custom_components.device_routines.select import OnKindSelect, TargetSelect
 from custom_components.device_routines.switch import (
     CatchUpSwitch,
     RespectManualSwitch,
@@ -78,11 +78,15 @@ pytestmark = pytest.mark.parametrize("expected_lingering_timers", [True])
 
 COMPONENT = Path(__file__).resolve().parents[2] / "custom_components" / DOMAIN
 
-# The controls of TECH_SPEC 4.5 per domain profile (PRD 5.3).
+# The controls of TECH_SPEC 4.5 per domain profile (PRD 5.3); each time comes with its sun
+# companions, the timing select and the offset number (FR-R10, plan 6.2.5).
+ON_SIDE = frozenset({"on_time", "on_kind", "on_sun_offset"})
 EVERY_PAGE = frozenset(
     {
         "routine",
         "off_time",
+        "off_kind",
+        "off_sun_offset",
         "days",
         "catch_up",
         "respect_manual",
@@ -92,16 +96,20 @@ EVERY_PAGE = frozenset(
         "manual_override",
     }
 )
-TOGGLE = EVERY_PAGE | {"on_time", "turn_off_after", "turn_back_on_after"}
-OPEN_CLOSE = EVERY_PAGE | {"on_time", "turn_off_after"}  # climate, cover, valve
+TOGGLE = EVERY_PAGE | ON_SIDE | {"turn_off_after", "turn_back_on_after"}
+OPEN_CLOSE = EVERY_PAGE | ON_SIDE | {"turn_off_after"}  # climate, cover, valve
 OFF_ONLY = EVERY_PAGE | {"turn_off_after"}  # media player, lock, refused cover and valve
-START_DOCK = EVERY_PAGE | {"on_time"}  # vacuum, lawn mower
+START_DOCK = EVERY_PAGE | ON_SIDE  # vacuum, lawn mower
 
 # Key: platform, entity category, enabled by default (TECH_SPEC 4.5).
 TABLE: dict[str, tuple[str, EntityCategory | None, bool]] = {
     "routine": ("switch", EntityCategory.CONFIG, True),
     "on_time": ("time", EntityCategory.CONFIG, True),
     "off_time": ("time", EntityCategory.CONFIG, True),
+    "on_kind": ("select", EntityCategory.CONFIG, False),
+    "off_kind": ("select", EntityCategory.CONFIG, False),
+    "on_sun_offset": ("number", EntityCategory.CONFIG, False),
+    "off_sun_offset": ("number", EntityCategory.CONFIG, False),
     "days": ("select", EntityCategory.CONFIG, True),
     "turn_off_after": ("number", EntityCategory.CONFIG, True),
     "turn_back_on_after": ("number", EntityCategory.CONFIG, False),
@@ -114,6 +122,7 @@ TABLE: dict[str, tuple[str, EntityCategory | None, bool]] = {
     "target": ("select", EntityCategory.CONFIG, True),
 }
 CONFIG_KEYS = {key for key, (_, category, _) in TABLE.items() if category is EntityCategory.CONFIG}
+SUN_KEYS = ("on_kind", "on_sun_offset", "off_kind", "off_sun_offset")
 
 
 def page(hass: HomeAssistant, device_id: str) -> dict[str, er.RegistryEntry]:
@@ -275,7 +284,14 @@ async def test_categories_and_enabled_defaults_follow_the_table(
         assert (hass.states.get(entry.entity_id) is not None) is enabled, key
         assert entry.has_entity_name, key
         assert entry.unique_id == f"{DOMAIN}_{home.lamp}_{key}"
-        labels = {"on_time": "turn_on_at", "off_time": "turn_off_at"}
+        labels = {
+            "on_time": "turn_on_at",
+            "off_time": "turn_off_at",
+            "on_kind": "turn_on_at_kind",
+            "off_kind": "turn_off_at_kind",
+            "on_sun_offset": "turn_on_at_sun_offset",
+            "off_sun_offset": "turn_off_at_sun_offset",
+        }
         assert entry.translation_key == labels.get(key, key)
         assert manager.entity_id_for(home.lamp, key) == entry.entity_id
     # Every control sits on the linked record of the user's device (L25).
@@ -513,8 +529,8 @@ async def test_the_controls_show_the_routine_settings(
         turn_off_after_min=45,
     )
 
-    # The three advanced controls are created disabled, so they have no state to read.
-    enabled = TOGGLE - {"turn_back_on_after", "catch_up", "respect_manual"}
+    # The advanced controls are created disabled, so they have no state to read.
+    enabled = TOGGLE - {"turn_back_on_after", "catch_up", "respect_manual", *SUN_KEYS}
     values = {key: shown(hass, entity_of(hass, home.fan, key)).state for key in enabled}
     assert values == {
         "routine": "on",
@@ -530,6 +546,8 @@ async def test_the_controls_show_the_routine_settings(
     assert CatchUpSwitch(manager, home.fan).is_on is True
     assert RespectManualSwitch(manager, home.fan).is_on is True
     assert TurnBackOnAfterNumber(manager, home.fan).native_value == 0
+    assert OnKindSelect(manager, home.fan).current_option == "time"
+    assert OffSunOffsetNumber(manager, home.fan).native_value == 0
 
 
 # --------------------------------------------------------------------------------------
@@ -1108,30 +1126,41 @@ def test_every_reason_a_control_can_show_is_translated() -> None:
     """Each control's `reason` names a translated state, under every key it can take.
 
     Config controls lose editing on an incompatible adapter; every control but Routine
-    controls reads a missing target (L52); the times read `weekly_schedule` and Turn back
-    on after `schedule_off` (PRD 4.2 and 4.3, plan A4.0 item 9), Skip next
+    controls reads a missing target (L52); the times and their sun companions read
+    `weekly_schedule` and Turn back on after `schedule_off` (PRD 4.2 and 4.3, plan A4.0
+    item 9), a time `sun_bound` and a sun offset `time_bound` (FR-R10), Skip next
     `nothing_to_skip` and Resume `not_paused` (PRD 4.2, plan A4.0 item 17).
     """
     strings = json.loads((COMPONENT / "strings.json").read_text(encoding="utf-8"))["entity"]
+    on_labels = {"on"} | {p.on_label_key for p in PROFILES.values() if p.on_label_key}
+    off_labels = {"off"} | {p.off_label_key for p in PROFILES.values()}
     words: dict[str, set[str]] = {
-        "on_time": {"on_time"} | {p.on_label_key for p in PROFILES.values() if p.on_label_key},
-        "off_time": {"off_time"} | {p.off_label_key for p in PROFILES.values()},
+        "on_time": {"on_time"} | on_labels - {"on"},
+        "off_time": {"off_time"} | off_labels - {"off"},
+        "on_kind": {f"{label}_kind" for label in on_labels},
+        "off_kind": {f"{label}_kind" for label in off_labels},
+        "on_sun_offset": {f"{label}_sun_offset" for label in on_labels},
+        "off_sun_offset": {f"{label}_sun_offset" for label in off_labels},
         "turn_off_after": {p.off_after_label_key for p in PROFILES.values()},
     }
+    # The reasons a control has by its own rule, besides the shared ones.
+    own: dict[str, set[str]] = {
+        "on_time": {"weekly_schedule", "sun_bound"},
+        "off_time": {"weekly_schedule", "sun_bound"},
+        "on_kind": {"weekly_schedule"},
+        "off_kind": {"weekly_schedule"},
+        "on_sun_offset": {"weekly_schedule", "time_bound"},
+        "off_sun_offset": {"weekly_schedule", "time_bound"},
+        "turn_back_on_after": {"schedule_off"},
+        "skip_next": {"nothing_to_skip"},
+        "resume": {"not_paused"},
+    }
     for key, (platform, category, _enabled) in TABLE.items():
-        reasons = {"detached"}
+        reasons = {"detached", *own.get(key, set())}
         if category is EntityCategory.CONFIG:
             reasons.add("adapter_incompatible")
         if key != "target":
             reasons.add("missing_target")
-        if key in {"on_time", "off_time"}:
-            reasons.add("weekly_schedule")
-        if key == "turn_back_on_after":
-            reasons.add("schedule_off")
-        if key == "skip_next":
-            reasons.add("nothing_to_skip")
-        if key == "resume":
-            reasons.add("not_paused")
         for name in words.get(key, {key}):
             states = strings[platform][name]["state_attributes"]["reason"]["state"]
             assert reasons <= set(states), (platform, name, reasons - set(states))

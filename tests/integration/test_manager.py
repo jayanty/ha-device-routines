@@ -17,6 +17,7 @@ from homeassistant.helpers import (
     category_registry as cr,
     device_registry as dr,
     entity_registry as er,
+    floor_registry as fr,
     label_registry as lr,
 )
 from homeassistant.util import dt as dt_util
@@ -1371,6 +1372,187 @@ async def test_skip_next_over_a_target_ignores_a_routine_with_nothing_to_skip(
     hub = manager.resolve_targets({"entity_id": "sensor.device_routines_health"})
     assert hub.device_ids == ()
     assert hub.ignored[0].reason == "no_routine"
+
+
+async def test_view_carries_opted_in(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any, hass_ws_client: Any
+) -> None:
+    """L63 gap 1: an opted out routine waiting for cleanup is told apart from one that is off."""
+    await give_routine(hass, manager, home.fan, freezer, on_time=time(17), off_time=time(23))
+    await manager.async_disable(home.fan)
+    view = manager.get(home.fan)
+    assert view is not None
+    assert (view.status, view.opted_in) == (Status.OFF, True)
+
+    await manager.async_opt_out(home.fan)
+
+    view = manager.get(home.fan)
+    assert view is not None
+    assert (view.status, view.opted_in) == (Status.OFF, False)
+    assert [(item.device_id, item.opted_in) for item in manager.list()] == [(home.fan, False)]
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": "device_routines/routines/list"})
+    response = await client.receive_json()
+    assert response["success"], response
+    (listed,) = response["result"]["routines"]
+    assert (listed["status"], listed["opted_in"]) == ("off", False)
+    assert list(listed)[-1] == "opted_in"  # appended last (plan 6.2.5)
+    await manager.async_opt_in(home.fan)
+    view = manager.get(home.fan)
+    assert view is not None
+    assert view.opted_in is True
+
+
+async def test_ignored_targets_carry_placeholders(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any, hass_ws_client: Any
+) -> None:
+    """L63 gap 4: every ignored target renders its reason, with `target` and `device`.
+
+    `device` is the device's name, or for a target that names no device its own name; a
+    refusal keeps its own placeholders.
+    """
+    await give_routine(hass, manager, home.fan, freezer, on_time=time(17), off_time=time(23))
+    await give_routine(hass, manager, home.lamp, freezer, turn_off_after_min=30)
+    attic = ar.async_get(hass).async_create("Attic")
+    upstairs = fr.async_get(hass).async_create("Upstairs")
+    unused = lr.async_get(hass).async_create("Unused")
+    hass.states.async_set("sensor.outdoor_temperature", "12", {"friendly_name": "Outdoor"})
+
+    resolved = manager.resolve_targets(
+        {
+            "device_id": [home.garage, "no-such-device"],
+            "entity_id": ["sensor.outdoor_temperature", "sensor.unknown"],
+            "area_id": [attic.id, "nowhere"],
+            "floor_id": [upstairs.floor_id, "no-such-floor"],
+            "label_id": [unused.label_id, "no-such-label"],
+        }
+    )
+
+    assert {(i.target, i.kind, i.reason): dict(i.placeholders) for i in resolved.ignored} == {
+        (home.garage, "device", "no_routine"): {"target": home.garage, "device": "Garage door"},
+        ("no-such-device", "device", "no_routine"): {
+            "target": "no-such-device",
+            "device": "no-such-device",
+        },
+        ("sensor.outdoor_temperature", "entity", "no_routine"): {
+            "target": "sensor.outdoor_temperature",
+            "device": "Outdoor",
+        },
+        ("sensor.unknown", "entity", "no_routine"): {
+            "target": "sensor.unknown",
+            "device": "sensor.unknown",
+        },
+        (attic.id, "area", "no_routine"): {"target": attic.id, "device": "Attic"},
+        ("nowhere", "area", "no_routine"): {"target": "nowhere", "device": "nowhere"},
+        (upstairs.floor_id, "floor", "no_routine"): {
+            "target": upstairs.floor_id,
+            "device": "Upstairs",
+        },
+        ("no-such-floor", "floor", "no_routine"): {
+            "target": "no-such-floor",
+            "device": "no-such-floor",
+        },
+        (unused.label_id, "label", "no_routine"): {
+            "target": unused.label_id,
+            "device": "Unused",
+        },
+        ("no-such-label", "label", "no_routine"): {
+            "target": "no-such-label",
+            "device": "no-such-label",
+        },
+    }
+    # A refusal of the action names its device, as its own placeholders do; the WebSocket
+    # API carries them (the example in docs/api.md).
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {
+            "type": "device_routines/routines/action",
+            "action": "skip_next",
+            "target": {"area_id": home.area},
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"], response
+    assert response["result"]["ignored"] == [
+        {
+            "target": home.lamp,
+            "kind": "device",
+            "reason": "nothing_to_skip",
+            "placeholders": {"target": home.lamp, "device": "Desk lamp"},
+        }
+    ]
+    # Placeholders are words, not identity.
+    assert IgnoredTarget(home.lamp, "device", "no_routine") == IgnoredTarget(
+        home.lamp, "device", "no_routine", {"device": "Desk lamp"}
+    )
+
+
+def hand_switching(key: str, at: str, service: str) -> dict[str, Any]:
+    """A hand written automation switching the fan at a time."""
+    return {
+        "id": key,
+        "alias": key.replace("_", " ").capitalize(),
+        "triggers": [{"trigger": "time", "at": at}],
+        "actions": [{"action": service, "target": {"entity_id": FAN}}],
+    }
+
+
+def found(conflicts: Any) -> set[tuple[str, Any]]:
+    return {(conflict.reason_key, conflict.at) for conflict in conflicts}
+
+
+async def test_an_update_answers_only_the_conflicts_its_new_settings_have(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, clock: Clock, freezer: Any
+) -> None:
+    """The answer of a patch (`routines/set`) is consistent at once (FR-S6).
+
+    The Schedule reads the routine from its written inputs a few seconds later; until
+    then its conflicts are those of the old settings, and the view leaves out the ones
+    the new settings no longer have.
+    """
+    clock.set(clock.at(0, "16:00"))  # Monday
+    five, eight, eleven = clock.at(0, "17:00"), clock.at(0, "20:00"), clock.at(0, "23:00")
+    await give_routine(hass, manager, home.fan, freezer, on_time=time(17), off_time=time(23))
+    await save_entry(hass, hand_switching("early_fan_off", "17:00:00", "switch.turn_off"))
+    await tick(hass, freezer, 3)
+    view = manager.get(home.fan)
+    assert view is not None
+    assert found(view.conflicts) == {("opposite_same_minute", five), ("off_in_on_window", five)}
+
+    # The start moves out of the conflict: the answer carries none.
+    result = await manager.async_update(home.fan, {"on_time": "18:00"})
+
+    assert result.view is not None
+    assert result.view.conflicts == ()
+    assert found(manager.summary.summaries[home.fan].conflicts) != set()  # not read yet
+    await flush(hass, freezer)
+    await tick(hass, freezer, 3)
+    assert manager.summary.summaries[home.fan].conflicts == ()
+
+    # The docs example: an automation turns the fan on at 23:00, the routine's end. Moving
+    # the end to 22:30 ends the same minute conflict; the on in the off period stays, and
+    # so do the conflicts of two other automations at 20:00, inside the window.
+    await save_entry(hass, hand_switching("late_fan_on", "23:00:00", "switch.turn_on"))
+    await save_entry(hass, hand_switching("evening_fan_on", "20:00:00", "switch.turn_on"))
+    await save_entry(hass, hand_switching("evening_fan_off", "20:00:00", "switch.turn_off"))
+    await tick(hass, freezer, 3)
+    view = manager.get(home.fan)
+    assert view is not None
+    evening = {("opposite_same_minute", eight), ("off_in_on_window", eight)}
+    assert found(view.conflicts) == {
+        ("opposite_same_minute", eleven),
+        ("on_in_off_window", eleven),
+        *evening,
+    }
+    result = await manager.async_update(home.fan, {"off_time": "22:30"})
+    assert result.view is not None
+    assert found(result.view.conflicts) == {("on_in_off_window", eleven), *evening}
+    await flush(hass, freezer)
+    await tick(hass, freezer, 3)
+    view = manager.get(home.fan)
+    assert view is not None
+    assert view.conflicts == manager.summary.summaries[home.fan].conflicts
+    assert found(view.conflicts) == {("on_in_off_window", eleven), *evening}
 
 
 def test_the_entity_keys_are_the_platform_keys_longest_first() -> None:

@@ -152,7 +152,8 @@
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
               "missing_target": "The entity the routine drives is missing",
-              "weekly_schedule": "The weekly schedule gives the times"
+              "weekly_schedule": "The weekly schedule gives the times",
+              "sun_bound": "Sunrise or sunset gives this time"
             }
           }
         }
@@ -166,7 +167,8 @@
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
               "missing_target": "The entity the routine drives is missing",
-              "weekly_schedule": "The weekly schedule gives the times"
+              "weekly_schedule": "The weekly schedule gives the times",
+              "sun_bound": "Sunrise or sunset gives this time"
             }
           }
         }
@@ -180,7 +182,8 @@
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
               "missing_target": "The entity the routine drives is missing",
-              "weekly_schedule": "The weekly schedule gives the times"
+              "weekly_schedule": "The weekly schedule gives the times",
+              "sun_bound": "Sunrise or sunset gives this time"
             }
           }
         }
@@ -194,7 +197,8 @@
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
               "missing_target": "The entity the routine drives is missing",
-              "weekly_schedule": "The weekly schedule gives the times"
+              "weekly_schedule": "The weekly schedule gives the times",
+              "sun_bound": "Sunrise or sunset gives this time"
             }
           }
         }
@@ -208,7 +212,8 @@
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
               "missing_target": "The entity the routine drives is missing",
-              "weekly_schedule": "The weekly schedule gives the times"
+              "weekly_schedule": "The weekly schedule gives the times",
+              "sun_bound": "Sunrise or sunset gives this time"
             }
           }
         }
@@ -222,7 +227,8 @@
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
               "missing_target": "The entity the routine drives is missing",
-              "weekly_schedule": "The weekly schedule gives the times"
+              "weekly_schedule": "The weekly schedule gives the times",
+              "sun_bound": "Sunrise or sunset gives this time"
             }
           }
         }
@@ -236,7 +242,8 @@
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
               "missing_target": "The entity the routine drives is missing",
-              "weekly_schedule": "The weekly schedule gives the times"
+              "weekly_schedule": "The weekly schedule gives the times",
+              "sun_bound": "Sunrise or sunset gives this time"
             }
           }
         }
@@ -250,7 +257,8 @@
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
               "missing_target": "The entity the routine drives is missing",
-              "weekly_schedule": "The weekly schedule gives the times"
+              "weekly_schedule": "The weekly schedule gives the times",
+              "sun_bound": "Sunrise or sunset gives this time"
             }
           }
         }
@@ -264,7 +272,8 @@
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
               "missing_target": "The entity the routine drives is missing",
-              "weekly_schedule": "The weekly schedule gives the times"
+              "weekly_schedule": "The weekly schedule gives the times",
+              "sun_bound": "Sunrise or sunset gives this time"
             }
           }
         }
@@ -300,6 +309,177 @@
               "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
               "detached": "The routine is a normal automation now",
               "missing_target": "The entity the routine drives is missing"
+            }
+          }
+        }
+      },
+      "on_kind": {
+        "name": "Turn on timing",
+        "state": {
+          "time": "Time",
+          "sunrise": "Sunrise",
+          "sunset": "Sunset"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
+            }
+          }
+        }
+      },
+      "turn_on_at_kind": {
+        "name": "Turn on timing",
+        "state": {
+          "time": "Time",
+          "sunrise": "Sunrise",
+          "sunset": "Sunset"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
+            }
+          }
+        }
+      },
+      "start_at_kind": {
+        "name": "Start timing",
+        "state": {
+          "time": "Time",
+          "sunrise": "Sunrise",
+          "sunset": "Sunset"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
+            }
+          }
+        }
+      },
+      "open_at_kind": {
+        "name": "Open timing",
+        "state": {
+          "time": "Time",
+          "sunrise": "Sunrise",
+          "sunset": "Sunset"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
+            }
+          }
+        }
+      },
+      "off_kind": {
+        "name": "Turn off timing",
+        "state": {
+          "time": "Time",
+          "sunrise": "Sunrise",
+          "sunset": "Sunset"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
+            }
+          }
+        }
+      },
+      "turn_off_at_kind": {
+        "name": "Turn off timing",
+        "state": {
+          "time": "Time",
+          "sunrise": "Sunrise",
+          "sunset": "Sunset"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
+            }
+          }
+        }
+      },
+      "return_to_dock_at_kind": {
+        "name": "Return to dock timing",
+        "state": {
+          "time": "Time",
+          "sunrise": "Sunrise",
+          "sunset": "Sunset"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
+            }
+          }
+        }
+      },
+      "close_at_kind": {
+        "name": "Close timing",
+        "state": {
+          "time": "Time",
+          "sunrise": "Sunrise",
+          "sunset": "Sunset"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
+            }
+          }
+        }
+      },
+      "lock_at_kind": {
+        "name": "Lock timing",
+        "state": {
+          "time": "Time",
+          "sunrise": "Sunrise",
+          "sunset": "Sunset"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times"
             }
           }
         }
@@ -355,6 +535,141 @@
               "detached": "The routine is a normal automation now",
               "missing_target": "The entity the routine drives is missing",
               "schedule_off": "The schedule says off now, so nothing would turn the device back on"
+            }
+          }
+        }
+      },
+      "on_sun_offset": {
+        "name": "Turn on sun offset",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times",
+              "time_bound": "A time of day is set, so no sun offset applies"
+            }
+          }
+        }
+      },
+      "turn_on_at_sun_offset": {
+        "name": "Turn on sun offset",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times",
+              "time_bound": "A time of day is set, so no sun offset applies"
+            }
+          }
+        }
+      },
+      "start_at_sun_offset": {
+        "name": "Start sun offset",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times",
+              "time_bound": "A time of day is set, so no sun offset applies"
+            }
+          }
+        }
+      },
+      "open_at_sun_offset": {
+        "name": "Open sun offset",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times",
+              "time_bound": "A time of day is set, so no sun offset applies"
+            }
+          }
+        }
+      },
+      "off_sun_offset": {
+        "name": "Turn off sun offset",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times",
+              "time_bound": "A time of day is set, so no sun offset applies"
+            }
+          }
+        }
+      },
+      "turn_off_at_sun_offset": {
+        "name": "Turn off sun offset",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times",
+              "time_bound": "A time of day is set, so no sun offset applies"
+            }
+          }
+        }
+      },
+      "return_to_dock_at_sun_offset": {
+        "name": "Return to dock sun offset",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times",
+              "time_bound": "A time of day is set, so no sun offset applies"
+            }
+          }
+        }
+      },
+      "close_at_sun_offset": {
+        "name": "Close sun offset",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times",
+              "time_bound": "A time of day is set, so no sun offset applies"
+            }
+          }
+        }
+      },
+      "lock_at_sun_offset": {
+        "name": "Lock sun offset",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "adapter_incompatible": "Editing is unavailable on this Home Assistant version",
+              "detached": "The routine is a normal automation now",
+              "missing_target": "The entity the routine drives is missing",
+              "weekly_schedule": "The weekly schedule gives the times",
+              "time_bound": "A time of day is set, so no sun offset applies"
             }
           }
         }

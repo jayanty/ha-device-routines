@@ -1044,6 +1044,34 @@ async def test_an_owned_routine_without_a_provider_item_reads_as_its_settings(
     assert state.state == "Routine off"
 
 
+async def test_routine_with_only_when_reads_if_1_condition_passes(
+    hass: HomeAssistant, home: dict[str, Any], routine_blueprint: None
+) -> None:
+    """FR-R9: the Schedule line of a start the blueprint gates counts its conditions.
+
+    The end is never gated (L64), so it reads as it did; the index reads the owned routine
+    from its inputs, as the manager's own item does.
+    """
+    fan = home["fan"].id
+    guarded = RoutineSettings(
+        target_entity=FAN,
+        on_time=time(17),
+        off_time=time(9),
+        extra_conditions=(
+            {"condition": "state", "entity_id": "input_boolean.guest_mode", "state": "off"},
+        ),
+    )
+
+    await start(hass, [routine_config(fan, guarded)])
+
+    # Monday 08:00, inside the window: the end comes first.
+    items = sensor_state(hass, fan).attributes["items"]
+    assert [(item["kind"], item["summary"]) for item in items] == [
+        ("routine", "9:00 AM: off"),
+        ("routine", "5:00 PM: on (if 1 condition passes)"),
+    ]
+
+
 async def test_an_owned_routine_the_parser_cannot_read_names_its_kind(
     hass: HomeAssistant, home: dict[str, Any]
 ) -> None:

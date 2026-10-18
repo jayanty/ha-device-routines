@@ -38,7 +38,7 @@ import asyncio
 import builtins
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 import logging
 from typing import Any, Final, Literal
 
@@ -63,6 +63,7 @@ from homeassistant.helpers import (
     area_registry as ar,
     device_registry as dr,
     entity_registry as er,
+    floor_registry as fr,
     label_registry as lr,
 )
 from homeassistant.helpers.event import (
@@ -71,11 +72,13 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
 )
 from homeassistant.helpers.start import async_at_started
+from homeassistant.helpers.sun import get_astral_event_date
 from homeassistant.helpers.typing import UNDEFINED
 from homeassistant.util import dt as dt_util
 
 from . import compiler, ha_adapter, maintenance, markers, migration, nextrun, repairs
 from .attribution import Attributor, OverrideSink, RoutineLookup, RoutineRuntime
+from .conflicts import OFF_IN_ON_WINDOW, SAME_MINUTE
 from .const import (
     CONF_SYSTEM_USER_ID,
     DOMAIN,
@@ -89,6 +92,7 @@ from .domains import Candidate, pick_targets, profile_for
 from .models import (
     PAUSING_STATUSES,
     CompileError,
+    Conflict,
     Days,
     DomainProfile,
     Occurrence,
@@ -110,6 +114,7 @@ from .summary import (
     KIND_DETACHED,
     KIND_ROUTINE,
     SOURCE_PARSER,
+    DeviceSummary,
     RoutineSummary,
     SummaryCoordinator,
 )
@@ -159,16 +164,39 @@ _EVERY_PAGE_KEYS: Final = frozenset(
 _PAGE_OPTIONS: Final = frozenset(
     {Option.ON_TIME, Option.OFF_TIME, Option.DAYS, Option.TURN_OFF_AFTER, Option.TURN_BACK_ON_AFTER}
 )
+# The sun companions of a time (FR-R10, L60): the kind select (Time, Sunrise, Sunset) and
+# the offset number, shown on the side the profile has, as advanced controls.
+_SUN_KEYS: Final[Mapping[Option, tuple[str, str]]] = {
+    Option.ON_TIME: ("on_kind", "on_sun_offset"),
+    Option.OFF_TIME: ("off_kind", "off_sun_offset"),
+}
 _TARGET_KEY: Final = "target"
 # The config category controls: the ones that change settings, unavailable while the
 # adapter cannot write (TECH_SPEC 4.2). The runtime controls stay, so the blueprint keeps
 # reading Paused until and the Manual override and still clears the override.
 _CONFIG_KEYS: Final = frozenset(
-    {"routine", "catch_up", "respect_manual", _TARGET_KEY, *(o.value for o in _PAGE_OPTIONS)}
+    {
+        "routine",
+        "catch_up",
+        "respect_manual",
+        _TARGET_KEY,
+        *(o.value for o in _PAGE_OPTIONS),
+        *(key for keys in _SUN_KEYS.values() for key in keys),
+    }
 )
-# The device page entities a weekly schedule greys out, and why (PRD 4.2, FR-R2).
+# The device page entities a weekly schedule greys out, and why (PRD 4.2, FR-R2): the
+# two times and their sun companions, since the schedule's blocks give the times.
 _TIME_KEYS: Final = frozenset({"on_time", "off_time"})
+_OFFSET_KEYS: Final = frozenset({"on_sun_offset", "off_sun_offset"})
+_WEEKLY_KEYS: Final = frozenset(
+    {*_TIME_KEYS, *(key for keys in _SUN_KEYS.values() for key in keys)}
+)
+_ON_SIDE_KEYS: Final = frozenset({"on_time", *_SUN_KEYS[Option.ON_TIME]})
 REASON_WEEKLY_SCHEDULE: Final = "weekly_schedule"
+# A time is unavailable while its side follows sunrise or sunset, and the side's offset
+# while it is a time (FR-R10): each shows the one value that side uses.
+REASON_SUN_BOUND: Final = "sun_bound"
+REASON_TIME_BOUND: Final = "time_bound"
 # Turn back on after is unavailable while the routine's schedule says off (PRD 4.3,
 # FR-R4: keep alive never fires then).
 _KEEP_ALIVE_KEY: Final = "turn_back_on_after"
@@ -240,11 +268,19 @@ class ActionResult:
 
 @dataclass(frozen=True, slots=True)
 class IgnoredTarget:
-    """A target an action did not apply to, with why (`no_routine`, `detached`, ...)."""
+    """A target an action did not apply to, with why (`no_routine`, `detached`, ...).
+
+    `placeholders` render `reason` from the `exceptions` translations (L63): `target`
+    always, `device` with the name of the device the target is or belongs to, and for a
+    target that names no device (an area, floor or label without devices, an entity of
+    no device) the target's own name. They are words, not identity: equality leaves
+    them out.
+    """
 
     target: str
     kind: Literal["device", "entity", "area", "label", "floor"]
     reason: str
+    placeholders: Mapping[str, str] = field(default_factory=dict, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -430,6 +466,21 @@ def apply_patch(base: RoutineSettings, patch: Patch) -> tuple[RoutineSettings, P
         except ValueError, TypeError, KeyError:
             return base, Problem(key, "invalid_value", {"setting": key})
     return replace(base, **values), None
+
+
+def _timed_sides(settings: RoutineSettings, patch: Patch) -> RoutineSettings:
+    """Make each side whose time a patch sets, without naming the side's kind, a time.
+
+    A time sent alone (`{"on_time": "07:00"}` from the API or the console) means that
+    time, whatever the side followed before; otherwise a sun bound would keep running
+    and the canonical form would drop the time. A null time clears the side.
+    """
+    kinds: dict[str, Any] = {
+        f"{side}_kind": TimeKind.TIME
+        for side in ("on", "off")
+        if f"{side}_time" in patch and f"{side}_kind" not in patch
+    }
+    return replace(settings, **kinds) if kinds else settings
 
 
 # --------------------------------------------------------------------------------------
@@ -756,21 +807,32 @@ class RoutineManager:
             return Status.SKIPPING if routine.skipped_action else Status.PAUSED
         return Status.ACTIVE
 
+    def _sun(self, day: date, event: str) -> datetime | None:
+        """Return sunrise or sunset of a local day at the home's location (FR-R10).
+
+        The core's astral helper, the one the sun trigger, the sun condition and the
+        summary read, so the manager's catch up, override, skip and next action decisions
+        place a sun bound where the blueprint runs it; None on a day without the event.
+        """
+        return get_astral_event_date(self.hass, event, day)
+
     def _schedule_lookup(
         self, settings: RoutineSettings, routine: _Routine | None = None
     ) -> tuple[str | None, nextrun.Lookups]:
-        """Return a weekly schedule's state and its next change, as nextrun reads them.
+        """Return a weekly schedule's state and the lookups every nextrun call reads.
 
-        While Skip next skips the routine's blocks, the next change the schedule names
-        may be one the skip covers; the block after the skip (`block_ahead`) then stands
-        in, as the start of a block outside one, so the next action that really runs
-        and a second Skip next see past the skip, as for a window (L53).
+        The lookups carry the sun (`_sun`), for a sun bound, and the weekly schedule's
+        next change. While Skip next skips the routine's blocks, the next change the
+        schedule names may be one the skip covers; the block after the skip
+        (`block_ahead`) then stands in, as the start of a block outside one, so the next
+        action that really runs and a second Skip next see past the skip, as for a
+        window (L53).
         """
         if settings.schedule_entity is None:
-            return None, nextrun.Lookups()
+            return None, nextrun.Lookups(sun=self._sun)
         state = self.hass.states.get(settings.schedule_entity)
         if state is None:
-            return None, nextrun.Lookups()
+            return None, nextrun.Lookups(sun=self._sun)
         held = _moment(state.attributes.get("next_event"))
         until, ahead = (
             (routine.paused_until, routine.block_ahead)
@@ -778,9 +840,10 @@ class RoutineManager:
             else (None, None)
         )
         if until is not None and ahead is not None and (held is None or held < until):
-            return "off", nextrun.Lookups(entity_times={settings.schedule_entity: ahead[0]})
+            ahead_times = {settings.schedule_entity: ahead[0]}
+            return "off", nextrun.Lookups(sun=self._sun, entity_times=ahead_times)
         times = {settings.schedule_entity: held} if held is not None else {}
-        return state.state, nextrun.Lookups(entity_times=times)
+        return state.state, nextrun.Lookups(sun=self._sun, entity_times=times)
 
     def _timer_entity(self, routine: _Routine) -> str | None:
         record = self._store.data.owned.get(routine.automation_id)
@@ -837,10 +900,51 @@ class RoutineManager:
             next_action=upcoming[0] if upcoming else None,
             sentence=summary.state if summary else None,
             items=summary.items if summary else (),
-            conflicts=summary.conflicts if summary else (),
+            conflicts=self._conflicts(routine, upcoming, summary) if summary else (),
             override=routine.override,
             last_change_source=routine.last_change_source,
+            opted_in=device_id in self._store.data.opted_in,
         )
+
+    def _conflicts(
+        self, routine: _Routine, upcoming: Iterable[Occurrence], summary: DeviceSummary
+    ) -> tuple[Conflict, ...]:
+        """Return the Schedule's conflicts that hold for the settings the routine has now.
+
+        The Schedule reads a routine's actions from its automation's inputs, which follow a
+        patch about a second later (the debounced write) and the summary's index two
+        seconds after that, while a view shows the new settings and items at once. So the
+        conflicts of the routine's own item are checked again against its settings, by the
+        rules of `conflicts.find`: one in the same minute holds while the routine still
+        acts in that minute, one against its window while the window still expects there
+        what the conflict found. A conflict that no longer holds is left out; a conflict
+        the patch brings appears once the Schedule reads the written inputs, a few
+        seconds later, with a `routine_changed` event. `upcoming` is the routine's coming
+        actions, as `_occurrences` gives them.
+        """
+        entity_id = self._automation_entity(routine.automation_id)
+        own = next(
+            (
+                index
+                for index, item in enumerate(summary.items)
+                if item.kind == KIND_ROUTINE and item.automation_entity == entity_id
+            ),
+            None,
+        )
+        settings = routine.settings
+        if own is None or settings is None:
+            return summary.conflicts
+        acting = {_minute(occurrence.at) for occurrence in upcoming if occurrence.verb is not None}
+
+        def holds(conflict: Conflict) -> bool:
+            if own not in {conflict.a, conflict.b} or conflict.at is None:
+                return True
+            if conflict.reason_key == SAME_MINUTE:
+                return _minute(conflict.at) in acting
+            expected = "on" if conflict.reason_key == OFF_IN_ON_WINDOW else "off"
+            return nextrun.expected_state(settings, conflict.at) == expected
+
+        return tuple(conflict for conflict in summary.conflicts if holds(conflict))
 
     def list(self) -> tuple[RoutineView, ...]:
         """Return every routine the manager knows, by device name."""
@@ -858,11 +962,13 @@ class RoutineManager:
         platforms show the entity unavailable with this `reason` attribute. With a `key`
         the answer is for that control: an adapter that cannot write takes away the
         config controls only (TECH_SPEC 4.2); a missing target leaves Routine controls,
-        so a person can pick another target (L52); the two time entities read
-        `weekly_schedule` while Days is Weekly schedule (PRD 4.2: the schedule's blocks
-        give the times); Turn back on after reads `schedule_off` while the routine's
-        window or weekly schedule says off (PRD 4.3); Skip next reads `nothing_to_skip`
-        with nothing scheduled and Resume `not_paused` unless paused or skipping (PRD 4.2).
+        so a person can pick another target (L52); the two time entities and their sun
+        companions read `weekly_schedule` while Days is Weekly schedule (PRD 4.2: the
+        schedule's blocks give the times); a time reads `sun_bound` while its side
+        follows sunrise or sunset and a sun offset `time_bound` while its side is a time
+        (FR-R10); Turn back on after reads `schedule_off` while the routine's window or
+        weekly schedule says off (PRD 4.3); Skip next reads `nothing_to_skip` with
+        nothing scheduled and Resume `not_paused` unless paused or skipping (PRD 4.2).
         Without a key it is for the device.
         """
         editing = key is None or key in _CONFIG_KEYS
@@ -888,11 +994,16 @@ class RoutineManager:
     def _key_reason(self, routine: _Routine, key: str) -> str | None:
         """Return the reason one control is unavailable by its own rule (PRD 4.2, 4.3)."""
         settings = self._settings_of(routine)
-        if key in _TIME_KEYS and settings.days is Days.WEEKLY_SCHEDULE:
+        if key in _WEEKLY_KEYS and settings.days is Days.WEEKLY_SCHEDULE:
             return REASON_WEEKLY_SCHEDULE
+        kind = settings.on_kind if key in _ON_SIDE_KEYS else settings.off_kind
+        if key in _TIME_KEYS and kind is not TimeKind.TIME:
+            return REASON_SUN_BOUND
+        if key in _OFFSET_KEYS and kind is TimeKind.TIME:
+            return REASON_TIME_BOUND
         if key == _KEEP_ALIVE_KEY:
-            schedule_state, _lookups = self._schedule_lookup(settings)
-            if nextrun.expected_state(settings, dt_util.now(), schedule_state) == "off":
+            schedule_state, lookups = self._schedule_lookup(settings)
+            if nextrun.expected_state(settings, dt_util.now(), schedule_state, lookups) == "off":
                 return REASON_SCHEDULE_OFF
         return None
 
@@ -901,7 +1012,8 @@ class RoutineManager:
 
         Empty for a device that is not opted in or no longer exists. The option controls
         follow the profile of the entity the routine drives (no start time for a media
-        player or a lock, Turn off after only where the domain has it); Routine controls
+        player or a lock, Turn off after only where the domain has it), and each time
+        brings its sun companions, the kind and the offset (FR-R10); Routine controls
         appear only when the device has several entities a routine can drive.
         """
         if device_id not in self._store.data.opted_in or self._device(device_id) is None:
@@ -909,6 +1021,7 @@ class RoutineManager:
         profile = self.profile(device_id)
         options = profile.options & _PAGE_OPTIONS if profile is not None else frozenset()
         keys = _EVERY_PAGE_KEYS | {option.value for option in options}
+        keys |= {key for option in options for key in _SUN_KEYS.get(option, ())}
         candidates = self.candidates(device_id)
         routine = self._routines.get(device_id)
         # A missing target keeps Routine controls while another entity could take over.
@@ -1020,8 +1133,8 @@ class RoutineManager:
                 continue
             settings = routine.settings
             profile = self._profile(entity_id)
-            schedule_state, _lookups = self._schedule_lookup(settings)
-            expected = nextrun.expected_state(settings, dt_util.now(), schedule_state)
+            schedule_state, lookups = self._schedule_lookup(settings)
+            expected = nextrun.expected_state(settings, dt_util.now(), schedule_state, lookups)
             return RoutineRuntime(
                 device_id=routine.device_id,
                 active=self._status(routine) in _RUNNING,
@@ -1235,6 +1348,7 @@ class RoutineManager:
         merged, problem = apply_patch(self._settings_of(routine), patch)
         own_schedule: str | None = None
         if problem is None:
+            merged = _timed_sides(merged, patch)
             merged, own_schedule = self._weekly_schedule_linked(routine, merged, patch)
             if "day_set" in patch and "days" not in patch:
                 # A day set chosen alone (the routine form, the console, D34) is Some days:
@@ -1636,8 +1750,20 @@ class RoutineManager:
             self._changed(routine.device_id)
 
     async def async_regenerate(self, automation_id: str) -> None:
-        """Fix flow of `automation_load_failed`: write the last valid inputs and reload."""
+        """Fix flow of `automation_load_failed`: write the last valid inputs and reload.
+
+        An automation whose blueprint schema migration failed is migrated again instead
+        (TECH_SPEC 4.11, the L48 carry over): its inputs are still the old schema's, so
+        they are read with the old rules and written with the current ones. The run takes
+        every automation still on an older schema, this one among them, and each one's
+        issue follows its own outcome; a hand edited blueprint migrates nothing, and the
+        issue stays until `blueprint_modified` is fixed.
+        """
         routine = self._fixable(automation_id)
+        if routine.migration_failed:
+            if await self.async_ensure_blueprint():
+                await self._async_migrate()
+            return
         routine.regenerated = False
         await self._async_check_loaded(routine)
 
@@ -1898,7 +2024,9 @@ class RoutineManager:
                 else:
                     results.append(await getattr(self, f"async_{action}")(device_id))
             except ServiceValidationError as err:
-                ignored.append(IgnoredTarget(device_id, "device", str(err.translation_key)))
+                reason = str(err.translation_key)
+                words = err.translation_placeholders or {}
+                ignored.append(self._ignored(device_id, "device", reason, words))
         return ActionResults(tuple(results), tuple(ignored))
 
     # ----------------------------------------------------------------------------------
@@ -1963,13 +2091,13 @@ class RoutineManager:
             if (reason := self._is_routine_device(device_id)) is None:
                 found[device_id] = None
             elif all(item.target != device_id for item in ignored):
-                ignored.append(IgnoredTarget(device_id, "device", reason))
+                ignored.append(self._ignored(device_id, "device", reason))
 
         for device_id in _ids(target.get("device_id")):
             consider(self._user_device(device_id) or device_id)
         for entity_id in _ids(target.get("entity_id")):
             if (owner := self._device_of_entity(entity_id)) is None:
-                ignored.append(IgnoredTarget(entity_id, "entity", "no_routine"))
+                ignored.append(self._ignored(entity_id, "entity", "no_routine"))
             else:
                 consider(self._user_device(owner) or owner)
         areas = {kind: list(_ids(target.get(f"{kind}_id"))) for kind in ("area", "floor", "label")}
@@ -1996,9 +2124,43 @@ class RoutineManager:
     ) -> None:
         covered = list(dict.fromkeys(devices))
         if not covered:
-            ignored.append(IgnoredTarget(target, kind, "no_routine"))
+            ignored.append(self._ignored(target, kind, "no_routine"))
         for device_id in covered:
             consider(device_id)
+
+    def _ignored(
+        self,
+        target: str,
+        kind: Literal["device", "entity", "area", "label", "floor"],
+        reason: str,
+        words: Mapping[str, str] | None = None,
+    ) -> IgnoredTarget:
+        """Return an ignored target with the words its reason renders with (L63).
+
+        `target` is the id as named; `device` the device's name, or for a target that is
+        not a device its own name, so every reason renders; a refusal's own placeholders
+        come last, so a refusal names its device as it raised it.
+        """
+        placeholders = {"target": target, "device": self._target_name(target, kind)}
+        return IgnoredTarget(target, kind, reason, {**placeholders, **(words or {})})
+
+    def _target_name(
+        self, target: str, kind: Literal["device", "entity", "area", "label", "floor"]
+    ) -> str:
+        """Return the name a target shows in Home Assistant, or its id when it has none."""
+        if kind == "device":
+            return self._device_name(target)
+        if kind == "entity":
+            state = self.hass.states.get(target)
+            return state.name if state is not None else target
+        if kind == "area":
+            area = ar.async_get(self.hass).async_get_area(target)
+            return area.name if area is not None else target
+        if kind == "floor":
+            floor = fr.async_get(self.hass).async_get_floor(target)
+            return floor.name if floor is not None else target
+        label = lr.async_get(self.hass).async_get_label(target)
+        return label.name if label is not None else target
 
     def _ours(self, device_id: str | None) -> bool:
         device = self._device(device_id) if device_id else None
@@ -2741,13 +2903,17 @@ class RoutineManager:
         A patch that sets Days to Weekly schedule without naming a schedule links the
         routine's own `schedule.routine_<slug>` when no schedule is linked yet (a schedule
         the routine linked before, or one the patch names, stays). The times the patch
-        does not set are dropped: the schedule's blocks give the times now, and the time
-        entities are unavailable meanwhile. Returns the settings and the own helper's
-        entity id when it was linked here, else None.
+        does not set are dropped, a sun bound with them (its side becomes unset): the
+        schedule's blocks give the times now, and the time entities are unavailable
+        meanwhile. Returns the settings and the own helper's entity id when it was linked
+        here, else None.
         """
         if "days" not in patch or settings.days is not Days.WEEKLY_SCHEDULE:
             return settings, None
         values: dict[str, Any] = {key: None for key in _TIME_KEYS if key not in patch}
+        values |= {
+            f"{side}_kind": TimeKind.TIME for side in ("on", "off") if f"{side}_kind" not in patch
+        }
         own = None
         if "schedule_entity" not in patch and settings.schedule_entity is None:
             own = values["schedule_entity"] = self._own_schedule(routine)
@@ -3013,6 +3179,11 @@ def _ids(value: Any) -> Iterable[str]:
     return tuple(str(item) for item in value)
 
 
+def _minute(moment: datetime) -> datetime:
+    """Return the minute a moment falls in, as conflicts are found per minute (FR-S6)."""
+    return moment.replace(second=0, microsecond=0)
+
+
 def _moment(value: Any) -> datetime | None:
     if isinstance(value, str):
         value = dt_util.parse_datetime(value)
@@ -3047,9 +3218,7 @@ def _next_block(
 
 def _is_window_end(settings: RoutineSettings, target: nextrun.SkipTarget) -> bool:
     """Tell whether Skip next skips the end of a window or a weekly schedule block."""
-    window = (
-        settings.on_time is not None and settings.off_time is not None
-    ) or settings.days is Days.WEEKLY_SCHEDULE
+    window = (settings.has_on and settings.has_off) or settings.days is Days.WEEKLY_SCHEDULE
     return (
         window
         and target.paired_end is None

@@ -59,6 +59,11 @@ ENTITY_PLATFORMS: Final[Mapping[str, str]] = {
     "routine": Platform.SWITCH,
     "on_time": Platform.TIME,
     "off_time": Platform.TIME,
+    # The sun companions of the two times (FR-R10): a kind select and an offset number.
+    "on_kind": Platform.SELECT,
+    "off_kind": Platform.SELECT,
+    "on_sun_offset": Platform.NUMBER,
+    "off_sun_offset": Platform.NUMBER,
     "days": Platform.SELECT,
     "turn_off_after": Platform.NUMBER,
     "turn_back_on_after": Platform.NUMBER,

@@ -163,9 +163,71 @@ async def test_the_store_is_reported_as_counts(
         "opted_out": 1,
         "removed_devices": 0,
         "ai_cache": 0,
+        "suspended": 0,
+        "own_helpers": 1,  # the lamp's timer, kept until its routine is cleaned up
         "blueprint_hash": manager.store.data.blueprint_hash,
         "blueprint_schema": compiler.BLUEPRINT_SCHEMA_VERSION,
     }
+    assert_names_nothing(diagnostics, secrets_of(home, manager))
+
+
+async def test_diagnostics_count_suspended_and_own_helpers(
+    hass: HomeAssistant,
+    hass_client: ClientSessionGenerator,
+    home: Home,
+    manager: RoutineManager,
+    routines: MockConfigEntry,
+    freezer: Any,
+) -> None:
+    """L57: why the manager turned routines off and the helpers it made, as counts only.
+
+    The fan's routine has a timer and a weekly schedule of its own; the lamp's routine is
+    turned off by the manager while its target is missing.
+    """
+    await give_routine(hass, manager, home.fan, freezer, turn_off_after_min=30)
+    await manager.async_update(home.fan, {"days": "weekly_schedule"})
+    await give_routine(hass, manager, home.lamp, freezer, off_time=time(22))
+    hass.states.async_remove(LAMP)
+    er.async_get(hass).async_remove(LAMP)
+    await hass.async_block_till_done()
+    assert set(manager.store.data.suspended.values()) == {"missing_target"}
+
+    diagnostics = await get_diagnostics_for_config_entry(hass, hass_client, routines)
+
+    store = diagnostics["store"]
+    assert (store["suspended"], store["own_helpers"]) == (1, 2)
+    assert_names_nothing(diagnostics, [*secrets_of(home, manager), "schedule.routine"])
+
+
+async def test_sun_bound_inputs_keep_their_kinds_and_offsets(
+    hass: HomeAssistant,
+    hass_client: ClientSessionGenerator,
+    home: Home,
+    manager: RoutineManager,
+    routines: MockConfigEntry,
+    freezer: Any,
+) -> None:
+    """FR-R10: a kind and an offset name nothing in a home, so a bug report keeps them."""
+    await give_routine(
+        hass,
+        manager,
+        home.fan,
+        freezer,
+        on_kind="sunset",
+        on_sun_offset_min=-45,
+        off_kind="sunrise",
+        off_sun_offset_min=30,
+    )
+
+    diagnostics = await get_diagnostics_for_config_entry(hass, hass_client, routines)
+
+    (routine,) = diagnostics["routines"]
+    shape = routine["inputs"]
+    assert (shape["on_kind"], shape["on_sun_offset"]) == ("sunset", "-00:45:00")
+    assert (shape["off_kind"], shape["off_sun_offset"]) == ("sunrise", "00:30:00")
+    assert (shape["on_at_sunset"], shape["off_at_sunrise"]) == (True, True)
+    assert shape["late_sun_offset"] == "-00:30:00"
+    assert shape["crosses_midnight"] is True
     assert_names_nothing(diagnostics, secrets_of(home, manager))
 
 

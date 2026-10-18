@@ -110,6 +110,7 @@ One routine as every surface sees it (TECH_SPEC 4.1).
 | `conflicts` | list of Conflict | FR-S6 conflicts among the items |
 | `override` | bool | The Manual override |
 | `last_change_source` | string or null | `automation`, `user` or `device` |
+| `opted_in` | bool | False while the device is opted out and its routine waits for cleanup (D28, [an opted out routine](#an-opted-out-routine)); true for every device with routine controls, whatever its Routine switch says |
 
 ### RoutineSettings
 
@@ -119,7 +120,7 @@ accepts the JSON forms shown, and the native forms the manager stores (`apply_pa
 | Field | JSON form | Default |
 | --- | --- | --- |
 | `target_entity` | entity id of one of the device's controllable entities | the first candidate |
-| `on_time`, `off_time` | `"HH:MM"` or `"HH:MM:SS"`, or null; counts only with the kind `time` | null |
+| `on_time`, `off_time` | `"HH:MM"` or `"HH:MM:SS"`, or null; counts only with the kind `time`, and a patch that sets a time without its side's kind makes that side a time (null clears the side) | null |
 | `on_kind`, `off_kind` | `time`, `sunrise` or `sunset` (FR-R10); a sun kind sets its side without a time | `time` |
 | `on_sun_offset_min`, `off_sun_offset_min` | whole minutes from -180 to 180, negative before the event; counts only with a sun kind | 0 |
 | `days` | `every_day`, `weekdays`, `weekends`, `some_days`, `weekly_schedule` | `every_day` |
@@ -250,7 +251,77 @@ opted out whose routine waits for cleanup.
         {"a": 0, "b": 1, "reason_key": "opposite_same_minute", "at": "2026-10-19T23:00:00-07:00"}
       ],
       "override": false,
-      "last_change_source": null
+      "last_change_source": null,
+      "opted_in": true
+    }
+  ]
+}
+```
+
+### An opted out routine
+
+A device that is opted out loses its controls at once, but its routine stays, off with
+its settings, until the cleanup period ends (D28); opting the device in again brings it
+back as it was. Such a routine is still listed, with `opted_in` false, so a list can tell
+it from a routine whose Routine switch is off (`status` is `off` for both). The living
+room fan with its routine turned off and then opted out:
+
+```json
+{"id": 4, "type": "device_routines/routines/list"}
+```
+
+```json
+{
+  "routines": [
+    {
+      "device_id": "dev_living_room_fan",
+      "device_name": "Living room fan",
+      "area_id": "living_room",
+      "automation_id": "device_routines_5c1e0f3a9b72",
+      "automation_entity_id": "automation.routine_living_room_fan",
+      "settings": {
+        "target_entity": "switch.living_room_fan",
+        "on_time": "17:00:00",
+        "off_time": "23:00:00",
+        "days": "every_day",
+        "day_set": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+        "schedule_entity": null,
+        "turn_off_after_min": 0,
+        "turn_back_on_after_min": 0,
+        "catch_up": true,
+        "late_start_window_min": 15,
+        "respect_manual": true,
+        "pulse": null,
+        "extra_conditions": [],
+        "docked_guard": true,
+        "on_kind": "time",
+        "on_sun_offset_min": 0,
+        "off_kind": "time",
+        "off_sun_offset_min": 0
+      },
+      "status": "off",
+      "enabled": false,
+      "paused_until": null,
+      "skipped_action": null,
+      "next_action": null,
+      "sentence": "Routine off",
+      "items": [
+        {
+          "kind": "routine",
+          "automation_entity": "automation.routine_living_room_fan",
+          "alias": "Routine: Living room fan",
+          "summary": "5:00 PM: on, 11:00 PM: off",
+          "next_run": null,
+          "source": "parser",
+          "enabled": false,
+          "custom_logic": false,
+          "parts": ["5:00 PM: on", "11:00 PM: off"]
+        }
+      ],
+      "conflicts": [],
+      "override": false,
+      "last_change_source": null,
+      "opted_in": false
     }
   ]
 }
@@ -369,10 +440,11 @@ compiler, shown at once and written about a second later (the manager's debounce
 ```
 
 The result is the RoutineView with the new settings (`"off_time": "22:30:00"`,
-`"days": "weekdays"`) and the Schedule items they give. Its `conflicts` are computed again
-when the change is written, about a second later, and `routine_changed` follows; until
-then they are the ones of the previous settings (here `opposite_same_minute` at 11:00 PM,
-though the routine now stops at 10:30 PM):
+`"days": "weekdays"`) and the Schedule items they give. Its `conflicts` hold for the new
+settings at once: a conflict the change ends is left out (the fan's `opposite_same_minute`
+at 11:00 PM against the automation turning it on then; `on_in_off_window` stays), and one
+the change brings appears when the Schedule reads the written routine, a few seconds
+later, with a `routine_changed` event:
 
 ```json
 {
@@ -432,8 +504,7 @@ though the routine now stops at 10:30 PM):
     }
   ],
   "conflicts": [
-    {"a": 0, "b": 1, "reason_key": "on_in_off_window", "at": "2026-10-19T23:00:00-07:00"},
-    {"a": 0, "b": 1, "reason_key": "opposite_same_minute", "at": "2026-10-19T23:00:00-07:00"}
+    {"a": 0, "b": 1, "reason_key": "on_in_off_window", "at": "2026-10-19T23:00:00-07:00"}
   ],
   "override": false,
   "last_change_source": null
@@ -486,7 +557,14 @@ Skip next, pause, resume, enable or disable over a native target, exactly as the
       "next_action": {"at": "2026-10-20T17:00:00-07:00", "verb": "on"}
     }
   ],
-  "ignored": [{"target": "dev_desk_lamp", "kind": "device", "reason": "no_routine"}]
+  "ignored": [
+    {
+      "target": "dev_desk_lamp",
+      "kind": "device",
+      "reason": "no_routine",
+      "placeholders": {"target": "dev_desk_lamp", "device": "Desk lamp"}
+    }
+  ]
 }
 ```
 
@@ -509,6 +587,56 @@ Errors: `pause_until_or_for` (a pause without exactly one of `until` and `for`),
 `no_routine_targets` (nothing the target covers has a routine) and `target_all_reserved`:
 the schema accepts a target of `"all"` so a house wide action can be added later without
 a breaking change (PRD 4.4, D24), and refuses it until then.
+
+### Ignored targets
+
+Each `ignored` entry renders as a sentence: its `reason` is a key of the integration's
+`exceptions` translations (`component.device_routines.exceptions.<reason>.message`),
+filled with its `placeholders`, as an error is.
+
+| Placeholder | Value |
+| --- | --- |
+| `target` | The target as named: a device, entity, area, floor or label id |
+| `device` | The name of the device the target is or stands for; for a target that names no device (an area, floor or label without devices, an entity of no device, an id Home Assistant does not know) its own name, or the id when it has none |
+| any other | A refusal's own placeholders, as the action raised them for that device |
+
+A routine the action cannot apply to is ignored with the refusal's key. Skip next over
+the living room, where the desk lamp's routine has only Turn off after and so nothing
+scheduled to skip:
+
+```json
+{
+  "id": 10,
+  "type": "device_routines/routines/action",
+  "action": "skip_next",
+  "target": {"area_id": "living_room"}
+}
+```
+
+```json
+{
+  "results": [
+    {
+      "device_id": "dev_living_room_fan",
+      "device_name": "Living room fan",
+      "action": "skip_next",
+      "paused_until": "2026-10-19T23:01:00-07:00",
+      "skipped_action": {"at": "2026-10-19T17:00:00-07:00", "verb": "on"},
+      "next_action": {"at": "2026-10-20T17:00:00-07:00", "verb": "on"}
+    }
+  ],
+  "ignored": [
+    {
+      "target": "dev_desk_lamp",
+      "kind": "device",
+      "reason": "nothing_to_skip",
+      "placeholders": {"target": "dev_desk_lamp", "device": "Desk lamp"}
+    }
+  ]
+}
+```
+
+The `device_routines` actions answer `ignored` without the placeholders.
 
 ## devices/opt
 

@@ -5,12 +5,15 @@ Config entry diagnostics hold five sections:
 - `integration`: the version, the options and settings (secret shaped keys and the AI
   Task entity redacted), the adapter report and the Health report, its issues reduced to
   their catalog ids so no routine's automation id shows.
-- `store`: the Store as counts, plus the blueprint hash and schema.
+- `store`: the Store as counts, plus the blueprint hash and schema: the owned
+  automations, the devices opted in, opted out and removed, the AI cache, the routines
+  the manager turned off (`suspended`) and the helpers it created (`own_helpers`, L57).
 - `routines`: one shape per owned automation, numbered instead of named: the target's
   domain, the schema, the config hash, how many aliases it was generated with, its inputs
   (entity inputs read `unused` for a sentinel and are redacted otherwise; ids redacted;
-  Only when conditions counted; service names, states, times, days, flags and minutes
-  kept; anything else redacted) and the routine's runtime state as flags.
+  Only when conditions counted; service names, states, times, sun offsets, bound kinds,
+  days, flags and minutes kept; anything else redacted) and the routine's runtime state
+  as flags.
 - `summary`: the Schedule summaries as shapes, as in Phase 1.
 
 Device diagnostics report one device the same way: the hub reports the integration and
@@ -34,7 +37,7 @@ from homeassistant.helpers import device_registry as dr
 from . import DeviceRoutinesConfigEntry, compiler
 from .const import DOMAIN, HUB_IDENTIFIER
 from .domains import PROFILES
-from .models import RoutineView, Weekday
+from .models import RoutineView, TimeKind, Weekday
 from .repairs import CATALOG
 from .store import OwnedRecord, StoreData
 from .summary import DeviceSummary, SummaryCoordinator
@@ -64,13 +67,16 @@ _PLAIN_INPUTS: Final = (
         "extra_conditions",
     }
 )
-# The words a plain input may hold: the profiles' actions and off states, and weekdays.
+# The words a plain input may hold: the profiles' actions and off states, weekdays and the
+# kinds of a bound (FR-R10).
 _KNOWN_WORDS: Final = frozenset(
     {action for profile in PROFILES.values() for action in (profile.on_action, profile.off_action)}
     | {profile.inactive_state for profile in PROFILES.values()}
     | {day.value for day in Weekday}
+    | {kind.value for kind in TimeKind}
 ) - {None}
-_TIME: Final = re.compile(r"^\d{2}:\d{2}(?::\d{2})?$")
+# A time of day, or a sun offset, which is negative before the event.
+_TIME: Final = re.compile(r"^-?\d{2}:\d{2}(?::\d{2})?$")
 
 # The generic privacy patterns of PRD 11.3 (the repository's own check uses the same).
 _PRIVATE: Final = (
@@ -166,6 +172,8 @@ def _store(data: StoreData) -> dict[str, Any]:
         "opted_out": len(data.opted_out_at),
         "removed_devices": len(data.removed_devices_at),
         "ai_cache": len(data.ai_cache),
+        "suspended": len(data.suspended),
+        "own_helpers": sum(len(helpers) for helpers in data.own_helpers.values()),
         "blueprint_hash": data.blueprint_hash,
         "blueprint_schema": data.blueprint_schema,
     }

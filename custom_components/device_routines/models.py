@@ -514,9 +514,11 @@ class RoutineView:
     """A snapshot of one routine, built by the manager and read by every surface.
 
     `skipped_action` is what Skip next skipped while the routine is skipping; `next_action`
-    is the next action that will really run, after any pause. `is_paused` and `is_active`
-    say what paused and active mean, once, for every surface (PRD P16, L47); they are
-    properties, so a serialized view carries only the fields.
+    is the next action that will really run, after any pause. `opted_in` is false for a
+    routine whose device was opted out and waits for cleanup (D28), so a surface can tell
+    it from an opted in routine that is off (L63). `is_paused` and `is_active` say what
+    paused and active mean, once, for every surface (PRD P16, L47); they are properties,
+    so a serialized view carries only the fields.
     """
 
     device_id: str
@@ -535,6 +537,7 @@ class RoutineView:
     conflicts: tuple[Conflict, ...]
     override: bool
     last_change_source: Source | None
+    opted_in: bool = True
 
     @property
     def is_paused(self) -> bool:

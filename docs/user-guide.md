@@ -24,6 +24,8 @@ version 0.1.0 has the Schedule sensor only.
 - [Weekly schedules](#weekly-schedules)
 - [Turn back on after](#turn-back-on-after)
 - [Pulse](#pulse)
+- [Sun times](#sun-times)
+- [Only when](#only-when)
 - [Converting automations](#converting-automations)
 - [What the managed automation looks like](#what-the-managed-automation-looks-like)
 - [If you edit the automation yourself](#if-you-edit-the-automation-yourself)
@@ -342,6 +344,69 @@ default; a device that changed more recently is left alone). A pulse is skipped 
 routine is paused. If Home Assistant restarts during the pulse, its second half is lost;
 a routine with a window puts the device back to the window's state at startup.
 
+## Sun times
+
+Turn on at and Turn off at can follow the sun instead of the clock. Each time has two
+advanced controls, created disabled like the others (show the hidden entities on the
+device page and enable them):
+
+| Control | What it does |
+| --- | --- |
+| Turn on timing, Turn off timing | Time, Sunrise or Sunset. Time uses the time control; Sunrise and Sunset follow the sun at the device's home location, every day anew. |
+| Turn on sun offset, Turn off sun offset | Minutes from sunrise or sunset, from -180 to 180; negative is before the event. |
+
+The words follow the device, as the times do: a robot vacuum shows "Start timing" and
+"Return to dock timing", a blind "Open timing", a lock "Lock timing" and "Lock sun
+offset". A lock has no start, so it has no start timing either; "Lock at sunset" is fine.
+
+While a side follows the sun its time control is unavailable (reason `sun_bound`), and
+while it is a time its offset control is (reason `time_bound`): each shows the one value
+that side uses. Setting the timing back to Time leaves that side without a time until you
+choose one. In the routine's automation form the same choice is "Turn on at, kind" and
+"Turn on at, sun offset" (as `HH:MM:SS`, with a leading minus before the event).
+
+Example: a patio light with **Turn on timing** Sunset, **Turn on sun offset** 15 and
+**Turn off at** 11:00 PM turns on a quarter of an hour after sunset and off at 11:00 PM.
+Its Schedule line reads "Sunset + 15 min: on, 11:00 PM: off", and before the light
+turns on its state names the moment of today's sunset plus the offset.
+
+- **Across midnight.** Sunset to sunrise is a window across midnight, which belongs to the
+  day it starts, as for times: with Weekdays, Friday's sunset turns the light on and
+  Saturday's sunrise turns it off. Whether a window crosses midnight is decided once, by
+  reading sunrise as 6:00 AM and sunset as 6:00 PM plus their offsets: sunset to sunrise
+  crosses, sunrise to sunset does not, 10:00 PM to sunrise crosses, sunset to 11:00 PM does
+  not. A fixed time that the sun passes over in the course of the year keeps that order:
+  sunset to 8:00 PM is a window on the same day, so on a summer evening whose sunset is
+  after 8:00 PM it does not run.
+- **Everything else works as for a time.** Catch up after a restart, Manual override, Skip
+  next (a sunset start skips its sunrise end too), Pause until, Days and the Routine switch
+  treat a sun time like a time of day.
+- **A day without a sunrise or sunset** (near the poles) runs nothing for that side that
+  day.
+- **Daylight saving.** The offset is added to the day's sunrise or sunset on the wall
+  clock.
+- **Weekly schedule.** Setting Days to Weekly schedule drops the sun times, as it drops the
+  times; the schedule's blocks give the times.
+
+## Only when
+
+**Only when** adds Home Assistant conditions that must hold for the routine to turn the
+device on: guest mode is off, the battery is above 95 percent, nobody is home. It is set
+in the routine's automation form, under Advanced, with Home Assistant's own condition
+editor; the device page has no control for it.
+
+The conditions are checked whenever the routine would turn the device on, start it or open
+it: Turn on at (a time or the sun), the start of a weekly schedule block, a catch up after
+a restart or at the end of a pause, Turn back on after and the pulse. They never hold back
+a turn off: Turn off at and Turn off after always run. A start the conditions block does
+not run, and fires no skipped action event: the device stays as it is, and the next start
+whose conditions pass runs as usual.
+
+Example: a robot vacuum with **Start at** 9:45 AM on Weekdays and Only when guest mode is
+off stays docked on a weekday morning while guests are over. The Schedule line counts the
+conditions on the actions they gate: "Weekdays 9:45 AM: start (if 1 condition passes)";
+with two conditions it reads "(if 2 conditions pass)".
+
 ## Converting automations
 
 A hand written automation that does exactly what a routine does can become one. Device
@@ -390,9 +455,9 @@ original stays as it was.
 settings on the device page or remove the device's `Routines` label; while the device has
 a routine, the offer does not come back.
 
-Like every Repairs issue, an offer turns the hub's Problem sensor on. Ignore it in Repairs
-to keep the automation as it is, or turn **Offer to convert matching automations** off in
-the settings, which clears every offer.
+An offer is a suggestion, not a problem: unlike the other Repairs issues it leaves the
+hub's Problem sensor off. Ignore it in Repairs to keep the automation as it is, or turn
+**Offer to convert matching automations** off in the settings, which clears every offer.
 
 ## What the managed automation looks like
 
