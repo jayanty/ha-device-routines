@@ -147,6 +147,13 @@ def test_window_bounds_from_entities() -> None:
         (time(22), time(6), time(5), True),
         (time(22), time(6), time(12), False),
         (None, None, time(12), True),
+        (time(22), None, time(23), True),
+        (time(22), None, time(21), False),
+        (None, time(6), time(5), True),
+        (None, time(6), time(7), False),
+        # The core reads `before: 00:00:00` alone as the whole day (L69).
+        (None, time(0), time(10), True),
+        (None, time(0), time(0), True),
     ],
 )
 def test_in_window(after: time | None, before: time | None, moment: time, inside: bool) -> None:

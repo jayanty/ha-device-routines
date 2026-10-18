@@ -75,16 +75,16 @@ def wall_instants(day: date, at: time, tz: tzinfo) -> list[datetime]:
 
 
 def in_window(at: time, after: time | None, before: time | None) -> bool:
-    """Apply the core time condition's after and before rule to a time of day."""
-    if after is not None and before is not None:
-        if after < before:
-            return after <= at < before
-        return not before <= at < after
-    if after is not None:
-        return at >= after
-    if before is not None:
-        return at < before
-    return True
+    """Apply the core time condition's after and before rule to a time of day.
+
+    As in the core, a missing `after` is midnight and a missing `before` the end of the
+    day, so `before: 00:00:00` alone spans nothing, reads inverted, and is the whole day.
+    """
+    start = time(0) if after is None else after
+    end = time.max if before is None else before
+    if start < end:
+        return start <= at < end
+    return not end <= at < start
 
 
 class _UnknownBoundError(Exception):
