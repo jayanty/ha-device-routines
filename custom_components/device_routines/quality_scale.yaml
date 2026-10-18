@@ -31,8 +31,10 @@ rules:
   brands:
     status: todo
     comment: >-
-      `brand/icon.png` and `brand/logo.png` are placeholders. The final assets and the
-      pull request to `home-assistant/brands` are Build B (plan Section 6, publication).
+      The final assets are in `brand/` and in the `home-assistant/brands` layout under
+      `brand/brands/` (drawn by `tools/make_brand.py`; `tests/test_repository.py` checks
+      their sizes, transparency and layout). The rule is done when the brands pull request,
+      prepared in `docs/publication.md`, has merged: owner log O10.
 
   common-modules:
     status: done

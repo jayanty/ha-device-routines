@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-18
+
+Sun times, Only when, conversion offers and the console (Phase 4), first published as the
+pre release `v1.0.0-beta.1`. The first start of this version moves every routine to
+routine blueprint input schema 2 with the same behavior.
+
 ### Added
 
 - Turn on at and Turn off at accept sunrise or sunset, up to three hours before or after
@@ -35,6 +41,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Final icon and logo, in light and dark, with the `home-assistant/brands` layout under
+  `brand/brands/`.
+- A routine change answers the conflicts of its new settings at once, and the Today view
+  follows them, instead of after the routine is written.
+- The Schedule state reads a sunrise or sunset to the whole minute ("On at 7:26 AM").
 - The routine blueprint moves to input schema 2. At the first start of this version
   Device Routines installs it and rewrites every routine's automation to schema 2 with
   the same behavior, keeping the previous inputs in its store. A routine still on schema 1
@@ -49,7 +60,13 @@ All notable changes to this project are documented here. The format follows
   runs it (always true) in the Schedule summary.
 - Open conversion offers no longer count as problems: the hub Problem sensor stays off and
   Health does not list them.
-- The answer to a routine change no longer lists conflicts the change has ended.
+- A routine bounded by sunrise or sunset gets its window conflicts (an automation turning the
+  device on inside its off window, or off inside its on window).
+- Deleting a routine's automation in the automation editor resets the routine (or clears
+  a taken over routine's Repairs issue) at once; Home Assistant reloads nothing on a
+  delete, so 0.3.0 waited for the next reload.
+- A device whose automations are all turned off reads "Automation off" or "Automations
+  off" instead of the first automation's next action.
 - A hand written automation with a duration too large to represent no longer stops the
   Schedule summary from reading the other automations.
 

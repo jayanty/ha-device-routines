@@ -128,7 +128,7 @@ A side of a window is a time (`on_time`, kind `time`) or a sun event with an off
 
 ### 3.7 conflicts.py
 
-`find(items, window) -> list[Conflict]`: opposite actions on the same entity in the same minute, and an automation action that contradicts a routine window (an off inside an on window, an on inside an off window). Pure, O(n log n).
+`find(planned, start, end, lookups=None) -> list[Conflict]`: opposite actions on the same entity in the same minute, and an automation action that contradicts a routine window (an off inside an on window, an on inside an off window). `lookups` carries the sun times, so a routine bounded by sunrise or sunset has its window too (decision L72). The summary reads a routine's rows from the manager's settings when it has them (`RoutineSummary.settings`), so a conflict a change creates is answered at once. Pure, O(n log n).
 
 ### 3.8 sentence.py
 

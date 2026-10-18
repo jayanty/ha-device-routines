@@ -949,13 +949,22 @@ report. It holds counts, settings, the adapter report, the Health report and one
 per routine. Entity ids, device ids, device and area names, aliases and anything that
 looks like a token or an address are redacted.
 
-### Known issue in version 0.3.0: routines that end at midnight
+### Known issues in version 0.3.0
 
-In 0.3.0 a routine whose **Turn off at** is midnight (12:00 AM) counts as on for the whole
-of the next day. A restart, a reconnect of the device or a cleared Manual override on that
-day turns the device on, although the window ended at midnight. Version 1.0.0 fixes it:
-update, and the same routine behaves as its settings say, with nothing to change. Until
-then, Turn off at 11:59 PM avoids it.
+Version 1.0.0 fixes all three; after the update the same routines behave as their
+settings say, with nothing to change.
+
+- **Routines that end at midnight.** In 0.3.0 a routine whose **Turn off at** is midnight
+  (12:00 AM) counts as on for the whole of the next day. A restart, a reconnect of the
+  device or a cleared Manual override on that day turns the device on, although the window
+  ended at midnight. Until you update, Turn off at 11:59 PM avoids it.
+- **A routine's automation deleted in the automation editor.** In 0.3.0 the routine is
+  reset (or a taken over routine's Repairs issue cleared) only at the next automation
+  reload or restart. Until you update, reload automations after the delete (Developer
+  tools, YAML, Automations).
+- **A device whose automations are all turned off.** In 0.3.0 its Schedule state still
+  names the first automation's next action, as if it were planned. 1.0.0 reads
+  "Automation off" or "Automations off".
 
 ## Privacy
 
