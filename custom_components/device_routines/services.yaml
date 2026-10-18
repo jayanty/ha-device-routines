@@ -3,25 +3,25 @@
 # routine can drive and to automations; a target without a routine is ignored and listed
 # in the response.
 
-.routine_target: &routine_target
-  entity:
-    - domain:
-        - automation
-        - climate
-        - cover
-        - fan
-        - humidifier
-        - input_boolean
-        - lawn_mower
-        - light
-        - lock
-        - media_player
-        - switch
-        - vacuum
-        - valve
-
 skip_next:
-  target: *routine_target
+  # The other routine actions reuse this target through the YAML anchor; hassfest
+  # refuses a top level key that is not an action, so the anchor sits here.
+  target: &routine_target
+    entity:
+      - domain:
+          - automation
+          - climate
+          - cover
+          - fan
+          - humidifier
+          - input_boolean
+          - lawn_mower
+          - light
+          - lock
+          - media_player
+          - switch
+          - vacuum
+          - valve
 
 pause:
   target: *routine_target

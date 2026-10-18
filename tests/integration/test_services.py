@@ -456,7 +456,9 @@ def load_services_yaml() -> dict[str, Any]:
     loaded: dict[str, Any] = yaml.safe_load(
         (COMPONENT / "services.yaml").read_text(encoding="utf-8")
     )
-    return {name: spec for name, spec in loaded.items() if not name.startswith(".")}
+    # hassfest accepts only action slugs as top level keys (no hidden anchor keys).
+    assert all(name.isidentifier() and name.islower() for name in loaded), list(loaded)
+    return loaded
 
 
 def load_strings() -> dict[str, Any]:
