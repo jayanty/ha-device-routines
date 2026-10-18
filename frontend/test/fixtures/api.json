@@ -1,0 +1,436 @@
+{
+  "conventions": {
+    "examples": [],
+    "errors": [
+      {
+        "code": "same_on_and_off_time",
+        "message": "The start and stop times are the same. Choose two different times",
+        "translation_key": "same_on_and_off_time",
+        "translation_placeholders": {
+          "setting": "off_time"
+        },
+        "translation_domain": "device_routines"
+      }
+    ],
+    "events": []
+  },
+  "routines/list": {
+    "examples": [
+      {
+        "request": {
+          "id": 2,
+          "type": "device_routines/routines/list"
+        },
+        "response": {
+          "routines": [
+            {
+              "device_id": "dev_living_room_fan",
+              "device_name": "Living room fan",
+              "area_id": "living_room",
+              "automation_id": "device_routines_5c1e0f3a9b72",
+              "automation_entity_id": "automation.routine_living_room_fan",
+              "settings": {
+                "target_entity": "switch.living_room_fan",
+                "on_time": "17:00:00",
+                "off_time": "23:00:00",
+                "days": "every_day",
+                "day_set": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu",
+                  "fri",
+                  "sat",
+                  "sun"
+                ],
+                "schedule_entity": null,
+                "turn_off_after_min": 0,
+                "turn_back_on_after_min": 0,
+                "catch_up": true,
+                "late_start_window_min": 15,
+                "respect_manual": true,
+                "pulse": null,
+                "extra_conditions": [],
+                "docked_guard": true
+              },
+              "status": "active",
+              "enabled": true,
+              "paused_until": null,
+              "skipped_action": null,
+              "next_action": {
+                "at": "2026-10-19T17:00:00-07:00",
+                "verb": "on"
+              },
+              "sentence": "On at 5:00 PM",
+              "items": [
+                {
+                  "kind": "routine",
+                  "automation_entity": "automation.routine_living_room_fan",
+                  "alias": "Routine: Living room fan",
+                  "summary": "5:00 PM: on, 11:00 PM: off",
+                  "next_run": "2026-10-19T17:00:00-07:00",
+                  "source": "parser",
+                  "enabled": true,
+                  "custom_logic": false,
+                  "parts": [
+                    "5:00 PM: on",
+                    "11:00 PM: off"
+                  ]
+                },
+                {
+                  "kind": "automation",
+                  "automation_entity": "automation.late_fan_on",
+                  "alias": "Late fan on",
+                  "summary": "11:00 PM: on",
+                  "next_run": "2026-10-19T23:00:00-07:00",
+                  "source": "parser",
+                  "enabled": true,
+                  "custom_logic": false,
+                  "parts": []
+                }
+              ],
+              "conflicts": [
+                {
+                  "a": 0,
+                  "b": 1,
+                  "reason_key": "on_in_off_window",
+                  "at": "2026-10-19T23:00:00-07:00"
+                },
+                {
+                  "a": 0,
+                  "b": 1,
+                  "reason_key": "opposite_same_minute",
+                  "at": "2026-10-19T23:00:00-07:00"
+                }
+              ],
+              "override": false,
+              "last_change_source": null
+            }
+          ]
+        }
+      }
+    ],
+    "errors": [],
+    "events": []
+  },
+  "routines/get": {
+    "examples": [
+      {
+        "request": {
+          "id": 3,
+          "type": "device_routines/routines/get",
+          "device_id": "dev_living_room_fan"
+        },
+        "response": null
+      }
+    ],
+    "errors": [
+      {
+        "code": "not_opted_in",
+        "message": "Garage door has no routine controls. Add the Routines label to it, or choose it in the Device Routines options",
+        "translation_key": "not_opted_in",
+        "translation_placeholders": {
+          "device": "Garage door"
+        },
+        "translation_domain": "device_routines"
+      }
+    ],
+    "events": []
+  },
+  "routines/set": {
+    "examples": [
+      {
+        "request": {
+          "id": 5,
+          "type": "device_routines/routines/set",
+          "device_id": "dev_living_room_fan",
+          "settings": {
+            "off_time": "22:30",
+            "days": "weekdays"
+          }
+        },
+        "response": null
+      }
+    ],
+    "errors": [],
+    "events": []
+  },
+  "routines/action": {
+    "examples": [
+      {
+        "request": {
+          "id": 8,
+          "type": "device_routines/routines/action",
+          "action": "skip_next",
+          "target": {
+            "area_id": "living_room"
+          }
+        },
+        "response": {
+          "results": [
+            {
+              "device_id": "dev_living_room_fan",
+              "device_name": "Living room fan",
+              "action": "skip_next",
+              "paused_until": "2026-10-19T23:01:00-07:00",
+              "skipped_action": {
+                "at": "2026-10-19T17:00:00-07:00",
+                "verb": "on"
+              },
+              "next_action": {
+                "at": "2026-10-20T17:00:00-07:00",
+                "verb": "on"
+              }
+            }
+          ],
+          "ignored": [
+            {
+              "target": "dev_desk_lamp",
+              "kind": "device",
+              "reason": "no_routine"
+            }
+          ]
+        }
+      },
+      {
+        "request": {
+          "id": 9,
+          "type": "device_routines/routines/action",
+          "action": "pause",
+          "target": {
+            "device_id": "dev_living_room_fan"
+          },
+          "for": "01:30:00"
+        },
+        "response": null
+      }
+    ],
+    "errors": [],
+    "events": []
+  },
+  "devices/opt": {
+    "examples": [
+      {
+        "request": {
+          "id": 13,
+          "type": "device_routines/devices/opt",
+          "op": "suggest"
+        },
+        "response": {
+          "devices": [
+            {
+              "device_id": "dev_desk_lamp",
+              "name": "Desk lamp",
+              "area_id": "living_room",
+              "targets": [
+                "light.desk_lamp"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "request": {
+          "id": 14,
+          "type": "device_routines/devices/opt",
+          "op": "in",
+          "device_id": [
+            "dev_desk_lamp"
+          ]
+        },
+        "response": {
+          "results": [
+            {
+              "device_id": "dev_desk_lamp",
+              "opted_in": true,
+              "changed": true,
+              "view": {
+                "device_id": "dev_desk_lamp",
+                "device_name": "Desk lamp",
+                "area_id": "living_room",
+                "automation_id": "device_routines_9a40d27e18c5",
+                "automation_entity_id": null,
+                "settings": {
+                  "target_entity": "light.desk_lamp",
+                  "on_time": null,
+                  "off_time": null
+                },
+                "status": "off",
+                "enabled": false,
+                "next_action": null,
+                "sentence": "On Tue 7:00 AM"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "errors": [],
+    "events": []
+  },
+  "schedule/today": {
+    "examples": [
+      {
+        "request": {
+          "id": 16,
+          "type": "device_routines/schedule/today"
+        },
+        "response": {
+          "date": "2026-10-19",
+          "items": [
+            {
+              "time": "2026-10-19T07:00:00-07:00",
+              "device_id": "dev_desk_lamp",
+              "area_id": "living_room",
+              "action": "on",
+              "kind": "automation",
+              "automation": "automation.morning_lamp",
+              "conflict": false
+            },
+            {
+              "time": "2026-10-19T17:00:00-07:00",
+              "device_id": "dev_living_room_fan",
+              "area_id": "living_room",
+              "action": "on",
+              "kind": "routine",
+              "automation": "automation.routine_living_room_fan",
+              "conflict": false
+            },
+            {
+              "time": "2026-10-19T23:00:00-07:00",
+              "device_id": "dev_living_room_fan",
+              "area_id": "living_room",
+              "action": "on",
+              "kind": "automation",
+              "automation": "automation.late_fan_on",
+              "conflict": true
+            },
+            {
+              "time": "2026-10-19T23:00:00-07:00",
+              "device_id": "dev_living_room_fan",
+              "area_id": "living_room",
+              "action": "off",
+              "kind": "routine",
+              "automation": "automation.routine_living_room_fan",
+              "conflict": true
+            }
+          ]
+        }
+      }
+    ],
+    "errors": [],
+    "events": []
+  },
+  "settings/get": {
+    "examples": [
+      {
+        "request": {
+          "id": 17,
+          "type": "device_routines/settings/get"
+        },
+        "response": {
+          "schedule_scope": "all",
+          "time_format": "auto",
+          "default_catch_up": true,
+          "default_respect_manual": true,
+          "default_late_start_window_min": 15,
+          "cleanup_after_days": 30,
+          "assign_area": true,
+          "on_removal": "keep",
+          "ai_task_entity": null,
+          "ai_calls_per_hour": 20,
+          "offer_conversions": true,
+          "raise_conflict_repairs": true
+        }
+      }
+    ],
+    "errors": [],
+    "events": []
+  },
+  "settings/set": {
+    "examples": [
+      {
+        "request": {
+          "id": 20,
+          "type": "device_routines/settings/set",
+          "settings": {
+            "time_format": "24h"
+          }
+        },
+        "response": null
+      }
+    ],
+    "errors": [
+      {
+        "code": "invalid_choice",
+        "message": "time_format must be one of: auto, 12h, 24h",
+        "translation_key": "invalid_choice",
+        "translation_placeholders": {
+          "setting": "time_format",
+          "allowed": "auto, 12h, 24h"
+        },
+        "translation_domain": "device_routines"
+      }
+    ],
+    "events": []
+  },
+  "maintenance": {
+    "examples": [
+      {
+        "request": {
+          "id": 19,
+          "type": "device_routines/maintenance",
+          "action": "clean_up_now",
+          "dry_run": true
+        },
+        "response": {
+          "action": "clean_up_now",
+          "changed": [],
+          "would_change": [
+            "dev_desk_lamp"
+          ]
+        }
+      }
+    ],
+    "errors": [],
+    "events": []
+  },
+  "subscribe": {
+    "examples": [
+      {
+        "request": {
+          "id": 1,
+          "type": "device_routines/subscribe"
+        },
+        "response": null
+      }
+    ],
+    "errors": [],
+    "events": [
+      {
+        "id": 1,
+        "type": "event",
+        "event": {
+          "kind": "routine_changed",
+          "device_id": "dev_desk_lamp",
+          "reason": "opted_in",
+          "data": null
+        }
+      },
+      {
+        "id": 1,
+        "type": "event",
+        "event": {
+          "kind": "routine_changed",
+          "device_id": "dev_living_room_fan",
+          "reason": "device_routines_action_skipped",
+          "data": {
+            "device_id": "dev_living_room_fan",
+            "action": "on",
+            "at": "2026-10-19T17:00:00-07:00"
+          }
+        }
+      }
+    ]
+  }
+}

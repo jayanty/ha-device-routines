@@ -1,0 +1,27 @@
+{
+  "name": "device-routines-console",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Device Routines console: a Home Assistant custom panel built with Lit.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+  },
+  "scripts": {
+    "build": "vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "extract-fixture": "node scripts/extract-api-fixture.mjs"
+  },
+  "dependencies": {
+    "lit": "3.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "happy-dom": "20.14.5",
+    "typescript": "7.0.2",
+    "vite": "8.3.2",
+    "vitest": "5.0.3"
+  }
+}

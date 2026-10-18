@@ -1,0 +1,270 @@
+{
+  "panel": {
+    "title": "Device Routines",
+    "menu": "Open the sidebar",
+    "tabs": {
+      "routines": "Routines",
+      "today": "Today",
+      "settings": "Settings"
+    }
+  },
+  "common": {
+    "loading": "Loading",
+    "retry": "Try again",
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "none": "None",
+    "no_area": "No area",
+    "error_unknown": "Something went wrong. Check the Home Assistant log and try again."
+  },
+  "status": {
+    "active": "Active",
+    "paused": "Paused",
+    "skipping": "Skipping the next action",
+    "off": "Off",
+    "detached": "Detached",
+    "missing_target": "Target missing",
+    "invalid": "Settings need attention"
+  },
+  "verb": {
+    "on": "On",
+    "off": "Off",
+    "toggle": "Toggle",
+    "start": "Start",
+    "dock": "Return to dock",
+    "pause": "Pause",
+    "stop": "Stop",
+    "open": "Open",
+    "close": "Close",
+    "lock": "Lock",
+    "unlock": "Unlock",
+    "unknown": "Not known yet"
+  },
+  "kind": {
+    "routine": "Routine",
+    "automation": "Automation",
+    "detached_routine": "Detached routine"
+  },
+  "days": {
+    "every_day": "Every day",
+    "weekdays": "Weekdays",
+    "weekends": "Weekends",
+    "some_days": "Some days",
+    "weekly_schedule": "Weekly schedule"
+  },
+  "weekday": {
+    "mon": "Mon",
+    "tue": "Tue",
+    "wed": "Wed",
+    "thu": "Thu",
+    "fri": "Fri",
+    "sat": "Sat",
+    "sun": "Sun"
+  },
+  "routines": {
+    "title": "Routines",
+    "empty": "No device has a routine yet. Opt a device in below, then set its times.",
+    "select_all": "Select every routine",
+    "select_row": "Select {device}",
+    "selection": "{count} selected",
+    "columns": {
+      "device": "Device",
+      "area": "Area",
+      "schedule": "Schedule",
+      "status": "Status",
+      "next_action": "Next action",
+      "pause": "Pause",
+      "actions": "Actions"
+    },
+    "actions": {
+      "skip_next": "Skip next",
+      "pause": "Pause until",
+      "resume": "Resume",
+      "enable": "Enable",
+      "disable": "Disable",
+      "edit": "Edit settings",
+      "opt_out": "Opt out",
+      "confirm_opt_out": "Confirm opt out"
+    },
+    "next_action": "{verb} {time}",
+    "no_next_action": "Nothing scheduled",
+    "no_sentence": "No schedule yet",
+    "paused_until_time": "Until {time}",
+    "not_paused": "Not paused",
+    "pause_until": "Paused until",
+    "pause_confirm": "Pause",
+    "open_automation": "Automation",
+    "result": "Routines changed: {count}.",
+    "ignored": "{target} was left out: {reason}",
+    "opted_out": "{device} is opted out. Its routine is off and is cleaned up after the clean up period.",
+    "edit": {
+      "title": "Settings of {device}",
+      "saved": "The settings of {device} are saved.",
+      "fields": {
+        "target_entity": "Routine controls",
+        "on_time": "Turn on at",
+        "off_time": "Turn off at",
+        "days": "Days",
+        "day_set": "On these days",
+        "schedule_entity": "Weekly schedule",
+        "turn_off_after_min": "Turn off after (minutes)",
+        "turn_back_on_after_min": "Turn back on after (minutes)",
+        "late_start_window_min": "Late start window (minutes)",
+        "catch_up": "Catch up after restart",
+        "respect_manual": "Respect manual changes",
+        "docked_guard": "Start only when docked"
+      }
+    },
+    "detached": {
+      "title": "Detached routines",
+      "description": "These routines were taken over in the automation editor and are normal automations now. Open the automation to change one."
+    },
+    "devices": {
+      "title": "Add devices",
+      "description": "Devices with an entity a routine can drive. Suggested devices are already switched at set times by an automation.",
+      "load": "Show eligible devices",
+      "empty": "No device has an entity a routine can drive.",
+      "targets": "Entities",
+      "suggested": "Suggested",
+      "has_routine": "Has a routine",
+      "opt_in": "Opt in",
+      "opt_in_selected": "Opt in the selected devices",
+      "opted_in": "Devices opted in: {count}."
+    }
+  },
+  "today": {
+    "title": "Today",
+    "date": "Day",
+    "empty": "Nothing is scheduled on this day.",
+    "conflict": "Conflict",
+    "columns": {
+      "time": "Time",
+      "device": "Device",
+      "action": "Action",
+      "source": "From"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Defaults apply to routines created from now on; changing one never rewrites an existing routine. Saving reloads Device Routines.",
+    "saved": "Settings saved.",
+    "fields": {
+      "schedule_scope": {
+        "name": "Schedule sensor scope",
+        "description": "Which devices get a Schedule sensor: every device an automation acts on, only devices with a routine, or none."
+      },
+      "time_format": {
+        "name": "Time format",
+        "description": "How times read in every sentence. Automatic follows the country set in Home Assistant."
+      },
+      "default_catch_up": {
+        "name": "Catch up after a restart, for new routines",
+        "description": "After a restart, the device is put in the state its schedule expects."
+      },
+      "default_respect_manual": {
+        "name": "Respect manual changes, for new routines",
+        "description": "A device someone switched by hand stays as it is until its next scheduled time."
+      },
+      "default_late_start_window_min": {
+        "name": "Late start window in minutes, for new routines",
+        "description": "How long after a missed start time a new routine may still start its device. 0 turns late starts off."
+      },
+      "cleanup_after_days": {
+        "name": "Clean up after, in days",
+        "description": "How long a routine and its helpers stay after their device is opted out or removed. 0 keeps them."
+      },
+      "assign_area": {
+        "name": "Put routines in the device's area",
+        "description": "Give each routine automation the area of its device, so it shows on the area page."
+      },
+      "on_removal": {
+        "name": "On removal",
+        "description": "What removing Device Routines does to the routine automations."
+      },
+      "ai_task_entity": {
+        "name": "AI summary entity",
+        "description": "An AI Task entity id, or empty to keep AI summaries off. The options of Device Routines say what is sent to it."
+      },
+      "ai_calls_per_hour": {
+        "name": "AI calls per hour",
+        "description": "The most summaries the AI summary entity writes in one hour."
+      },
+      "offer_conversions": {
+        "name": "Offer to convert matching automations",
+        "description": "Offer, in Repairs, to turn a hand written automation that does exactly what a routine does into a routine."
+      },
+      "raise_conflict_repairs": {
+        "name": "Raise Repairs issues for conflicts",
+        "description": "Raise a Repairs issue when a routine and another automation switch a device in opposite directions at the same minute."
+      }
+    },
+    "choices": {
+      "schedule_scope": {
+        "all": "All devices with automations",
+        "routines": "Only devices with routines",
+        "none": "Nowhere"
+      },
+      "time_format": {
+        "auto": "Automatic",
+        "12h": "12 hour (9:00 AM)",
+        "24h": "24 hour (09:00)"
+      },
+      "on_removal": {
+        "keep": "Keep them as normal automations",
+        "delete": "Delete them and their helpers"
+      }
+    },
+    "maintenance": {
+      "title": "Maintenance",
+      "description": "Every action is safe to run at any time. A preview shows what would change before anything does.",
+      "preview": "Preview",
+      "run_now": "Run now",
+      "would_change": "Items it would change: {count}",
+      "would_change_none": "Running it would change nothing.",
+      "changed": "Items changed: {count}",
+      "changed_none": "Nothing needed a change.",
+      "actions": {
+        "rebuild_index": {
+          "name": "Rebuild index",
+          "description": "Find every routine automation again from its markers and the registries."
+        },
+        "reinstall_blueprint": {
+          "name": "Reinstall blueprint",
+          "description": "Put the shipped blueprint back when the installed file differs or is missing."
+        },
+        "clean_up_now": {
+          "name": "Clean up now",
+          "description": "Remove the routine, helpers and controls of every opted out or removed device now, without waiting for the clean up period."
+        },
+        "refresh_summaries": {
+          "name": "Refresh summaries",
+          "description": "Read every automation again and rewrite every Schedule summary."
+        }
+      }
+    }
+  },
+  "health": {
+    "title": "Health",
+    "missing": "The Health sensor of Device Routines is not available.",
+    "state": {
+      "ok": "OK",
+      "degraded": "Degraded",
+      "error": "Error"
+    },
+    "attributes": {
+      "version": "Version",
+      "commit": "Commit",
+      "branch": "Branch",
+      "deployed_at": "Deployed at",
+      "channel": "Channel",
+      "blueprint_schema": "Blueprint schema",
+      "blueprint_status": "Blueprint",
+      "owned_count": "Routines owned",
+      "loaded_count": "Routines loaded",
+      "issues": "Open issues",
+      "ha_version": "Home Assistant",
+      "last_reconcile": "Last reconcile"
+    }
+  }
+}
