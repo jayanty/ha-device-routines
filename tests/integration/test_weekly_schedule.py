@@ -524,6 +524,70 @@ async def test_skip_next_outside_a_block_skips_the_block_start_with_its_end(
     assert home.switch.state_now == "on"
 
 
+async def test_skip_next_again_during_a_skipped_block_extends_to_the_next_block(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    routines: MockConfigEntry,
+    clock: Clock,
+    freezer: Any,
+) -> None:
+    """Plan A4.0 item 13 (L53): a skipped block behaves as a skipped window.
+
+    The state names the next action that really runs ("Skipped, on Tue 5:00 PM"), and
+    Skip next stays: pressed again, before the skipped block or inside it, it skips the
+    following block too, as FR-R11 asks.
+    """
+    clock.set(clock.at(0, "15:00"))
+    await weekly_routine(hass, manager, home, freezer)
+    evenings = dict.fromkeys(("monday", "tuesday", "wednesday", "thursday"), MONDAY_EVENING)
+    await add_blocks(hass, manager, **evenings)
+
+    first = await manager.async_skip_next(home.fan)
+    await hass.async_block_till_done()
+
+    assert first.skipped_action == Occurrence(clock.at(0, "17:00"), Verb.ON)
+    assert first.next_action == Occurrence(clock.at(1, "17:00"), Verb.ON)
+    view = manager.get(home.fan)
+    assert view is not None
+    assert view.status is Status.SKIPPING
+    assert view.sentence == "Skipped, on Tue 5:00 PM"
+
+    # Again before the skipped block starts: Tuesday's block goes too.
+    second = await manager.async_skip_next(home.fan)
+    await hass.async_block_till_done()
+    assert second.skipped_action == Occurrence(clock.at(1, "17:00"), Verb.ON)
+    assert second.paused_until == clock.at(1, "22:01")
+    view = manager.get(home.fan)
+    assert view is not None
+    assert view.sentence == "Skipped, on Wed 5:00 PM"
+
+    # A restart keeps what runs after the skip.
+    assert await hass.config_entries.async_reload(routines.entry_id)
+    await hass.async_block_till_done()
+    manager = routines.runtime_data.manager
+    view = manager.get(home.fan)
+    assert view is not None
+    assert view.next_action == Occurrence(clock.at(2, "17:00"), Verb.ON)
+    assert view.sentence == "Skipped, on Wed 5:00 PM"
+
+    # Again inside a skipped block: Wednesday's block goes too.
+    await clock.to(clock.at(0, "18:00"))
+    assert home.switch.state_now == "off"
+    third = await manager.async_skip_next(home.fan)
+    await hass.async_block_till_done()
+    assert third.skipped_action == Occurrence(clock.at(2, "17:00"), Verb.ON)
+    assert third.next_action == Occurrence(clock.at(3, "17:00"), Verb.ON)
+
+    await clock.to(clock.at(2, "17:00:01"))
+    assert home.switch.state_now == "off"
+    await clock.to(clock.at(3, "17:00:01"))
+    assert home.switch.state_now == "on"
+    view = manager.get(home.fan)
+    assert view is not None
+    assert view.status is Status.ACTIVE
+
+
 async def test_skip_next_inside_a_block_skips_its_end_alone(
     hass: HomeAssistant, home: Home, manager: RoutineManager, clock: Clock, freezer: Any
 ) -> None:

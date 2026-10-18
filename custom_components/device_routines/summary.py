@@ -140,12 +140,17 @@ class RoutineSummary:
     next one that runs); it fills the `skipped_action` attribute while skipping. The
     state names the next action that really runs, computed here from the routine's
     inputs. `status` picks the state form; `detached` hands the device back to the parser.
+    `next_action` (plan A4.0, L43) is the manager's own next action that really runs,
+    after any pause: the summary falls back to it when the inputs alone cannot tell,
+    which is the case while Skip next skips weekly schedule blocks (the schedule entity
+    names only its next change, L53).
     """
 
     items: tuple[SummaryItem, ...]
     paused_until: datetime | None
     skipped_action: Occurrence | None
     status: Status
+    next_action: Occurrence | None = None
 
 
 class RoutineItemsProvider(Protocol):
@@ -714,6 +719,9 @@ class SummaryCoordinator:
         ):
             settings = owned.settings
             occurrences = self._routine_occurrences(owned, pause_end, now)
+            if not occurrences and routine.next_action is not None:
+                # The inputs cannot see past a skipped weekly block; the manager can.
+                occurrences = [routine.next_action]
             rows[0] = _Row(first, occurrences, (settings.target_entity,), settings)
         else:
             rows[0] = _Row(first, [], ())

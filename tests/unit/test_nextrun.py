@@ -607,6 +607,32 @@ def test_block_bounds_follow_the_wall_clock_across_a_dst_night() -> None:
     assert end[1].utcoffset() == timedelta(hours=-8)
 
 
+def test_next_block_is_the_first_whole_block_starting_at_or_after_a_moment() -> None:
+    """Plan A4.0 item 13 (L53): what runs after a skipped block, and what Skip next skips next."""
+    blocks = {
+        Weekday.MON: ((time(8), time(9)), (time(17), time(22))),
+        Weekday.TUE: ((time(17), time(19)), (time(19), time(21, 30))),
+        Weekday.SAT: ((time(22), time.max),),
+        Weekday.SUN: ((time(0), time(2)),),
+    }
+    # Monday 2026-10-19, one minute after the evening block ends: Tuesday's evening.
+    assert nextrun.next_block(blocks, local(19, 22, 1)) == (local(20, 17), local(20, 21, 30))
+    # A block starting at the moment counts; one that started before does not.
+    assert nextrun.next_block(blocks, local(19, 17)) == (local(19, 17), local(19, 22))
+    assert nextrun.next_block(blocks, local(19, 8, 30)) == (local(19, 17), local(19, 22))
+    # A block that continues another (19:00 on Tuesday, Sunday 00:00) starts nothing.
+    assert nextrun.next_block(blocks, local(20, 18)) == (local(24, 22), local(25, 2))
+    assert nextrun.next_block(blocks, local(24, 23)) == (local(26, 8), local(26, 9))
+    # The moment's zone is the wall clock the blocks are read in, and the answer's zone.
+    found = nextrun.next_block(blocks, local(19, 22, 1))
+    assert found is not None
+    assert found[0].tzinfo is LA
+    # No blocks, or blocks that never end, have no next block.
+    assert nextrun.next_block({}, local(19, 12)) is None
+    always = {day: ((time(0), time.max),) for day in Weekday}
+    assert nextrun.next_block(always, local(19, 12)) is None
+
+
 def test_skip_target_skips_a_block_start_with_its_end() -> None:
     """L38: outside a block, Skip next skips the next block's start and its end (D18)."""
     block_starts = local(19, 17)

@@ -537,6 +537,37 @@ def block_bounds(blocks: WeeklyBlocks, start: datetime) -> tuple[datetime, datet
     return None
 
 
+def _continues(blocks: WeeklyBlocks, weekday: Weekday, begin: time) -> bool:
+    """Tell whether a block starting then continues another, so it starts nothing (A6)."""
+    if any(end == begin for _start, end in blocks.get(weekday, ())):
+        return True
+    previous = list(Weekday)[(weekday.number - 1) % len(Weekday)]
+    return begin == time(0) and any(end == time.max for _start, end in blocks.get(previous, ()))
+
+
+def next_block(blocks: WeeklyBlocks, after: datetime) -> tuple[datetime, datetime] | None:
+    """Return the first block of a weekly schedule that starts at or after `after`.
+
+    With its end, as `block_bounds` gives it. `after` is a local moment: its zone is the
+    wall clock the blocks are read in and the zone of the answer. Blocks that meet are
+    one block (A6), so a block that continues another starts nothing. The manager asks
+    it for what runs after a skipped block and what a second Skip next skips (L53).
+    None without blocks, or when the blocks never end.
+    """
+    tz = after.tzinfo
+    assert tz is not None  # noqa: S101  # the caller passes an aware datetime
+    for offset in range(len(Weekday) + 1):
+        day = after.date() + timedelta(days=offset)
+        weekday = Weekday.of(datetime.combine(day, time()))
+        for begin, _end in sorted(blocks.get(weekday, ())):
+            if _continues(blocks, weekday, begin):
+                continue
+            for start in wall_instants(day, begin, tz):
+                if start >= after:
+                    return block_bounds(blocks, start)
+    return None
+
+
 def _block_skip(first: _Action, block: tuple[datetime, datetime] | None) -> SkipTarget | None:
     """Skip a weekly schedule's next block start with its end, when `block` is that block."""
     if block is None or block[0] != first.at:

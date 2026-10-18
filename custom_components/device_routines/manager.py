@@ -513,6 +513,10 @@ class _Routine:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     # The routine's timer helper and the handle of the listener that follows it.
     timer_watch: tuple[str, CALLBACK_TYPE] | None = None
+    # While Skip next skips weekly schedule blocks: the first block that starts at or
+    # after Paused until, read from the helper (L53), since the schedule's `next_event`
+    # still names the skipped one.
+    block_ahead: tuple[datetime, datetime] | None = None
 
 
 type AttributorFactory = Callable[[HomeAssistant, RoutineLookup, OverrideSink], Attributor]
@@ -802,14 +806,29 @@ class RoutineManager:
             return Status.SKIPPING if routine.skipped_action else Status.PAUSED
         return Status.ACTIVE
 
-    def _schedule_lookup(self, settings: RoutineSettings) -> tuple[str | None, nextrun.Lookups]:
-        """Return a weekly schedule's state and its next change, as nextrun reads them."""
+    def _schedule_lookup(
+        self, settings: RoutineSettings, routine: _Routine | None = None
+    ) -> tuple[str | None, nextrun.Lookups]:
+        """Return a weekly schedule's state and its next change, as nextrun reads them.
+
+        While Skip next skips the routine's blocks, the next change the schedule names
+        may be one the skip covers; the block after the skip (`block_ahead`) then stands
+        in, as the start of a block outside one, so the next action that really runs
+        and a second Skip next see past the skip, as for a window (L53).
+        """
         if settings.schedule_entity is None:
             return None, nextrun.Lookups()
         state = self.hass.states.get(settings.schedule_entity)
         if state is None:
             return None, nextrun.Lookups()
         held = _moment(state.attributes.get("next_event"))
+        until, ahead = (
+            (routine.paused_until, routine.block_ahead)
+            if routine is not None and self._paused(routine)
+            else (None, None)
+        )
+        if until is not None and ahead is not None and (held is None or held < until):
+            return "off", nextrun.Lookups(entity_times={settings.schedule_entity: ahead[0]})
         times = {settings.schedule_entity: held} if held is not None else {}
         return state.state, nextrun.Lookups(entity_times=times)
 
@@ -831,7 +850,7 @@ class RoutineManager:
         """Return the routine's coming actions after any pause, while it runs."""
         if routine.settings is None or status not in _RUNNING:
             return []
-        schedule_state, lookups = self._schedule_lookup(routine.settings)
+        schedule_state, lookups = self._schedule_lookup(routine.settings, routine)
         return nextrun.routine_occurrences(
             routine.settings,
             dt_util.now(),
@@ -1021,6 +1040,7 @@ class RoutineManager:
             routine.paused_until,
             routine.skipped_action if status is Status.SKIPPING else None,
             status,
+            upcoming[0] if upcoming else None,
         )
 
     def _writer(self, settings: RoutineSettings) -> Writer:
@@ -1087,6 +1107,7 @@ class RoutineManager:
 
         A Paused until still ahead pauses again until then; one that passed while Home
         Assistant was down is dropped (the blueprint's start catch up applies the state).
+        A skip of weekly schedule blocks reads the block after it again (L53).
         """
         routine = self._routines.get(device_id)
         if routine is None:
@@ -1098,6 +1119,11 @@ class RoutineManager:
             routine.paused_until = restored.paused_until
             routine.skipped_action = restored.skipped_action
             self._schedule_resume(routine)
+            if restored.skipped_action is not None and routine.settings is not None:
+                blocks = await self._async_blocks(routine.settings)
+                if blocks is not None:
+                    local = dt_util.as_local(restored.paused_until)
+                    routine.block_ahead = nextrun.next_block(blocks, local)
         self._changed(device_id)
 
     def restore_data(self, device_id: str) -> RestoredRuntime | None:
@@ -1746,7 +1772,8 @@ class RoutineManager:
         assert settings is not None  # noqa: S101  # _require_automation checked
         now = dt_util.now()
         countdown = self._countdown_ends(routine)
-        schedule_state, lookups = self._schedule_lookup(settings)
+        schedule_state, lookups = self._schedule_lookup(settings, routine)
+        blocks = await self._async_blocks(settings)
         target = nextrun.skip_target(
             settings,
             now,
@@ -1754,10 +1781,15 @@ class RoutineManager:
             schedule_state,
             lookups,
             countdown_ends=countdown,
-            block=await self._async_next_block(settings, schedule_state, lookups),
+            block=_next_block(settings, schedule_state, lookups, blocks),
         )
         if target is None:
             raise _invalid("nothing_to_skip", {"device": self._device_name(device_id)})
+        routine.block_ahead = (
+            None
+            if blocks is None
+            else nextrun.next_block(blocks, dt_util.as_local(target.paused_until))
+        )
         if target.at == countdown:
             await self.hass.services.async_call(
                 "timer", "cancel", {ATTR_ENTITY_ID: self._timer_entity(routine)}, blocking=True
@@ -1782,6 +1814,7 @@ class RoutineManager:
             self._changed(device_id)
         routine.paused_until = moment
         routine.skipped_action = None
+        routine.block_ahead = None
         self._paused_now(routine)
         return self._result(device_id, "pause")
 
@@ -1830,6 +1863,7 @@ class RoutineManager:
         data = self._pause_data(routine)
         routine.paused_until = None
         routine.skipped_action = None
+        routine.block_ahead = None
         self._changed(routine.device_id)
         self.hass.bus.async_fire(EVENT_RESUMED, data)
 
@@ -1843,6 +1877,7 @@ class RoutineManager:
         self._cancel_resume(routine)
         routine.paused_until = None
         routine.skipped_action = None
+        routine.block_ahead = None
         routine.override = routine.override_by_skip = False
 
     async def async_enable(self, device_id: str) -> ActionResult:
@@ -2708,32 +2743,18 @@ class RoutineManager:
             _LOGGER.debug("Could not read the blocks of %s: %s", entity_id, err)
             return None
 
-    async def _async_next_block(
-        self,
-        settings: RoutineSettings,
-        schedule_state: str | None,
-        lookups: nextrun.Lookups,
-    ) -> tuple[datetime, datetime] | None:
-        """Return the next block of a weekly schedule, start and end, while outside one.
+    async def _async_blocks(self, settings: RoutineSettings) -> nextrun.WeeklyBlocks | None:
+        """Return the blocks of a routine's weekly schedule, read through the adapter.
 
-        The start is the schedule's `next_event`; the end is read from the helper's
-        blocks (`schedule/list`, decision L38), because the entity's state does not hold
-        it. None inside a block, for a schedule the commands do not manage, or when the
-        blocks cannot be read; Skip next then has nothing to skip at a block start.
+        The entity's state does not hold them (`schedule/list`, decision L38). None for a
+        routine without a weekly schedule, for a schedule the commands do not manage, or
+        when the blocks cannot be read; Skip next then has nothing to skip at a block start.
         """
         schedule = settings.schedule_entity
-        start = lookups.entity_times.get(schedule) if schedule else None
-        if (
-            settings.days is not Days.WEEKLY_SCHEDULE
-            or schedule is None
-            or schedule_state != "off"
-            or not isinstance(start, datetime)
-        ):
+        if settings.days is not Days.WEEKLY_SCHEDULE or schedule is None:
             return None
         item = await self._async_schedule_items(schedule)
-        if item is None:
-            return None
-        return nextrun.block_bounds(nextrun.weekly_blocks(item), dt_util.as_local(start))
+        return None if item is None else nextrun.weekly_blocks(item)
 
     async def _async_delete_own_helpers(self, device_id: str) -> None:
         """Delete the routine's own helpers when they go with the routine (D28).
@@ -2881,6 +2902,24 @@ def _name_from(template: str, alias: str | None) -> str | None:
     if alias is None or not alias.startswith(prefix) or not alias.endswith(suffix):
         return None
     return alias[len(prefix) : len(alias) - len(suffix)] or None
+
+
+def _next_block(
+    settings: RoutineSettings,
+    schedule_state: str | None,
+    lookups: nextrun.Lookups,
+    blocks: nextrun.WeeklyBlocks | None,
+) -> tuple[datetime, datetime] | None:
+    """Return the weekly schedule block, start and end, that starts at its next change.
+
+    Outside a block the schedule's next change is a block start; inside one there is
+    none to give (D19 skips the end alone).
+    """
+    schedule = settings.schedule_entity
+    start = lookups.entity_times.get(schedule) if schedule else None
+    if blocks is None or schedule_state != "off" or not isinstance(start, datetime):
+        return None
+    return nextrun.block_bounds(blocks, dt_util.as_local(start))
 
 
 def _is_window_end(settings: RoutineSettings, target: nextrun.SkipTarget) -> bool:
