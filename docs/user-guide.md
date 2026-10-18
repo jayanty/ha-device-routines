@@ -547,14 +547,15 @@ A trimmed entry looks like this:
     path: device_routines/device_routine.yaml
     input:
       target_entity: switch.living_room_fan
-      on_action: switch.turn_on
-      off_action: switch.turn_off
       on_time_enabled: true
       on_time: "17:00:00"
       off_time_enabled: true
       off_time: "09:00:00"
+      # ... the other inputs you may change, each with its value
+      on_action: switch.turn_on
+      off_action: switch.turn_off
       crosses_midnight: true
-      # ... the other inputs, each with its value
+      # ... the other inputs Device Routines sets
 ```
 
 Only the id and the blueprint make an automation a routine. An automation with the same
@@ -579,6 +580,12 @@ every routine and helper in one place.
 ## If you edit the automation yourself
 
 The device page and the automation's blueprint form are two editors of the same settings.
+The form shows what you may change first, in the sections Target, Schedule, Timers,
+Behavior and Advanced. Its last section, **Set by Device Routines (do not edit)**, holds
+what the integration writes itself: the actions that switch the device and its off state,
+the device id, values it works out from your settings (such as the days a window ends
+on) and the helpers it keeps for the routine. Leave that section as it is: Device
+Routines ignores a change there or puts the value back when it next saves the routine.
 
 | You | The integration |
 | --- | --- |

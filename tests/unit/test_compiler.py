@@ -72,13 +72,11 @@ SUN_WINDOW = RoutineSettings(
 )
 LIGHT = domains.PROFILES["light"]
 
-# Blueprint input schema 2 (plan Section 6.2.1), in the table's order: 38 inputs.
+# Blueprint input schema 2 (plan Section 6.2.1), 38 inputs in the blueprint's file order
+# (TECH_SPEC 5.2): the inputs a person may change in the form, then the 15 Device Routines
+# sets itself in the collapsed last section (owner decision O3).
 SPEC_KEYS = (
     "target_entity",
-    "on_action",
-    "off_action",
-    "inactive_state",
-    "device_id",
     "on_time_enabled",
     "on_time",
     "on_kind",
@@ -87,31 +85,35 @@ SPEC_KEYS = (
     "off_time",
     "off_kind",
     "off_sun_offset",
-    "on_at_sunrise",
-    "on_at_sunset",
-    "off_at_sunrise",
-    "off_at_sunset",
     "days_start",
-    "days_end",
-    "crosses_midnight",
     "schedule_enabled",
     "schedule_entity",
-    "timer_entity",
     "turn_off_after_min",
     "turn_back_on_after_min",
     "catch_up",
     "late_start_window_min",
-    "late_window_end",
-    "late_sun_offset",
     "respect_manual",
-    "override_entity",
-    "paused_until_entity",
     "pulse_enabled",
     "pulse_at",
     "pulse_minutes",
     "pulse_min_steady_min",
     "docked_guard",
     "extra_conditions",
+    "on_action",
+    "off_action",
+    "inactive_state",
+    "device_id",
+    "on_at_sunrise",
+    "on_at_sunset",
+    "off_at_sunrise",
+    "off_at_sunset",
+    "days_end",
+    "crosses_midnight",
+    "timer_entity",
+    "late_window_end",
+    "late_sun_offset",
+    "override_entity",
+    "paused_until_entity",
 )
 # The inputs schema 2 added, with the defaults that reproduce schema 1 behavior.
 SCHEMA_2_DEFAULTS = {
@@ -883,6 +885,28 @@ def test_decompile_reads_a_form_edit_that_omits_defaults() -> None:
         target_entity="fan.living_room_fan", on_time=time(7, 30), turn_off_after_min=30
     )
     assert compiler.refs_of(REQUIRED) == compiler.HelperRefs("device-1")
+
+
+@pytest.mark.parametrize(("settings", "profile"), [(WINDOW, FAN), (SUN_WINDOW, LIGHT)])
+def test_inputs_written_in_another_order_read_the_same(
+    settings: RoutineSettings, profile: DomainProfile
+) -> None:
+    """Inputs are stored flat; their order is the file order of the build that wrote them.
+
+    A routine an older build wrote (before the form's last section, owner decision O3)
+    reads the same settings and helpers, and compiling it again gives the same mapping in
+    the new order, so sync back finds nothing to repair.
+    """
+    written = compiled(settings, profile)
+    older = {key: written[key] for key in reversed(SPEC_KEYS)}
+    again = compiled(compiler.decompile(older), profile, compiler.refs_of(older))
+
+    assert list(older) != list(written)
+    assert compiler.is_valid_shape(older)
+    assert compiler.decompile(older) == compiler.decompile(written) == compiler.canonical(settings)
+    assert compiler.refs_of(older) == compiler.refs_of(written)
+    assert again == older
+    assert list(again) == list(SPEC_KEYS)
 
 
 def test_decompile_reads_the_primary_inputs_and_ignores_the_derived_ones() -> None:

@@ -7,7 +7,8 @@ Three contracts, one part each:
    blueprint's inputs, key for key in order, each value of the type its selector holds,
    and the automation entry the manager writes validates the way the core validates a
    `use_blueprint` automation. The hand written `inputs()` mirror of the blueprint tests
-   equals `compile` for the same settings.
+   equals `compile` for the same settings. The form's sections before the last hold
+   exactly the inputs `decompile` reads; the last holds what Device Routines sets (O3).
 2. One service layer (PRD P16). An AST check of every surface module: the device page
    platforms and their base classes, the actions, the WebSocket commands, the triggers,
    the conditions and the Repairs fix flows. The rule is written out in `P16_RULE`.
@@ -393,6 +394,99 @@ async def test_the_compiler_and_the_installed_blueprint_name_the_same_inputs(
         compiler.UNUSED_DATETIME,
     ):
         assert sentinel in text
+
+
+# Settings that reach every branch of `decompile`: time bounds with a duration and a
+# pulse, sun bounds with offsets both ways, and a weekly schedule.
+READER_CASES: Final = (
+    RoutineSettings(
+        FAN,
+        on_time=time(17),
+        off_time=time(9),
+        turn_off_after_min=30,
+        pulse=Pulse(time(12)),
+        extra_conditions=strategies.EXAMPLE_CONDITIONS[:1],
+    ),
+    RoutineSettings(
+        FAN,
+        on_kind=TimeKind.SUNSET,
+        on_sun_offset_min=30,
+        off_kind=TimeKind.SUNRISE,
+        off_sun_offset_min=-45,
+    ),
+    RoutineSettings(
+        FAN, days=Days.WEEKLY_SCHEDULE, schedule_entity="schedule.routine_living_room_fan"
+    ),
+)
+_CLOCK_OR_OFFSET: Final = re.compile(r"-?\d{2}:\d{2}:\d{2}")
+
+
+def _other_value(key: str, value: Any) -> Any:
+    """Return another value of the type `compile` writes for an input, never the same."""
+    if isinstance(value, bool):
+        other: Any = not value
+    elif isinstance(value, int):
+        other = value + 1
+    elif key == "extra_conditions":
+        other = [] if value else list(strategies.EXAMPLE_CONDITIONS[:1])
+    elif isinstance(value, list):
+        other = ["tue"] if value == ["mon"] else ["mon"]
+    elif key in {"on_kind", "off_kind"}:
+        other = "sunrise" if value == "sunset" else "sunset"
+    elif _CLOCK_OR_OFFSET.fullmatch(value):
+        other = "02:00:00" if value == "01:23:00" else "01:23:00"
+    else:
+        other = f"{value}_other"
+    return other
+
+
+def inputs_read_by(reader: Callable[[Mapping[str, Any]], Any]) -> set[str]:
+    """Return the inputs whose value changes what a reader returns, for some routine.
+
+    Each input of each `READER_CASES` routine in turn gets another value of its type; an
+    input counts as read when the result differs from the unchanged routine's.
+    """
+    found: set[str] = set()
+    for settings in READER_CASES:
+        written = dict(compiler.compile(settings, PROFILES["switch"], REFS).inputs)
+        for key, value in written.items():
+            changed = {**written, key: _other_value(key, value)}
+            assert compiler.is_valid_shape(changed), key
+            if reader(changed) != reader(written):
+                found.add(key)
+    return found
+
+
+def test_the_form_shows_what_decompile_reads_and_folds_away_the_rest() -> None:
+    """Owner decision O3, proven against the compiler and the shipped blueprint.
+
+    The sections before the last hold exactly the inputs `decompile` reads, so a person
+    edits only what reaches the settings. The last section, collapsed, holds the rest in
+    `INPUT_KEYS` order: what Device Routines sets from the profile, derives from the
+    settings, or names as its own helpers (`refs_of` reads those, never `decompile`).
+    """
+    by_decompile = inputs_read_by(compiler.decompile)
+    by_refs = inputs_read_by(compiler.refs_of)
+    *shown_sections, managed = SHIPPED.data["blueprint"]["input"].values()
+    shown = [key for section in shown_sections for key in section["input"]]
+
+    assert set(shown) == by_decompile
+    assert set(shown) <= by_decompile | by_refs | {"target_entity"}
+    assert managed["collapsed"] is True
+    assert tuple(managed["input"]) == mirror.SET_BY_DEVICE_ROUTINES
+    assert tuple(managed["input"]) == tuple(
+        key for key in compiler.INPUT_KEYS if key not in by_decompile
+    )
+    assert (*shown, *managed["input"]) == compiler.INPUT_KEYS
+    assert by_refs == {item.name for item in fields(compiler.HelperRefs)}
+    assert by_refs - by_decompile == {
+        "device_id",
+        "timer_entity",
+        "override_entity",
+        "paused_until_entity",
+    }
+    # The one helper the form shows is the weekly schedule a person may pick there.
+    assert {key for key in shown if key in by_refs} == {"schedule_entity"}
 
 
 @pytest.mark.parametrize(

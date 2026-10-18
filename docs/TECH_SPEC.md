@@ -99,7 +99,7 @@ A side of a window is a time (`on_time`, kind `time`) or a sun event with an off
 
 ### 3.3 compiler.py
 
-`BLUEPRINT_SCHEMA_VERSION = 2`; `INPUT_KEYS` holds the 38 inputs of blueprint input schema 2 in the order of plan Section 6.2.1 (the 29 of Section 5.2 plus `on_kind`, `on_sun_offset`, `off_kind`, `off_sun_offset`, the four sun flags and `late_sun_offset`); `MAX_SUN_OFFSET_MIN = 180`.
+`BLUEPRINT_SCHEMA_VERSION = 2`; `INPUT_KEYS` holds the 38 inputs of blueprint input schema 2 (the 29 of schema 1 plus `on_kind`, `on_sun_offset`, `off_kind`, `off_sun_offset`, the four sun flags and `late_sun_offset`) in the blueprint's file order of Section 5.2: the 23 inputs `decompile` reads, then the 15 Device Routines sets itself (owner decision O3); `compile` writes them in that order and `decompile` reads them in any order; `MAX_SUN_OFFSET_MIN = 180`.
 
 - `validate(settings, profile) -> list[Problem]`. Rejects: a refused action; two equal bounds (one kind with one time or one offset: `same_on_and_off_time`); a duration on a domain without that option; both `turn_off_after_min` and `turn_back_on_after_min` non zero (D27); `WEEKLY_SCHEDULE` without `schedule_entity`; a time or a sun bound with `WEEKLY_SCHEDULE`; `SOME_DAYS` with an empty `day_set`; `pulse` on a domain without both actions; an on side, a time or a sun bound, on a domain without an on action (`on_time_not_supported`); minutes out of range, a sun offset outside plus or minus 180 included (`out_of_range` naming `on_sun_offset_min` or `off_sun_offset_min`). An off side may be a sun bound on every domain: Lock at sunset only makes a device safer.
 - `compile(settings, profile, refs) -> CompiledInputs`. Produces the full blueprint input dict including the derived inputs: `days_start`, `days_end` (the day set shifted by one when the window crosses midnight, else identical), `crosses_midnight` (by the nominal sun times), `late_window_end` (on time plus the late start window, wrapped at midnight), `on_time_enabled` and `off_time_enabled` (true only for a time bound with a time), `on_at_sunrise`, `on_at_sunset`, `off_at_sunrise`, `off_at_sunset` (the side's kind), `late_sun_offset` (the on offset plus the late start window), sentinel values for every disabled input, `on_action`, `off_action`, `inactive_state`, helper entity ids and the device id carried in events. Offsets are text `[-]HH:MM:SS` with whole minutes and seconds `00`; a sun bound's time input holds the `00:00:00` sentinel and a time bound's offset `00:00:00`.
@@ -283,40 +283,43 @@ Reads `.deployed` next to the component (when present) and `manifest.json`; comp
 
 ### 5.1 File
 
-`custom_components/device_routines/blueprints/device_routine.yaml`, installed to `<config>/blueprints/automation/device_routines/device_routine.yaml`. Header comment: Device Routines blueprint, schema 2 (the input schema, `compiler.BLUEPRINT_SCHEMA_VERSION`); do not edit, changes are detected and offered for restore. Schema 1 (v0.3.0) had the 29 inputs of Build A; schema 2 adds the nine inputs of sun relative bounds (FR-R10, decision L60), each defaulting to schema 1 behavior, so a routine written for schema 1 runs unchanged on the schema 2 file until the migration of Section 4.11 rewrites it. `tests/fixtures/blueprint/device_routine_schema_1.yaml` keeps the schema 1 file byte for byte for the upgrade tests. `blueprint.name` is Device routine (managed by Device Routines); the description explains that the form is the second editor; `homeassistant.min_version` is the Stage 0 validated version, 2026.10.2. No `source_url`: the file is installed and upgraded by the integration, and a `source_url` would offer a re-import from GitHub in the core and, with Spook, an update entity (decision L24). Every trigger, condition and branch carries an `alias` so a trace reads like documentation.
+`custom_components/device_routines/blueprints/device_routine.yaml`, installed to `<config>/blueprints/automation/device_routines/device_routine.yaml`. Header comment: Device Routines blueprint, schema 2 (the input schema, `compiler.BLUEPRINT_SCHEMA_VERSION`); do not edit, changes are detected and offered for restore. Schema 1 (v0.3.0) had the 29 inputs of Build A; schema 2 adds the nine inputs of sun relative bounds (FR-R10, decision L60), each defaulting to schema 1 behavior, so a routine written for schema 1 runs unchanged on the schema 2 file until the migration of Section 4.11 rewrites it. `tests/fixtures/blueprint/device_routine_schema_1.yaml` keeps the schema 1 file byte for byte for the upgrade tests. `blueprint.name` is Device routine (managed by Device Routines); the description explains that the form is the second editor and that its last section holds what Device Routines sets itself; `homeassistant.min_version` is the Stage 0 validated version, 2026.10.2. No `source_url`: the file is installed and upgraded by the integration, and a `source_url` would offer a re-import from GitHub in the core and, with Spook, an update entity (decision L24). Every trigger, condition and branch carries an `alias` so a trace reads like documentation.
 
 ### 5.2 Inputs
 
-Sections are collapsible; Timers, Behavior and Advanced start collapsed.
+Sections are collapsible; Timers, Behavior, Advanced and Set by Device Routines start collapsed. The sections before the last hold exactly the inputs `decompile` reads, the ones a person may change in the form. The last, Set by Device Routines (do not edit), holds the 15 inputs Device Routines sets itself and `decompile` never reads: the profile's actions and off state, the device id, the derived inputs and the helper entities, with a description saying an edit there is undone or ignored (owner decision O3). Sections are layout only: the core flattens them in file order, the stored inputs are flat, and moving an input from one section to another changes neither the input schema nor a routine. The core's form keeps a section expanded, with no collapse control, while it holds an input without a default, so Set by Device Routines shows open as long as `on_action`, `off_action`, `inactive_state` and `device_id` are required.
 
 | Section | Input | Selector | Default | Notes |
 | --- | --- | --- | --- | --- |
 | Target | `target_entity` | entity, supported domains | required |  |
-| Target | `on_action`, `off_action` | text | required | Service names from the domain profile, for example `switch.turn_on` |
-| Target | `inactive_state` | text | required | `off`, `docked`, `closed` or `locked` |
-| Target | `device_id` | text | required | Carried in events |
 | Schedule | `on_time_enabled`, `on_time` | boolean, time | false, 00:00:00 | Sentinel pattern: a disabled trigger still needs a valid value. True only for a time bound; a sun bound keeps the sentinel |
 | Schedule | `on_kind`, `on_sun_offset` | select (`time`, `sunrise`, `sunset`), text | `time`, 00:00:00 | Schema 2. The offset is `[-]HH:MM:SS` in whole minutes, plus or minus 180, negative before the event; 0 for a time bound |
 | Schedule | `off_time_enabled`, `off_time` | boolean, time | false, 00:00:00 |  |
 | Schedule | `off_kind`, `off_sun_offset` | as the on twins | `time`, 00:00:00 | Schema 2 |
-| Schedule | `on_at_sunrise`, `on_at_sunset`, `off_at_sunrise`, `off_at_sunset` | boolean | false | Schema 2, derived from the kinds; they switch the sun triggers and the sun conditions |
-| Schedule | `days_start`, `days_end` | select, multiple, weekdays | all days | `days_end` is `days_start` shifted by one day when the window crosses midnight |
-| Schedule | `crosses_midnight` | boolean | false | Decided by nominal times: a sun bound reads as sunrise 06:00 or sunset 18:00 plus its offset (L60) |
+| Schedule | `days_start` | select, multiple, weekdays | all days |  |
 | Schedule | `schedule_enabled`, `schedule_entity` | boolean, entity (schedule) | false, `schedule.device_routines_unused` |  |
-| Timers | `timer_entity` | entity (timer) | `timer.device_routines_unused` |  |
-| Timers | `turn_off_after_min`, `turn_back_on_after_min` | number 0 to 1440 | 0, 0 | At most one is non zero (D27) |
+| Timers | `turn_off_after_min`, `turn_back_on_after_min` | number 0 to 1440 | 0, 0 | At most one is non zero (D27); the countdown runs on `timer_entity` |
 | Behavior | `catch_up` | boolean | true |  |
-| Behavior | `late_start_window_min`, `late_window_end` | number, time | 15, 00:15:00 | `late_window_end` is computed by the compiler |
-| Behavior | `late_sun_offset` | text | 00:15:00 | Schema 2, derived: the on offset plus the late start window; it ends the late start window of a sun start |
-| Behavior | `respect_manual`, `override_entity` | boolean, entity (switch) | true, `switch.device_routines_unused` |  |
-| Behavior | `paused_until_entity` | entity (datetime) | `datetime.device_routines_unused` |  |
+| Behavior | `late_start_window_min` | number | 15 |  |
+| Behavior | `respect_manual` | boolean | true |  |
 | Advanced | `pulse_enabled`, `pulse_at`, `pulse_minutes`, `pulse_min_steady_min` | boolean, time, number, number | false, 00:00:00, 3, 5 |  |
 | Advanced | `docked_guard` | boolean | true | vacuum and lawn mower only |
 | Advanced | `extra_conditions` | condition | empty | FR-R9 |
+| Set by Device Routines | `on_action`, `off_action` | text | required | Service names from the domain profile, for example `switch.turn_on` |
+| Set by Device Routines | `inactive_state` | text | required | `off`, `docked`, `closed` or `locked` |
+| Set by Device Routines | `device_id` | text | required | Carried in events |
+| Set by Device Routines | `on_at_sunrise`, `on_at_sunset`, `off_at_sunrise`, `off_at_sunset` | boolean | false | Schema 2, derived from the kinds; they switch the sun triggers and the sun conditions |
+| Set by Device Routines | `days_end` | select, multiple, weekdays | all days | `days_start` shifted by one day when the window crosses midnight |
+| Set by Device Routines | `crosses_midnight` | boolean | false | Decided by nominal times: a sun bound reads as sunrise 06:00 or sunset 18:00 plus its offset (L60) |
+| Set by Device Routines | `timer_entity` | entity (timer) | `timer.device_routines_unused` |  |
+| Set by Device Routines | `late_window_end` | time | 00:15:00 | Computed by the compiler: the on time plus the late start window |
+| Set by Device Routines | `late_sun_offset` | text | 00:15:00 | Schema 2, derived: the on offset plus the late start window; it ends the late start window of a sun start |
+| Set by Device Routines | `override_entity` | entity (switch) | `switch.device_routines_unused` |  |
+| Set by Device Routines | `paused_until_entity` | entity (datetime) | `datetime.device_routines_unused` |  |
 
 Sentinel entities never exist: a state trigger on a missing entity never fires, and `enabled: false` keeps the time triggers inert while their values stay valid for schema validation. V5 confirms `enabled: !input` on triggers and on conditions.
 
-Schema 2 has 38 inputs in this order (plan Section 6.2.1): `target_entity`, `on_action`, `off_action`, `inactive_state`, `device_id`, `on_time_enabled`, `on_time`, `on_kind`, `on_sun_offset`, `off_time_enabled`, `off_time`, `off_kind`, `off_sun_offset`, `on_at_sunrise`, `on_at_sunset`, `off_at_sunrise`, `off_at_sunset`, `days_start`, `days_end`, `crosses_midnight`, `schedule_enabled`, `schedule_entity`, `timer_entity`, `turn_off_after_min`, `turn_back_on_after_min`, `catch_up`, `late_start_window_min`, `late_window_end`, `late_sun_offset`, `respect_manual`, `override_entity`, `paused_until_entity`, `pulse_enabled`, `pulse_at`, `pulse_minutes`, `pulse_min_steady_min`, `docked_guard`, `extra_conditions`. The blueprint reads only the four sun flags and the offsets; `on_kind` and `off_kind` are the primary inputs `decompile` reads and the form shows. With the nine at their defaults every sun trigger and sun condition is switched off, which is what makes a schema 1 routine run unchanged.
+Schema 2 has 38 inputs; their file order, which `compiler.INPUT_KEYS` follows, is: `target_entity`, `on_time_enabled`, `on_time`, `on_kind`, `on_sun_offset`, `off_time_enabled`, `off_time`, `off_kind`, `off_sun_offset`, `days_start`, `schedule_enabled`, `schedule_entity`, `turn_off_after_min`, `turn_back_on_after_min`, `catch_up`, `late_start_window_min`, `respect_manual`, `pulse_enabled`, `pulse_at`, `pulse_minutes`, `pulse_min_steady_min`, `docked_guard`, `extra_conditions`, `on_action`, `off_action`, `inactive_state`, `device_id`, `on_at_sunrise`, `on_at_sunset`, `off_at_sunrise`, `off_at_sunset`, `days_end`, `crosses_midnight`, `timer_entity`, `late_window_end`, `late_sun_offset`, `override_entity`, `paused_until_entity`. Up to 1.0.0-beta.2 the file kept each derived input next to its primary one (the order of plan Section 6.2.1); a routine written in that order reads the same, and its next write uses this one. The blueprint reads only the four sun flags and the offsets; `on_kind` and `off_kind` are the primary inputs `decompile` reads and the form shows. With the nine at their defaults every sun trigger and sun condition is switched off, which is what makes a schema 1 routine run unchanged.
 
 ### 5.3 Triggers
 

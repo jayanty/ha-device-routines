@@ -12,14 +12,21 @@
 # a time, and is tested with the `sun` condition, one half of a window per side with its
 # day set. The four sun flags are derived from the kinds by Device Routines; with every new
 # input at its default the routine runs exactly as on schema 1.
+#
+# The form shows what a person may change in the sections Target to Advanced, and every
+# input Device Routines sets itself (the profile's actions and off state, the device id,
+# the derived inputs and the helper entities) in the last section, collapsed (owner
+# decision O3). Sections are layout only: the stored inputs are flat, so moving an input
+# from one section to another changes no routine and no schema.
 blueprint:
   name: Device routine (managed by Device Routines)
   description: >-
     The routine of one device: when it turns on and off, how long it may stay on or off,
     and what happens after a restart. Device Routines manages this automation from the
     device page, which is the main editor; this form is a second editor for the same
-    settings, and a change saved here shows up on the device page. Home Assistant runs the
-    routine on its own, with or without the integration.
+    settings, and a change saved here shows up on the device page. The last section holds
+    what Device Routines sets itself. Home Assistant runs the routine on its own, with or
+    without the integration.
   domain: automation
   author: Device Routines
   homeassistant:
@@ -27,7 +34,7 @@ blueprint:
   input:
     target:
       name: Target
-      description: The device entity this routine controls and how to switch it.
+      description: The device entity this routine controls.
       collapsed: false
       input:
         target_entity:
@@ -49,26 +56,6 @@ blueprint:
                     - cover
                     - lock
                     - valve
-        on_action:
-          name: Turn on action
-          description: The action that turns the device on, for example switch.turn_on.
-          selector:
-            text: {}
-        off_action:
-          name: Turn off action
-          description: The action that turns the device off, for example switch.turn_off.
-          selector:
-            text: {}
-        inactive_state:
-          name: Off state
-          description: The state the device is in when it is off (off, docked, closed or locked).
-          selector:
-            text: {}
-        device_id:
-          name: Device id
-          description: The id of the device, carried in the events the routine fires.
-          selector:
-            text: {}
     schedule:
       name: Schedule
       description: When the device turns on and off.
@@ -130,30 +117,6 @@ blueprint:
           default: "00:00:00"
           selector:
             text: {}
-        on_at_sunrise:
-          name: Turn on at sunrise
-          description: On when Turn on at is sunrise; set from the kind.
-          default: false
-          selector:
-            boolean: {}
-        on_at_sunset:
-          name: Turn on at sunset
-          description: On when Turn on at is sunset; set from the kind.
-          default: false
-          selector:
-            boolean: {}
-        off_at_sunrise:
-          name: Turn off at sunrise
-          description: On when Turn off at is sunrise; set from the kind.
-          default: false
-          selector:
-            boolean: {}
-        off_at_sunset:
-          name: Turn off at sunset
-          description: On when Turn off at is sunset; set from the kind.
-          default: false
-          selector:
-            boolean: {}
         days_start:
           name: Days
           description: The days the times apply to. A window that ends after midnight belongs to the day it starts.
@@ -169,27 +132,6 @@ blueprint:
                 - {value: fri, label: Friday}
                 - {value: sat, label: Saturday}
                 - {value: sun, label: Sunday}
-        days_end:
-          name: Days the window ends
-          description: The days a window ends on; one day after the start days when the window crosses midnight.
-          default: [mon, tue, wed, thu, fri, sat, sun]
-          selector:
-            select:
-              multiple: true
-              options:
-                - {value: mon, label: Monday}
-                - {value: tue, label: Tuesday}
-                - {value: wed, label: Wednesday}
-                - {value: thu, label: Thursday}
-                - {value: fri, label: Friday}
-                - {value: sat, label: Saturday}
-                - {value: sun, label: Sunday}
-        crosses_midnight:
-          name: Window crosses midnight
-          description: On when Turn on at is later in the day than Turn off at, reading sunrise as 6:00 AM and sunset as 6:00 PM.
-          default: false
-          selector:
-            boolean: {}
         schedule_enabled:
           name: Use a weekly schedule
           description: Follow the blocks of a weekly schedule helper instead of the times.
@@ -209,14 +151,6 @@ blueprint:
       description: How long the device may stay on, or off.
       collapsed: true
       input:
-        timer_entity:
-          name: Timer
-          description: The timer helper that counts down, so a countdown survives a restart.
-          default: timer.device_routines_unused
-          selector:
-            entity:
-              filter:
-                - domain: timer
         turn_off_after_min:
           name: Turn off after
           description: Turn the device off this many minutes after it turns on (0 is off).
@@ -261,40 +195,12 @@ blueprint:
               step: 1
               mode: box
               unit_of_measurement: min
-        late_window_end:
-          name: Late start window ends at
-          description: Turn on at plus the late start window.
-          default: "00:15:00"
-          selector:
-            time: {}
-        late_sun_offset:
-          name: Late start window ends at, sun offset
-          description: The sun offset of Turn on at plus the late start window, as HH:MM:SS.
-          default: "00:15:00"
-          selector:
-            text: {}
         respect_manual:
           name: Respect manual changes
           description: A change made by hand turns the manual override on until the next scheduled time.
           default: true
           selector:
             boolean: {}
-        override_entity:
-          name: Manual override
-          description: The switch that holds the manual override; catch up waits while it is on.
-          default: switch.device_routines_unused
-          selector:
-            entity:
-              filter:
-                - domain: switch
-        paused_until_entity:
-          name: Paused until
-          description: The date and time the routine is paused or skipping until.
-          default: datetime.device_routines_unused
-          selector:
-            entity:
-              filter:
-                - domain: datetime
     advanced:
       name: Advanced
       description: Pulse, the docked guard and extra conditions.
@@ -346,6 +252,115 @@ blueprint:
           default: []
           selector:
             condition: {}
+    managed:
+      name: Set by Device Routines (do not edit)
+      description: >-
+        Device Routines writes these itself, from the settings above, the kind of device and
+        the helpers it keeps for the routine. Leave them as they are: an edit here is undone
+        or ignored.
+      collapsed: true
+      input:
+        on_action:
+          name: Turn on action
+          description: The action that turns the device on, for example switch.turn_on.
+          selector:
+            text: {}
+        off_action:
+          name: Turn off action
+          description: The action that turns the device off, for example switch.turn_off.
+          selector:
+            text: {}
+        inactive_state:
+          name: Off state
+          description: The state the device is in when it is off (off, docked, closed or locked).
+          selector:
+            text: {}
+        device_id:
+          name: Device id
+          description: The id of the device, carried in the events the routine fires.
+          selector:
+            text: {}
+        on_at_sunrise:
+          name: Turn on at sunrise
+          description: On when Turn on at is sunrise; set from the kind.
+          default: false
+          selector:
+            boolean: {}
+        on_at_sunset:
+          name: Turn on at sunset
+          description: On when Turn on at is sunset; set from the kind.
+          default: false
+          selector:
+            boolean: {}
+        off_at_sunrise:
+          name: Turn off at sunrise
+          description: On when Turn off at is sunrise; set from the kind.
+          default: false
+          selector:
+            boolean: {}
+        off_at_sunset:
+          name: Turn off at sunset
+          description: On when Turn off at is sunset; set from the kind.
+          default: false
+          selector:
+            boolean: {}
+        days_end:
+          name: Days the window ends
+          description: The days a window ends on; one day after the start days when the window crosses midnight.
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              options:
+                - {value: mon, label: Monday}
+                - {value: tue, label: Tuesday}
+                - {value: wed, label: Wednesday}
+                - {value: thu, label: Thursday}
+                - {value: fri, label: Friday}
+                - {value: sat, label: Saturday}
+                - {value: sun, label: Sunday}
+        crosses_midnight:
+          name: Window crosses midnight
+          description: On when Turn on at is later in the day than Turn off at, reading sunrise as 6:00 AM and sunset as 6:00 PM.
+          default: false
+          selector:
+            boolean: {}
+        timer_entity:
+          name: Timer
+          description: The timer helper that counts down Turn off after or Turn back on after, so a countdown survives a restart.
+          default: timer.device_routines_unused
+          selector:
+            entity:
+              filter:
+                - domain: timer
+        late_window_end:
+          name: Late start window ends at
+          description: Turn on at plus the late start window.
+          default: "00:15:00"
+          selector:
+            time: {}
+        late_sun_offset:
+          name: Late start window ends at, sun offset
+          description: The sun offset of Turn on at plus the late start window, as HH:MM:SS.
+          default: "00:15:00"
+          selector:
+            text: {}
+        override_entity:
+          name: Manual override
+          description: The switch that holds the manual override; catch up waits while it is on.
+          default: switch.device_routines_unused
+          selector:
+            entity:
+              filter:
+                - domain: switch
+        paused_until_entity:
+          name: Paused until
+          description: The date and time the routine is paused or skipping until.
+          default: datetime.device_routines_unused
+          selector:
+            entity:
+              filter:
+                - domain: datetime
 
 mode: queued
 max: 10

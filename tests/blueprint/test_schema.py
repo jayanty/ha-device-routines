@@ -4,7 +4,8 @@ These tests read the file itself. The behavior of each rule is proven by the mat
 next to this file; here only the structure the spec and decisions L20, L22, L24, L60 and
 the A6 note pin is checked. The file is blueprint input schema 2 (plan Section 6.2.1): the
 29 inputs of schema 1 plus the nine of sun bounds, each new one defaulting to schema 1
-behavior.
+behavior. Its last section, collapsed, holds the inputs Device Routines sets itself (owner
+decision O3).
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from tests.blueprint.conftest import (
     SCHEDULE,
     SCHEMA_1_INPUT_KEYS,
     SCHEMA_2_NEW_KEYS,
+    SET_BY_DEVICE_ROUTINES,
     TIMER,
     UNUSED_DATETIME,
     UNUSED_SCHEDULE,
@@ -208,28 +210,56 @@ def test_every_input_of_the_contract_exists_once_in_order(blueprint: dict[str, A
     keys = [key for key, _ in flat_inputs(blueprint)]
 
     assert tuple(keys) == INPUT_KEYS
-    assert len(keys) == 38
+    assert len(keys) == len(set(keys)) == 38
     assert list(inputs()) == list(INPUT_KEYS)
-    # Schema 2 is schema 1 with nine inputs added; none moved or went away.
-    assert [key for key in keys if key in SCHEMA_1_INPUT_KEYS] == list(SCHEMA_1_INPUT_KEYS)
+    # Schema 2 is schema 1 with nine inputs added; none went away. The form's sections
+    # moved some (owner decision O3), which is layout only: inputs are stored flat.
+    assert set(SCHEMA_1_INPUT_KEYS) <= set(keys)
     assert tuple(SCHEMA_2_DEFAULTS) == SCHEMA_2_NEW_KEYS
     assert {key: section_of(blueprint, key) for key in SCHEMA_2_NEW_KEYS} == {
-        **dict.fromkeys(SCHEMA_2_NEW_KEYS, "schedule"),
-        "late_sun_offset": "behavior",
+        **dict.fromkeys(SCHEMA_2_NEW_KEYS, "managed"),
+        **dict.fromkeys(("on_kind", "on_sun_offset", "off_kind", "off_sun_offset"), "schedule"),
     }
 
 
 def test_the_sections_follow_the_spec(blueprint: dict[str, Any]) -> None:
     found = sections(blueprint)
 
-    assert list(found) == ["target", "schedule", "timers", "behavior", "advanced"]
+    assert list(found) == ["target", "schedule", "timers", "behavior", "advanced", "managed"]
     assert [found[key].get("collapsed", False) for key in found] == [
         False,
         False,
         True,
         True,
         True,
+        True,
     ]
+    for key, section in found.items():
+        assert section.get("name"), key
+        assert section.get("description"), key
+
+
+def test_the_inputs_device_routines_sets_fill_one_collapsed_last_section(
+    blueprint: dict[str, Any],
+) -> None:
+    """Owner decision O3: the form shows first what a person may change.
+
+    Every input Device Routines sets itself (the profile's actions and off state, the
+    device id, the derived inputs, the helper entities), which `decompile` never reads, sits
+    in one section, the last one, collapsed; the sections before it hold only inputs a
+    person may edit. The contract tests prove the split against `decompile` itself.
+    """
+    *shown_sections, (last, managed) = sections(blueprint).items()
+    shown = [key for _, section in shown_sections for key in section["input"]]
+
+    assert last == "managed"
+    assert managed["name"] == "Set by Device Routines (do not edit)"
+    assert "Device Routines writes these itself" in managed["description"]
+    assert "an edit here is undone or ignored" in managed["description"]
+    assert managed["collapsed"] is True
+    assert tuple(managed["input"]) == SET_BY_DEVICE_ROUTINES
+    assert not set(shown) & set(SET_BY_DEVICE_ROUTINES)
+    assert (*shown, *SET_BY_DEVICE_ROUTINES) == INPUT_KEYS
 
 
 def test_every_input_has_a_name_a_description_and_a_selector(blueprint: dict[str, Any]) -> None:

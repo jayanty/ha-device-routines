@@ -119,12 +119,31 @@ SCHEMA_1_INPUT_KEYS: Final = (
     "docked_guard",
     "extra_conditions",
 )
-INPUT_KEYS: Final = (
-    "target_entity",
+# The inputs Device Routines sets itself and `decompile` never reads: the profile's
+# actions and off state, the device id, the derived inputs and the helper entities. They
+# fill the form's last section, collapsed (owner decision O3), in this order.
+SET_BY_DEVICE_ROUTINES: Final = (
     "on_action",
     "off_action",
     "inactive_state",
     "device_id",
+    "on_at_sunrise",
+    "on_at_sunset",
+    "off_at_sunrise",
+    "off_at_sunset",
+    "days_end",
+    "crosses_midnight",
+    "timer_entity",
+    "late_window_end",
+    "late_sun_offset",
+    "override_entity",
+    "paused_until_entity",
+)
+# The 38 inputs in file order, the order the core flattens the sections in: what a person
+# may change in the form (Target, Schedule, Timers, Behavior, Advanced), then the inputs
+# Device Routines sets.
+INPUT_KEYS: Final = (
+    "target_entity",
     "on_time_enabled",
     "on_time",
     "on_kind",
@@ -133,31 +152,21 @@ INPUT_KEYS: Final = (
     "off_time",
     "off_kind",
     "off_sun_offset",
-    "on_at_sunrise",
-    "on_at_sunset",
-    "off_at_sunrise",
-    "off_at_sunset",
     "days_start",
-    "days_end",
-    "crosses_midnight",
     "schedule_enabled",
     "schedule_entity",
-    "timer_entity",
     "turn_off_after_min",
     "turn_back_on_after_min",
     "catch_up",
     "late_start_window_min",
-    "late_window_end",
-    "late_sun_offset",
     "respect_manual",
-    "override_entity",
-    "paused_until_entity",
     "pulse_enabled",
     "pulse_at",
     "pulse_minutes",
     "pulse_min_steady_min",
     "docked_guard",
     "extra_conditions",
+    *SET_BY_DEVICE_ROUTINES,
 )
 # The nine inputs schema 2 adds (plan Section 6.2.1), in their order among the 38.
 SCHEMA_2_NEW_KEYS: Final = tuple(key for key in INPUT_KEYS if key not in SCHEMA_1_INPUT_KEYS)
