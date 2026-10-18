@@ -36,6 +36,17 @@ counts are those of the commit that tags `v1.0.0-beta.1`.
 | Brand assets (lane 23) | Harness: `tests/test_repository.py`, `tests/tools/test_make_brand.py` | The drawn set exactly, RGBA with transparent corners, trimmed, icons 256 and 512 square, logos landscape within the brands limits, the brands layout equal to `brand/`, `tools/make_brand.py` reproducing the files (L72) | Pass | 2026-10-18 | n/a |
 | The `frontend` check | CI on Linux | `frontend` job green on `fba3eed`: typecheck, vitest, build, the committed bundle equal to the fresh build; a required check of `main` since 2026-10-18 (L70) | Pass | 2026-10-18 | n/a |
 
+## Build B exit and the R2 restart bundle
+
+| Step | Method | Evidence | Result | Date | Approved by |
+| --- | --- | --- | --- | --- | --- |
+| Exit CI | GitHub Actions on `db7fa10` | every job green, `frontend` included; `main` fast forwarded `efbf757..db7fa10` | Pass | 2026-10-18 | n/a |
+| Pre release | `release.yml` on the tag `v1.0.0-beta.1` | a pre release with `device_routines.zip` | Pass | 2026-10-18 | n/a |
+| Read before the deploy | `shell_command.device_routines_deploy_status` over MCP | deployed `efbf757` (`v0.3.0-beta.1`, 07:31:35Z), `hacs_managed: false`, `python_ok: true` | Pass | 2026-10-18 | L26 |
+| Hand deploy | `shell_command.deploy_device_routines` with `ref: v1.0.0-beta.1` | `ok: true`, `changed: true`, commit `db7fa10`, previous `efbf757`, 27 changed files, `restart_required: true`, no warnings | Pass | 2026-10-18 | L26 |
+| Read after the deploy | `device_routines_deploy_status`, Health, the auto deploy switch | deployed `db7fa10` at 18:02:19Z with a backup of `efbf757`; Health `ok` still running `efbf757` (version 0.3.0, blueprint schema 1, one owned routine); auto deploy `off` | Pass | 2026-10-18 | L26 |
+| R2 requested | Owner log O16 | the restart waits for the owner, after the live session stages the scenario of the hour | Pending | 2026-10-18 | Jayant |
+
 ## Live rows
 
 Filled after restart R2 (plan Section 6.3).

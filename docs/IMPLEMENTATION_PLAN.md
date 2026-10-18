@@ -6,7 +6,7 @@ The build order for Claude Code: Phase 0, Stage 0, then Phases 1 to 4, each with
 
 Revised 2026-10-18 (decision L32): Phases 2 and 3 are built as one build in parallel lanes with a single restart; Phase 4 is the second build with a second restart; everything the owner has to do is batched into two owner sessions and otherwise deferred in `docs/owner-log.md`. Section 0.1 is the operating model, Sections 4 to 6 the builds, Section 8 the prompts.
 
-Status: Build B exit in progress (2026-10-18, decisions L59 to L72). Releases: `v0.3.0` on `efbf757` is the last full release (L69); `main` at `efbf757`. Waves B1 to B3 done: lanes 16 to 23 landed on `dev` (B3: lane 22 `562341f`, lane 23 two commits after it, L72); whole suite green at 99.88 percent; `manifest.json` and `CHANGELOG.md` at 1.0.0; no lane worktree open. Exit: green CI on the exit commit, fast forward `main`, tag `v1.0.0-beta.1`, then the hand deploy (L70: live validation A is recorded and `v0.3.0` released) and the R2 request (O16). Restart R1 happened: running `efbf757` equals deployed `efbf757`; auto deploy off (L58); live validation A recorded in `phase-2.md` and `phase-3.md`, its restart halves ride on R2. Owner log: open items as listed there, none blocking a build; O12 holds `v1.0.0`; O10 and O11 are ready (`docs/publication.md`). Next: the exit steps above, then live validation B (Section 6.3) after R2.
+Status: Build B done (2026-10-18, decisions L59 to L72): Phase 4 built in the harness in waves B1 to B3 (lanes 16 to 23); whole suite green at 99.88 percent; `main` fast forwarded to `db7fa10` and `v1.0.0-beta.1` released as a pre release (`v0.3.0` on `efbf757` remains the last full release). Deployed by hand: `db7fa10` (`v1.0.0-beta.1`) on disk since 18:02:19Z; running `efbf757` (v0.3.0) until restart R2, requested in owner log O16 (the live session stages the scenario of the hour first). Auto deploy off (L58). Live validation A is recorded; its restart halves ride on R2. Owner log: open items as listed there, none blocking a build; O12 (the console walkthrough) holds `v1.0.0`; O10 and O11 are ready (`docs/publication.md`). No lane worktree open. Next: after R2, live validation B (Section 6.3) in a live session, then `v1.0.0` once O12 is done (Section 6.4).
 
 ## 0. Rules of engagement (Claude Code reads this first)
 
@@ -622,8 +622,8 @@ Goal: everything the publication needs, prepared in the repository and opened no
 
 ##### Exit (orchestrator)
 
-- [ ] Land lanes 22 and 23; the whole suite; `quality_scale.yaml` final (every rule done or exempt, `brands` todo until the brands pull request merges, O10); `docs/validation/phase-4.md` with the harness rows of Build B; `CHANGELOG.md` 1.0.0; `manifest.json` 1.0.0; green CI; fast forward `main`; tag `v1.0.0-beta.1` (a pre release).
-- [ ] Deploy by hand (Section 0.1.6) only once live validation A has recorded Section 5.3 and `v0.3.0` is tagged, so no lazily imported Build B module meets the running beta during that validation (L70); then the R2 request (O16) with the staged scenario of Section 5.2 by the clock.
+- [x] Land lanes 22 and 23; the whole suite; `quality_scale.yaml` final (every rule done or exempt, `brands` todo until the brands pull request merges, O10); `docs/validation/phase-4.md` with the harness rows of Build B; `CHANGELOG.md` 1.0.0; `manifest.json` 1.0.0; green CI; fast forward `main`; tag `v1.0.0-beta.1` (a pre release).
+- [x] Deploy by hand (Section 0.1.6) only once live validation A has recorded Section 5.3 and `v0.3.0` is tagged, so no lazily imported Build B module meets the running beta during that validation (L70); then the R2 request (O16) with the staged scenario of Section 5.2 by the clock.
 
 ### 6.3 Restart R2 and live validation B
 
