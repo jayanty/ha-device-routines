@@ -42,6 +42,9 @@ class Days(StrEnum):     EVERY_DAY, WEEKDAYS, WEEKENDS, SOME_DAYS, WEEKLY_SCHEDU
 class Weekday(StrEnum):  MON, TUE, WED, THU, FRI, SAT, SUN
 class Status(StrEnum):   ACTIVE, PAUSED, SKIPPING, OFF, DETACHED, MISSING_TARGET, INVALID
 class Source(StrEnum):   AUTOMATION, USER, DEVICE
+class TimeKind(StrEnum): TIME, SUNRISE, SUNSET         # FR-R10, decision L60
+
+NOMINAL_SUN_TIMES = {SUNRISE: 06:00, SUNSET: 18:00}    # for ordering only (L60)
 
 @dataclass(frozen=True)
 class RoutineSettings:
@@ -59,6 +62,15 @@ class RoutineSettings:
     pulse: Pulse | None = None
     extra_conditions: tuple[Mapping[str, Any], ...] = ()
     docked_guard: bool = True                   # vacuum and lawn_mower only
+    on_kind: TimeKind = TimeKind.TIME           # FR-R10: a time, or sunrise or sunset
+    on_sun_offset_min: int = 0                  # whole minutes, -180 to 180, sun kinds only
+    off_kind: TimeKind = TimeKind.TIME
+    off_sun_offset_min: int = 0
+
+    has_on, has_off -> bool                     # the side is set: a time, or a sun kind
+    nominal_on, nominal_off -> time | None      # the time, or the nominal sun time moved
+    crosses_midnight -> bool                    # has_on and has_off and nominal_off < nominal_on
+    effective_days, end_days -> frozenset[Weekday]
 
 @dataclass(frozen=True)
 class DomainProfile:
@@ -79,16 +91,20 @@ class SummaryItem:       kind, automation_entity, alias, summary, next_run, sour
 class Conflict:          a: int, b: int, reason_key: str, at: datetime | None
 ```
 
+A side of a window is a time (`on_time`, kind `time`) or a sun event with an offset (kind `sunrise` or `sunset`, `on_sun_offset_min`); the off side alike. The four sun fields come after `docked_guard`, so positional callers keep working. The nominal sun times decide only whether a window crosses midnight and which days its end runs on: sunset to sunrise crosses, sunrise to sunset does not, 22:00 to sunrise crosses, sunset to 23:00 does not; when anything runs is the real sun time of the day (Section 3.6). Inside the pure modules, a side is set when `has_on` or `has_off` says so, never `on_time is not None`.
+
 ### 3.2 domains.py
 
 `PROFILES` holds one `DomainProfile` for `switch`, `light`, `fan`, `input_boolean`, `humidifier`, `climate`, `media_player`, `vacuum`, `lawn_mower`, `cover`, `lock` and `valve`. `profile_for(domain, device_class)` applies the PRD 5.3 refusals (cover garage, gate and door classes get no open action; valve gas gets no open action; lock and media player have no on action). `pick_targets(entities)` returns the controllable candidates: supported domain, no entity category, registry order. `inactive_state` is `off` for switch, light, fan, input\_boolean, humidifier, climate and media\_player, `docked` for vacuum and lawn\_mower, `closed` for cover and valve, `locked` for lock. The blueprint fires `device_on` on `from: inactive_state` and `device_off` on `to: inactive_state`, so every domain shares the same two triggers, including climate with its many modes.
 
 ### 3.3 compiler.py
 
-- `validate(settings, profile) -> list[Problem]`. Rejects: a refused action; `on_time == off_time`; a duration on a domain without that option; both `turn_off_after_min` and `turn_back_on_after_min` non zero (D27); `WEEKLY_SCHEDULE` without `schedule_entity`; `SOME_DAYS` with an empty `day_set`; `pulse` on a domain without both actions; an on time on a domain without an on action.
-- `compile(settings, profile, refs) -> CompiledInputs`. Produces the full blueprint input dict of Section 5.2 including the derived inputs: `days_start`, `days_end` (the day set shifted by one when the window crosses midnight, else identical), `crosses_midnight`, `late_window_end` (on time plus the late start window, wrapped at midnight), `on_time_enabled`, `off_time_enabled`, sentinel values for every disabled input, `on_action`, `off_action`, `inactive_state`, helper entity ids and the device id carried in events.
-- `decompile(inputs) -> RoutineSettings`. The inverse. Property tests: `decompile(compile(s)) == s` for every valid `s`, and `compile(decompile(i)) == i` for every `i` produced by `compile`.
-- `is_valid_shape(inputs) -> bool`, used by sync back: an unknown key, a missing required key or a type mismatch means the automation was edited into an invalid state.
+`BLUEPRINT_SCHEMA_VERSION = 2`; `INPUT_KEYS` holds the 38 inputs of blueprint input schema 2 in the order of plan Section 6.2.1 (the 29 of Section 5.2 plus `on_kind`, `on_sun_offset`, `off_kind`, `off_sun_offset`, the four sun flags and `late_sun_offset`); `MAX_SUN_OFFSET_MIN = 180`.
+
+- `validate(settings, profile) -> list[Problem]`. Rejects: a refused action; two equal bounds (one kind with one time or one offset: `same_on_and_off_time`); a duration on a domain without that option; both `turn_off_after_min` and `turn_back_on_after_min` non zero (D27); `WEEKLY_SCHEDULE` without `schedule_entity`; a time or a sun bound with `WEEKLY_SCHEDULE`; `SOME_DAYS` with an empty `day_set`; `pulse` on a domain without both actions; an on side, a time or a sun bound, on a domain without an on action (`on_time_not_supported`); minutes out of range, a sun offset outside plus or minus 180 included (`out_of_range` naming `on_sun_offset_min` or `off_sun_offset_min`). An off side may be a sun bound on every domain: Lock at sunset only makes a device safer.
+- `compile(settings, profile, refs) -> CompiledInputs`. Produces the full blueprint input dict including the derived inputs: `days_start`, `days_end` (the day set shifted by one when the window crosses midnight, else identical), `crosses_midnight` (by the nominal sun times), `late_window_end` (on time plus the late start window, wrapped at midnight), `on_time_enabled` and `off_time_enabled` (true only for a time bound with a time), `on_at_sunrise`, `on_at_sunset`, `off_at_sunrise`, `off_at_sunset` (the side's kind), `late_sun_offset` (the on offset plus the late start window), sentinel values for every disabled input, `on_action`, `off_action`, `inactive_state`, helper entity ids and the device id carried in events. Offsets are text `[-]HH:MM:SS` with whole minutes and seconds `00`; a sun bound's time input holds the `00:00:00` sentinel and a time bound's offset `00:00:00`.
+- `decompile(inputs) -> RoutineSettings`. The inverse, reading the primary inputs only: for each side its kind, then for a time the flag and the time, for a sun kind the offset (also as `H:MM`, with a leading `+` or with seconds, which are dropped toward zero); never the derived inputs, the four sun flags or `late_sun_offset`. Every schema 2 input defaults to schema 1 behavior (kind `time`, offset `00:00:00`, flags false, `late_sun_offset` `00:15:00`), so schema 1 inputs read exactly as schema 1 read them. `canonical(settings)` is the form `decompile` returns: named day sets by name, whole seconds, a time bound with offset 0 and a sun bound without a time. Property tests, with sun bounds drawn: `decompile(compile(s)) == canonical(s)` for every valid `s`, and `compile(decompile(i)) == i` for every `i` produced by `compile`.
+- `is_valid_shape(inputs) -> bool`, used by sync back: an unknown key, a missing required key or a type mismatch means the automation was edited into an invalid state. The schema 2 inputs are optional like every input with a default.
 
 ### 3.4 markers.py
 
@@ -105,8 +121,9 @@ class Conflict:          a: int, b: int, reason_key: str, at: datetime | None
 ### 3.6 nextrun.py
 
 - `next_occurrences(item, now, tz, sun) -> list[Occurrence]` and `next_run(...)`.
-- `expected_state(settings, now, schedule_state) -> on | off | None`, the single source of truth for catch up, skip targets and sentences. A window belongs to the weekday it starts on: a window from 17:00 to 09:00 with Weekdays is off on Monday at 08:00 because Sunday is not a start day.
-- `skip_target(settings, now, paused_until, schedule_state) -> SkipTarget`: the action the sentence shows, with its paired end for a window start (D18) and the resulting Paused until value.
+- `expected_state(settings, now, schedule_state=None, lookups=None) -> on | off | None`, the single source of truth for catch up, skip targets and sentences. A window belongs to the weekday it starts on: a window from 17:00 to 09:00 with Weekdays is off on Monday at 08:00 because Sunday is not a start day. The bounds are the day's: a sun bound is `lookups.sun(day, "sunrise" or "sunset")` plus its offset, read as the local wall clock time of that day. Same day window: today is a start day and on bound <= now < off bound. Across midnight (by the nominal sun times, Section 3.1): today is a start day and now >= today's on bound, or yesterday is a start day and now < today's off bound. A window that needs a sun time it cannot get (no lookup, or no sunrise or sunset that day) reads None; a half that does not apply that day needs none.
+- `routine_occurrences(settings, now, schedule_state, lookups, ...)` and `skip_target(settings, now, paused_until, schedule_state, sun) -> SkipTarget`: the action the sentence shows, with its paired end for a window start (D18) and the resulting Paused until value. A sun bound's action is at that day's event plus the offset, on the start days (on) or the end days (off), and is left out on a day the lookup has no sun time for; a sun start pairs its end as a time start does.
+- `routine_lines(settings, automation_id, alias)`: a routine's actions as parsed lines; a sun bound reads as a `SunTrigger(event, offset)` line with its day set in `ParsedLine.weekdays` (a time trigger carries its days itself), which the Writer renders with the phrase table's sun wording ("Sunset + 30 min: on").
 - DST: times are wall clock and the rules mirror the HA time trigger as Stage 0 observed it (A7, V10, decision L21): a time that does not exist on the spring forward day does not run that day at all; a time that exists twice on the fall back day runs twice, once per offset, an hour apart. The device state guard makes the second on or off a no op. Tested on the 2026 US and EU dates.
 
 ### 3.7 conflicts.py
@@ -120,6 +137,15 @@ class Conflict:          a: int, b: int, reason_key: str, at: datetime | None
 ### 3.9 settings.py
 
 `GlobalSettings` dataclass with the PRD 10.4 keys plus `on_removal` (keep or delete, default keep); `from_options(options, version)` migrates older option sets; `to_options()`; `validate()` returns translated problems.
+
+### 3.10 conversion.py
+
+`match(config, device) -> RoutineSettings | None` (FR-M1, decision L61) returns the settings of the routine that does exactly what a hand written automation does, reading the whole config (the parser's lines leave out actions that are not on the device, so they cannot prove nothing is lost). Two shapes match:
+
+- FR-R1: exactly two enabled `time` triggers at different fixed whole minute times (no entity, no offset); exactly one on action and one off action on one entity of the device, each run by exactly one of the two triggers through a `choose` option or an `if` (with `else`, or one `if` per trigger) on a `trigger` condition naming its id, carrying nothing beyond the target; conditions none, or only weekdays (one `time` condition with `weekday` alone, or the same `weekday` on both triggers). The actions are the domain profile's own (`domains.PROFILES`); a window across midnight matches only every day.
+- FR-R3: exactly one enabled `state` trigger on one entity of the device, `to: "on"`, `from` absent or `"off"`, `for` a whole number of minutes from 1 to 1440; exactly one off action on that entity; no condition. Only for `switch`, `light`, `fan`, `input_boolean` and `humidifier`, whose state is on or off, so `to: "on"` is every turn on.
+
+Everything else is None: a template anywhere in the triggers, conditions or actions, variables, a second entity or device, any other action, a disabled trigger, condition or action, data on an action, seconds, an entity held time, any other condition, and any key the shapes do not list. The settings carry the entity, the times or the duration and the days (a named day set by name, else Some days); every other field is the default. `match` never raises (a property test over arbitrary mappings). The caller offers a match only when `compiler.validate(settings, profile)` is empty, which applies the PRD 5.4 refusals, and the device has no routine.
 
 ## 4. Integration modules
 

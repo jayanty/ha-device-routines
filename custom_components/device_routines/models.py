@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from enum import StrEnum
-from typing import Any
+from typing import Any, Final
 
 
 class Days(StrEnum):
@@ -157,6 +157,33 @@ class ParseError(TranslatedError):
 # --------------------------------------------------------------------------------------
 
 
+class TimeKind(StrEnum):
+    """What a scheduled time is: a time of day, or sunrise or sunset with an offset (FR-R10)."""
+
+    TIME = "time"
+    SUNRISE = "sunrise"
+    SUNSET = "sunset"
+
+
+# A sun event's time of day for ordering only (decision L60): it decides whether a window
+# crosses midnight and which days its end runs on, never when anything runs.
+NOMINAL_SUN_TIMES: Final[Mapping[TimeKind, time]] = {
+    TimeKind.SUNRISE: time(6),
+    TimeKind.SUNSET: time(18),
+}
+
+_MINUTES_PER_DAY: Final = 1440
+
+
+def _nominal(kind: TimeKind, at: time | None, offset_min: int) -> time | None:
+    """Return a bound's time of day for ordering: the time, or the nominal sun time moved."""
+    if kind is TimeKind.TIME:
+        return at
+    base = NOMINAL_SUN_TIMES[kind]
+    total = (base.hour * 60 + base.minute + offset_min) % _MINUTES_PER_DAY
+    return time(total // 60, total % 60)
+
+
 @dataclass(frozen=True, slots=True)
 class Pulse:
     """FR-R8: at a time, the opposite state for some minutes, then back."""
@@ -184,6 +211,33 @@ class RoutineSettings:
     pulse: Pulse | None = None
     extra_conditions: tuple[Mapping[str, Any], ...] = ()
     docked_guard: bool = True
+    # Sun relative bounds (FR-R10, decision L60): a kind per side, and for a sun kind an
+    # offset in whole minutes, negative before the event. `on_time` and `off_time` hold
+    # the time of a time bound only.
+    on_kind: TimeKind = TimeKind.TIME
+    on_sun_offset_min: int = 0
+    off_kind: TimeKind = TimeKind.TIME
+    off_sun_offset_min: int = 0
+
+    @property
+    def has_on(self) -> bool:
+        """True when the on side is set: a time, or sunrise or sunset."""
+        return self.on_kind is not TimeKind.TIME or self.on_time is not None
+
+    @property
+    def has_off(self) -> bool:
+        """True when the off side is set: a time, or sunrise or sunset."""
+        return self.off_kind is not TimeKind.TIME or self.off_time is not None
+
+    @property
+    def nominal_on(self) -> time | None:
+        """The on side's time of day for ordering: its time, or the nominal sun time moved."""
+        return _nominal(self.on_kind, self.on_time, self.on_sun_offset_min)
+
+    @property
+    def nominal_off(self) -> time | None:
+        """The off side's time of day for ordering, as `nominal_on`."""
+        return _nominal(self.off_kind, self.off_time, self.off_sun_offset_min)
 
     @property
     def effective_days(self) -> frozenset[Weekday]:
@@ -198,10 +252,13 @@ class RoutineSettings:
 
     @property
     def crosses_midnight(self) -> bool:
-        """True when the window ends the day after it starts: on at 17:00, off at 09:00."""
-        return (
-            self.on_time is not None and self.off_time is not None and self.off_time < self.on_time
-        )
+        """True when the window ends the day after it starts: on at 17:00, off at 09:00.
+
+        Sun bounds order by their nominal times (L60): sunset to sunrise crosses, sunrise
+        to sunset does not, 22:00 to sunrise crosses, sunset to 23:00 does not.
+        """
+        on, off = self.nominal_on, self.nominal_off  # None exactly when the side is not set
+        return on is not None and off is not None and off < on
 
     @property
     def end_days(self) -> frozenset[Weekday]:

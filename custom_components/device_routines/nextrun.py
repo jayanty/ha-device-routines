@@ -5,6 +5,10 @@ Times are local wall clock. Daylight saving follows what the core time trigger d
 day does not run that day at all, and one that exists twice on the fall back day runs
 twice, once per offset, an hour apart. `tests/stage0/test_v10_schedule_dst.py` holds the
 core behavior; the tests of this module use the same dates.
+
+A routine's sun bound (FR-R10, decision L60) is that day's sunrise or sunset from
+`Lookups.sun` plus its offset, in the local zone; where the lookup has no sun time the
+bound's action is left out, and a window that needs one has no expected state.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from .models import (
     RoutineSettings,
     StateTrigger,
     SunTrigger,
+    TimeKind,
     TimeTrigger,
     TimeWindow,
     Trigger,
@@ -152,15 +157,24 @@ def _time_instants(
     return []
 
 
+def _sun_instant(
+    lookups: Lookups | None, day: date, event: str, offset: timedelta, tz: tzinfo | None
+) -> datetime | None:
+    """Return a sun event of a local day plus an offset, in the zone; None without one."""
+    sun = None if lookups is None else lookups.sun
+    moment = None if sun is None else sun(day, event)
+    return None if moment is None else moment.astimezone(tz) + offset
+
+
 def _trigger_instants(trigger: Trigger, day: date, tz: tzinfo, lookups: Lookups) -> list[datetime]:
     """Return the instants a timed trigger fires on one local day."""
     if isinstance(trigger, TimeTrigger):
         return _time_instants(trigger, day, tz, lookups.entity_times)
     if isinstance(trigger, PatternTrigger):
         return [i for at in _pattern_times(trigger) for i in wall_instants(day, at, tz)]
-    if isinstance(trigger, SunTrigger) and lookups.sun is not None:
-        moment = lookups.sun(day, trigger.event)
-        return [] if moment is None else [moment.astimezone(tz) + trigger.offset]
+    if isinstance(trigger, SunTrigger):
+        moment = _sun_instant(lookups, day, trigger.event, trigger.offset, tz)
+        return [] if moment is None else [moment]
     return []
 
 
@@ -228,29 +242,101 @@ def earliest(occurrences: Iterable[Occurrence]) -> Occurrence | None:
     return first if len(verbs) == 1 else Occurrence(at=first.at, verb=None)
 
 
+@dataclass(frozen=True, slots=True)
+class _Bound:
+    """One side of a routine, or its pulse: a wall clock time, or a sun event and offset."""
+
+    at: time | None = None
+    event: str | None = None
+    offset: timedelta = timedelta(0)
+
+    def instants(self, day: date, tz: tzinfo, lookups: Lookups | None) -> list[datetime]:
+        """Return the instants the bound has on a local day (none, one, two at fall back)."""
+        if self.at is not None:
+            return wall_instants(day, self.at, tz)
+        assert self.event is not None  # noqa: S101  # a bound is a time or a sun event
+        moment = _sun_instant(lookups, day, self.event, self.offset, tz)
+        return [] if moment is None else [moment]
+
+    def clock(self, day: date, tz: tzinfo | None, lookups: Lookups | None) -> time | None:
+        """Return the bound's wall clock time on a local day; None without its sun time."""
+        if self.at is not None:
+            return self.at.replace(tzinfo=None)
+        assert self.event is not None  # noqa: S101  # a bound is a time or a sun event
+        moment = _sun_instant(lookups, day, self.event, self.offset, tz)
+        return None if moment is None else moment.time()
+
+    def trigger(
+        self, weekdays: frozenset[Weekday] | None
+    ) -> tuple[TimeTrigger | SunTrigger, frozenset[Weekday] | None]:
+        """Return the bound as a parsed line's trigger, and the days the line holds.
+
+        A time trigger carries its days itself; a sun trigger has none, so the line does.
+        """
+        if self.at is not None:
+            return TimeTrigger(at=self.at, weekdays=weekdays), None
+        assert self.event is not None  # noqa: S101  # a bound is a time or a sun event
+        return SunTrigger(self.event, self.offset), weekdays
+
+
+def _side(kind: TimeKind, at: time | None, offset_min: int) -> _Bound | None:
+    if kind is TimeKind.TIME:
+        return None if at is None else _Bound(at=at)
+    return _Bound(event=kind.value, offset=timedelta(minutes=offset_min))
+
+
+def _sides(settings: RoutineSettings) -> tuple[_Bound | None, _Bound | None]:
+    """Return a routine's on and off bounds; None for a side that is not set."""
+    return (
+        _side(settings.on_kind, settings.on_time, settings.on_sun_offset_min),
+        _side(settings.off_kind, settings.off_time, settings.off_sun_offset_min),
+    )
+
+
 def expected_state(
-    settings: RoutineSettings, now: datetime, schedule_state: str | None = None
+    settings: RoutineSettings,
+    now: datetime,
+    schedule_state: str | None = None,
+    lookups: Lookups | None = None,
 ) -> str | None:
     """Return `on` or `off` as a routine's window expects now; None without a window.
 
     A window belongs to the weekday it starts on: from 17:00 to 09:00 on weekdays, Monday
-    08:00 is off, because Sunday is not a start day.
+    08:00 is off, because Sunday is not a start day. The bounds are today's: a sun bound
+    is today's event from `lookups.sun` plus its offset, as a wall clock time. Whether
+    the window crosses midnight follows the nominal sun times (L60). A window that needs a
+    sun time the lookups cannot give (no lookup, or no sunrise or sunset today) reads
+    None: the same day window on a start day, the start on a start day, the end on the
+    day after one.
     """
     if settings.days is Days.WEEKLY_SCHEDULE:
         return schedule_state if schedule_state in {"on", "off"} else None
-    if settings.on_time is None or settings.off_time is None:
+    on, off = _sides(settings)
+    if on is None or off is None:
         return None
-    days = settings.effective_days
+    inside = _inside(settings, on, off, now, lookups)
+    return None if inside is None else ("on" if inside else "off")
+
+
+def _inside(
+    settings: RoutineSettings, on: _Bound, off: _Bound, now: datetime, lookups: Lookups | None
+) -> bool | None:
+    """Tell whether now is inside the window of today's bounds; None without a needed one."""
+    tz, day, days = now.tzinfo, now.date(), settings.effective_days
     at = now.time().replace(tzinfo=None)
-    today = Weekday.of(now)
-    yesterday = Weekday.of(now - timedelta(days=1))
-    if settings.on_time < settings.off_time:
-        inside = today in days and settings.on_time <= at < settings.off_time
-    else:
-        inside = (today in days and at >= settings.on_time) or (
-            yesterday in days and at < settings.off_time
-        )
-    return "on" if inside else "off"
+    starts_today = Weekday.of(now) in days
+    started_yesterday = Weekday.of(now - timedelta(days=1)) in days
+    crossing = settings.crosses_midnight
+    # The start is needed on a start day; the end on a start day, or across midnight on
+    # the day after one. A bound no half needs is never compared: its placeholder is moot.
+    needs_end = started_yesterday if crossing else starts_today
+    start = on.clock(day, tz, lookups) if starts_today else time.min
+    end = off.clock(day, tz, lookups) if needs_end else time.min
+    if start is None or end is None:
+        return None
+    if not crossing:
+        return starts_today and start <= at < end
+    return (starts_today and at >= start) or (started_yesterday and at < end)
 
 
 # --------------------------------------------------------------------------------------
@@ -309,20 +395,27 @@ def routine_lines(settings: RoutineSettings, automation_id: str, alias: str) -> 
 
     The Schedule summary reads an owned routine this way, from its inputs, rather than
     parsing the rendered blueprint (PRD 12's round trip; the parser cannot read the
-    shipped blueprint): the manager's item and the summary's index say the same.
+    shipped blueprint): the manager's item and the summary's index say the same. A sun
+    bound reads as a sun trigger with its offset, its days on the line.
     """
     target = settings.target_entity
     on, off = routine_verbs(target)
     profile = PROFILES.get(target.partition(".")[0])
     inactive = profile.inactive_state if profile else "off"
 
-    def line(verb: Verb, *triggers: Any, follow_ups: tuple[FollowUp, ...] = ()) -> ParsedLine:
+    def line(
+        verb: Verb,
+        *triggers: Any,
+        follow_ups: tuple[FollowUp, ...] = (),
+        weekdays: frozenset[Weekday] | None = None,
+    ) -> ParsedLine:
         return ParsedLine(
             automation_id=automation_id,
             alias=alias,
             entity_ids=(target,),
             verb=verb,
             triggers=triggers,
+            weekdays=weekdays,
             follow_ups=follow_ups,
         )
 
@@ -330,12 +423,14 @@ def routine_lines(settings: RoutineSettings, automation_id: str, alias: str) -> 
         return None if day_set == ALL_DAYS else day_set
 
     lines: list[ParsedLine] = []
-    if settings.on_time is not None:
-        lines.append(
-            line(on, TimeTrigger(at=settings.on_time, weekdays=days(settings.effective_days)))
-        )
-    if settings.off_time is not None:
-        lines.append(line(off, TimeTrigger(at=settings.off_time, weekdays=days(settings.end_days))))
+    on_bound, off_bound = _sides(settings)
+    for verb, bound, day_set in (
+        (on, on_bound, settings.effective_days),
+        (off, off_bound, settings.end_days),
+    ):
+        if bound is not None:
+            trigger, weekdays = bound.trigger(days(day_set))
+            lines.append(line(verb, trigger, weekdays=weekdays))
     if settings.days is Days.WEEKLY_SCHEDULE and settings.schedule_entity is not None:
         blocks = (settings.schedule_entity,)
         lines.append(line(on, NamedTrigger("schedule.block_started", blocks)))
@@ -401,23 +496,26 @@ def _upcoming(  # noqa: PLR0913  # the routine's whole runtime picture
     if not_before is not None and not_before.astimezone(tz) > now:
         start = not_before.astimezone(tz)
     verbs = routine_verbs(settings.target_entity)
-    window = settings.on_time is not None and settings.off_time is not None
-    timed: list[tuple[time, frozenset[Weekday], Verb, _Kind]] = []
-    if settings.on_time is not None:
+    on, off = _sides(settings)
+    window = on is not None and off is not None
+    timed: list[tuple[_Bound, frozenset[Weekday], Verb, _Kind]] = []
+    if on is not None:
         kind = _Kind.WINDOW_START if window else _Kind.ONE_SHOT
-        timed.append((settings.on_time, settings.effective_days, verbs[0], kind))
-    if settings.off_time is not None:
+        timed.append((on, settings.effective_days, verbs[0], kind))
+    if off is not None:
         kind = _Kind.WINDOW_END if window else _Kind.ONE_SHOT
-        timed.append((settings.off_time, settings.end_days, verbs[1], kind))
+        timed.append((off, settings.end_days, verbs[1], kind))
     if settings.pulse is not None:
-        timed.append((settings.pulse.at, ALL_DAYS, Verb.TOGGLE, _Kind.PULSE))
+        timed.append((_Bound(at=settings.pulse.at), ALL_DAYS, Verb.TOGGLE, _Kind.PULSE))
     found: list[_Action] = []
-    # A day early for a window that started yesterday; two days late for its end.
+    # A day early for a window that started yesterday; two days late for its end. A sun
+    # bound runs on the days of the event it follows, and not where the lookups have none.
     for day in _days(start.date() - timedelta(days=1), DEFAULT_HORIZON + timedelta(days=2)):
         weekday = Weekday.of(datetime.combine(day, time()))
-        for at, days, verb, kind in timed:
+        for bound, days, verb, kind in timed:
             if weekday in days:
-                found.extend(_Action(instant, verb, kind) for instant in wall_instants(day, at, tz))
+                instants = bound.instants(day, tz, lookups)
+                found.extend(_Action(instant, verb, kind) for instant in instants)
     extras = (
         _block_change(settings, schedule_state, lookups, verbs, tz),
         _countdown(settings, countdown_ends, verbs, tz),
@@ -439,12 +537,13 @@ def routine_occurrences(  # noqa: PLR0913  # the routine's whole runtime picture
     """Return a routine's coming actions, the first being the one its Schedule state shows.
 
     The actions mirror the blueprint (TECH_SPEC 5.5): the on time on the start days, the
-    off time on the end days (a window belongs to the day it starts on), the pulse every
-    day as a toggle, a weekly schedule's next change when `lookups.entity_times` holds the
-    schedule's `next_event` (its state says whether that change is an end or a start), and
-    a running countdown that ends at `countdown_ends`. Actions before `not_before` (a
-    Paused until value) do not run and are left out; one exactly at it runs. Instants are
-    in the zone of `now`, an aware local datetime.
+    off time on the end days (a window belongs to the day it starts on), a sun bound at
+    that day's event plus its offset from `lookups.sun` (left out without one), the pulse
+    every day as a toggle, a weekly schedule's next change when `lookups.entity_times`
+    holds the schedule's `next_event` (its state says whether that change is an end or a
+    start), and a running countdown that ends at `countdown_ends`. Actions before
+    `not_before` (a Paused until value) do not run and are left out; one exactly at it
+    runs. Instants are in the zone of `now`, an aware local datetime.
     """
     return [
         Occurrence(action.at, action.verb)
@@ -479,8 +578,8 @@ def skip_target(  # noqa: PLR0913  # the contract's five values, the countdown a
     (decision L38): the schedule entity does not hold that end, so the manager reads the
     helper's blocks and passes the block's start and end as `block` (`block_bounds`); a
     block start without it, or with a block that does not start then, gives None. `sun`
-    carries the lookups (the schedule's `next_event`; sunrise and sunset arrive with
-    Build B).
+    carries the lookups: the schedule's `next_event`, and the sunrise and sunset a sun
+    bound runs at (a sun start pairs its end as a time start does).
     """
     upcoming = _upcoming(
         settings, now, schedule_state, sun, countdown_ends=countdown_ends, not_before=paused_until

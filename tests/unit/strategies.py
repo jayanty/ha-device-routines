@@ -9,14 +9,16 @@ the pure modules.
   garage cover arrives without an open action.
 - `routine_settings(profile)` draws settings that `compiler.validate` accepts for that
   profile and that are already canonical (`compiler.canonical(s) == s`), so
-  `decompile(compile(s)) == s` holds for every draw.
+  `decompile(compile(s)) == s` holds for every draw. Each side is a time, sunrise or
+  sunset with an offset (FR-R10, Build B lane 16), or not set.
 - `routines()` draws `(profile, device_class, settings)` triples from the two above.
 - `any_settings(profile)` draws settings with no regard for validity, for properties that
   must hold for every input (refused actions are never emitted, whatever is asked).
 - `helper_refs()` draws helper references, real ids or the sentinels.
 - `loose_settings(profile)` (wave A4) draws valid settings in any form a caller may hand
   the manager: a named day set as Some days, a stray day set or schedule, times with
-  microseconds or a zone. `compiler.canonical` of a draw is a `routine_settings` draw.
+  microseconds or a zone, a stray offset on a time bound or a stray time on a sun bound.
+  `compiler.canonical` of a draw is a `routine_settings` draw.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ from custom_components.device_routines.models import (
     Option,
     Pulse,
     RoutineSettings,
+    TimeKind,
     Weekday,
 )
 
@@ -96,23 +99,37 @@ some_days = st.frozensets(st.sampled_from(list(Weekday)), min_size=1).filter(
     lambda days: days not in (ALL_DAYS, WEEKDAYS, WEEKEND)
 )
 
+SUN_OFFSETS = st.integers(-compiler.MAX_SUN_OFFSET_MIN, compiler.MAX_SUN_OFFSET_MIN)
+
+# One side of a window as `RoutineSettings` holds it: the kind, the time, the offset.
+type Side = tuple[TimeKind, time | None, int]
+UNSET: Side = (TimeKind.TIME, None, 0)
+
+
+@st.composite
+def sides(draw: st.DrawFn) -> Side:
+    """Draw one canonical side: not set, a time, or sunrise or sunset with an offset."""
+    kind = draw(st.sampled_from(list(TimeKind)))
+    if kind is TimeKind.TIME:
+        return kind, draw(st.none() | whole_times()), 0
+    return kind, None, draw(SUN_OFFSETS | st.sampled_from([0, -30, 30]))
+
 
 @st.composite
 def routine_settings(draw: st.DrawFn, profile: DomainProfile) -> RoutineSettings:
     """Draw canonical settings that `compiler.validate` accepts for the profile."""
     days = draw(st.sampled_from(list(Days)))
-    on_time: time | None = None
-    off_time: time | None = None
+    on, off = UNSET, UNSET
     schedule_entity: str | None = None
     day_set = ALL_DAYS
     if days is Days.WEEKLY_SCHEDULE:
         schedule_entity = f"schedule.{draw(OBJECT_IDS)}"
     else:
         if _supports(profile, Option.ON_TIME):
-            on_time = draw(st.none() | whole_times())
-        off_time = draw(st.none() | whole_times())
-        if off_time == on_time:
-            off_time = None
+            on = draw(sides())
+        off = draw(sides())
+        if off == on:  # one bound twice is `same_on_and_off_time`; unset sides are equal too
+            off = UNSET
     if days is Days.SOME_DAYS:
         day_set = draw(some_days)
     durations = ["none"]
@@ -135,8 +152,8 @@ def routine_settings(draw: st.DrawFn, profile: DomainProfile) -> RoutineSettings
         )
     return RoutineSettings(
         target_entity=f"{profile.domain}.{draw(OBJECT_IDS)}",
-        on_time=on_time,
-        off_time=off_time,
+        on_time=on[1],
+        off_time=off[1],
         days=days,
         day_set=day_set,
         schedule_entity=schedule_entity,
@@ -148,6 +165,10 @@ def routine_settings(draw: st.DrawFn, profile: DomainProfile) -> RoutineSettings
         pulse=pulse,
         extra_conditions=tuple(draw(st.lists(st.sampled_from(EXAMPLE_CONDITIONS), max_size=2))),
         docked_guard=draw(st.booleans()),
+        on_kind=on[0],
+        on_sun_offset_min=on[2],
+        off_kind=off[0],
+        off_sun_offset_min=off[2],
     )
 
 
@@ -162,6 +183,8 @@ def routines() -> st.SearchStrategy[tuple[DomainProfile, str | None, RoutineSett
 def any_settings(draw: st.DrawFn, profile: DomainProfile) -> RoutineSettings:
     """Draw settings for the profile's domain with no regard for validity."""
     minutes = st.integers(-5, 2 * compiler.MAX_DURATION_MIN)
+    offsets = st.integers(-2 * compiler.MAX_SUN_OFFSET_MIN, 2 * compiler.MAX_SUN_OFFSET_MIN)
+    kinds = st.sampled_from(list(TimeKind))
     return RoutineSettings(
         target_entity=f"{profile.domain}.{draw(OBJECT_IDS)}",
         on_time=draw(st.none() | whole_times()),
@@ -173,6 +196,10 @@ def any_settings(draw: st.DrawFn, profile: DomainProfile) -> RoutineSettings:
         turn_back_on_after_min=draw(minutes),
         late_start_window_min=draw(minutes),
         pulse=draw(st.none() | st.builds(Pulse, at=whole_times(), minutes=minutes)),
+        on_kind=draw(kinds),
+        on_sun_offset_min=draw(offsets),
+        off_kind=draw(kinds),
+        off_sun_offset_min=draw(offsets),
     )
 
 
@@ -223,6 +250,11 @@ def loose_settings(
         settings = replace(settings, day_set=draw(some_days))
     if settings.days is not Days.WEEKLY_SCHEDULE and draw(st.booleans()):
         settings = replace(settings, schedule_entity=f"schedule.{draw(OBJECT_IDS)}")
+    # A form keeps the field of the other kind: an offset under a time, a time under a sun.
+    if settings.on_kind is TimeKind.TIME and draw(st.booleans()):
+        settings = replace(settings, on_sun_offset_min=draw(SUN_OFFSETS))
+    if settings.off_kind is not TimeKind.TIME and draw(st.booleans()):
+        settings = replace(settings, off_time=draw(whole_times()))
     pulse = settings.pulse
     return replace(
         settings,

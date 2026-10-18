@@ -37,10 +37,57 @@ ENTRY_VERSION: Final = 1
 
 type Decompiler = Callable[[Mapping[str, Any]], RoutineSettings]
 
+# The 29 inputs of blueprint input schema 1 (TECH_SPEC 5.2), as `v0.3.0` shipped them.
+SCHEMA_1_KEYS: Final = frozenset(
+    {
+        "target_entity",
+        "on_action",
+        "off_action",
+        "inactive_state",
+        "device_id",
+        "on_time_enabled",
+        "on_time",
+        "off_time_enabled",
+        "off_time",
+        "days_start",
+        "days_end",
+        "crosses_midnight",
+        "schedule_enabled",
+        "schedule_entity",
+        "timer_entity",
+        "turn_off_after_min",
+        "turn_back_on_after_min",
+        "catch_up",
+        "late_start_window_min",
+        "late_window_end",
+        "respect_manual",
+        "override_entity",
+        "paused_until_entity",
+        "pulse_enabled",
+        "pulse_at",
+        "pulse_minutes",
+        "pulse_min_steady_min",
+        "docked_guard",
+        "extra_conditions",
+    }
+)
+
+
+def decompile_schema_1(inputs: Mapping[str, Any]) -> RoutineSettings:
+    """Read schema 1 inputs: refuse any later key, read the rest as the compiler does.
+
+    Every schema 2 input defaults to schema 1 behavior, so `compiler.decompile` reads
+    schema 1 exactly as schema 1 did (decision L60); `tests/fixtures/schema1/inputs.json`
+    pins it, and a compiler that reads schema 1 differently freezes a copy here instead.
+    """
+    if not isinstance(inputs, Mapping) or not set(inputs) <= SCHEMA_1_KEYS:
+        raise CompileError("invalid_inputs")
+    return compiler.decompile(inputs)
+
+
 # The rules of every older blueprint input schema, by schema number. The current schema
-# reads with `compiler.decompile`; a schema change freezes the old rules here. Empty while
-# schema 1 is the only one ever shipped.
-DECOMPILERS: Final[dict[int, Decompiler]] = {}
+# reads with `compiler.decompile`; a schema change freezes the old rules here.
+DECOMPILERS: Final[dict[int, Decompiler]] = {1: decompile_schema_1}
 
 
 class SchemaMigrationTarget(Protocol):

@@ -20,7 +20,7 @@ from homeassistant.helpers import (
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.device_routines import ha_adapter, maintenance, markers
+from custom_components.device_routines import compiler, ha_adapter, maintenance, markers
 from custom_components.device_routines.const import DOMAIN
 from custom_components.device_routines.maintenance import MaintenanceAction
 from custom_components.device_routines.manager import RoutineManager
@@ -540,7 +540,7 @@ async def test_setting_up_creates_the_label_the_category_and_the_blueprint(
         (markers.CATEGORY_NAME, markers.ICON)
     ]
     assert installed_path(hass).read_text(encoding="utf-8") == maintenance.shipped_blueprint_text()
-    assert manager.store.data.blueprint_schema == 1
+    assert manager.store.data.blueprint_schema == compiler.BLUEPRINT_SCHEMA_VERSION
     assert manager.list() == ()
 
 

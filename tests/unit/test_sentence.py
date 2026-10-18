@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-from datetime import UTC, datetime, time, timedelta
+from dataclasses import replace
+from datetime import UTC, date, datetime, time, timedelta
 from itertools import product
 import json
 from pathlib import Path
@@ -12,11 +13,12 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.device_routines import markers, parser, sentence
+from custom_components.device_routines import markers, nextrun, parser, sentence
 from custom_components.device_routines.models import (
     WEEKDAYS,
     WEEKEND,
     CalendarTrigger,
+    Days,
     DeviceContext,
     EntityRef,
     FollowUp,
@@ -25,9 +27,11 @@ from custom_components.device_routines.models import (
     Occurrence,
     ParsedLine,
     PatternTrigger,
+    RoutineSettings,
     StartTrigger,
     StateTrigger,
     SunTrigger,
+    TimeKind,
     TimeTrigger,
     TimeWindow,
     Verb,
@@ -440,6 +444,61 @@ def test_routine_states_drop_the_weekday_then_cut() -> None:
     assert wordy.routine_off() == "This routine is switched off for now..."
     far = datetime(2026, 11, 30, 12, 59, 59, tzinfo=LA)
     assert len(long.skipped(Verb.DOCK, far, WEDNESDAY_3PM)) == sentence.STATE_CAP - 1
+
+
+# --------------------------------------------------------------------------------------
+# Sun relative routines (FR-R10): the existing sun wording, the state under the cap
+# --------------------------------------------------------------------------------------
+
+
+def dusk_sun(day: date, event: str) -> datetime | None:
+    """Sunrise at 7:05 and sunset at 6:12 PM in Los Angeles, as the astral helper says."""
+    at = time(7, 5) if event == "sunrise" else time(18, 12)
+    return datetime.combine(day, at, tzinfo=LA).astimezone(UTC)
+
+
+DUSK = RoutineSettings("light.patio_light", on_kind=TimeKind.SUNSET, on_sun_offset_min=30)
+
+
+def test_a_routine_on_30_minutes_after_sunset_reads_under_the_cap() -> None:
+    w = writer()
+    (parsed,) = nextrun.routine_lines(DUSK, "a1", "Routine: Patio light")
+    assert w.line(parsed) == "Sunset + 30 min: on"
+    (weekdays,) = nextrun.routine_lines(replace(DUSK, days=Days.WEEKDAYS), "a1", "A")
+    assert w.line(weekdays) == "Sunset + 30 min, Weekdays only: on"
+    window = replace(DUSK, off_kind=TimeKind.SUNRISE, off_sun_offset_min=-90)
+    _, ending = nextrun.routine_lines(window, "a1", "A")
+    assert w.line(ending) == "Sunrise - 90 min: off"
+    lookups = nextrun.Lookups(sun=dusk_sun)
+    upcoming = nextrun.routine_occurrences(DUSK, NOW, None, lookups)
+    state = w.state(nextrun.earliest(upcoming[:1]), None, NOW)
+    assert state == "On at 6:42 PM"
+    assert len(state) <= sentence.STATE_CAP
+
+
+def test_every_sun_routine_state_fits_the_cap() -> None:
+    """Every sun kind, offset, day set, domain verb and format, today and on another day."""
+    lookups = nextrun.Lookups(sun=dusk_sun)
+    day_sets: tuple[dict[str, Any], ...] = (
+        {"days": Days.EVERY_DAY},
+        {"days": Days.WEEKENDS},
+        {"days": Days.SOME_DAYS, "day_set": frozenset({Weekday.WED})},
+    )
+    targets = ("light.patio_light", "vacuum.robot_vacuum", "cover.patio_shade")
+    for kind, offset, days, target, w in product(
+        (TimeKind.SUNRISE, TimeKind.SUNSET),
+        (-180, -61, 0, 59, 180),
+        day_sets,
+        targets,
+        (writer("12h"), writer("24h")),
+    ):
+        settings = RoutineSettings(target, on_kind=kind, on_sun_offset_min=offset, **days)
+        upcoming = nextrun.routine_occurrences(settings, NOW, None, lookups)
+        text = w.state(nextrun.earliest(upcoming[:1]), None, NOW)
+        assert text is not None
+        assert len(text) <= sentence.STATE_CAP, text
+        for parsed in nextrun.routine_lines(settings, "a1", "A"):
+            assert w.line(parsed).startswith(("Sunrise", "Sunset"))
 
 
 # --------------------------------------------------------------------------------------

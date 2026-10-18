@@ -1,20 +1,29 @@
 """Routine settings to blueprint inputs and back (TECH_SPEC 3.3 and 5.2).
 
-`compile` writes the exact input mapping of the blueprint: the 29 keys of TECH_SPEC 5.2 in
-that order, the derived inputs included, as plain YAML types (times as `HH:MM:SS`, days as
-lists of weekday values from Monday to Sunday, minutes as `int`, flags as `bool`, entity
-ids and action names as `str`, conditions as a list of mappings). `decompile` reads it
-back. The blueprint form is the second editor, so `decompile` reads only the primary
-inputs and never the derived ones (`days_end`, `crosses_midnight`, `late_window_end`) or
-the profile's (`on_action`, `off_action`, `inactive_state`): a form edit of a primary
-input reads correctly, and the next write repairs the rest.
+`compile` writes the exact input mapping of the blueprint: the 38 keys of input schema 2
+(plan Section 6.2.1) in that order, the derived inputs included, as plain YAML types
+(times as `HH:MM:SS`, sun offsets as `[-]HH:MM:SS` text with whole minutes, kinds as
+`time`, `sunrise` or `sunset`, days as lists of weekday values from Monday to Sunday,
+minutes as `int`, flags as `bool`, entity ids and action names as `str`, conditions as a
+list of mappings). `decompile` reads it back. The blueprint form is the second editor, so
+`decompile` reads only the primary inputs and never the derived ones (`days_end`,
+`crosses_midnight`, `late_window_end`, the four sun flags, `late_sun_offset`) or the
+profile's (`on_action`, `off_action`, `inactive_state`): a form edit of a primary input
+reads correctly, and the next write repairs the rest.
+
+Sun bounds (FR-R10, decision L60). Each side is a kind and, for a time, `on_time` behind
+`on_time_enabled`, or for sunrise or sunset an offset in whole minutes; the off side
+alike. The four sun flags enable the blueprint's sun triggers, and `late_sun_offset` (the
+on offset plus the late start window) ends a sun start's late window. Every schema 2 input
+defaults to schema 1 behavior, so schema 1 inputs read here exactly as schema 1 read them.
 
 Round trips. The inputs carry no `days` value, only the day set, so settings have a
 canonical form (`canonical`): a day set with a name reads as that name (Monday to Friday
 as Weekdays), `day_set` is the full week unless `days` is Some days, `schedule_entity` is
-kept only for a weekly schedule, and times have whole seconds and no zone. For every `s`
-that `validate` accepts, `decompile(compile(s)) == canonical(s)`; for every `i` that
-`compile` produced, `compile(decompile(i), profile, refs_of(i)) == i`.
+kept only for a weekly schedule, times have whole seconds and no zone, a time bound has
+offset 0 and a sun bound no time. For every `s` that `validate` accepts,
+`decompile(compile(s)) == canonical(s)`; for every `i` that `compile` produced,
+`compile(decompile(i), profile, refs_of(i)) == i`.
 
 Helpers. An input that names a helper holds the sentinel while its feature is off: the
 timer without a duration, the schedule without Weekly schedule. The override switch and
@@ -49,10 +58,11 @@ from .models import (
     Problem,
     Pulse,
     RoutineSettings,
+    TimeKind,
     Weekday,
 )
 
-BLUEPRINT_SCHEMA_VERSION: Final = 1
+BLUEPRINT_SCHEMA_VERSION: Final = 2
 # Defined in `markers` (decision L34) and re-exported here: the same object.
 BLUEPRINT_PATH: Final = markers.BLUEPRINT_PATH
 
@@ -70,6 +80,8 @@ UNUSED_TIME: Final = "00:00:00"
 MAX_DURATION_MIN: Final = 1440
 # The same bound as the global default late start window (settings.RANGES).
 MAX_LATE_START_MIN: Final = 180
+# A sun offset keeps a nominal sun time plus its offset inside one day (decision L60).
+MAX_SUN_OFFSET_MIN: Final = 180
 
 INPUT_KEYS: Final[tuple[str, ...]] = (
     "target_entity",
@@ -79,8 +91,16 @@ INPUT_KEYS: Final[tuple[str, ...]] = (
     "device_id",
     "on_time_enabled",
     "on_time",
+    "on_kind",
+    "on_sun_offset",
     "off_time_enabled",
     "off_time",
+    "off_kind",
+    "off_sun_offset",
+    "on_at_sunrise",
+    "on_at_sunset",
+    "off_at_sunrise",
+    "off_at_sunset",
     "days_start",
     "days_end",
     "crosses_midnight",
@@ -92,6 +112,7 @@ INPUT_KEYS: Final[tuple[str, ...]] = (
     "catch_up",
     "late_start_window_min",
     "late_window_end",
+    "late_sun_offset",
     "respect_manual",
     "override_entity",
     "paused_until_entity",
@@ -110,13 +131,22 @@ REQUIRED_KEYS: Final = frozenset(
 
 _ALL_DAY_VALUES: Final = [day.value for day in Weekday]
 
-# The blueprint's defaults (TECH_SPEC 5.2), which `decompile` assumes for omitted inputs.
-# Read only: the lists are shared.
+# The blueprint's defaults (TECH_SPEC 5.2, plan 6.2.1), which `decompile` assumes for
+# omitted inputs. The schema 2 ones reproduce schema 1 behavior: time bounds, no sun
+# trigger, the late window of a time start. Read only: the lists are shared.
 INPUT_DEFAULTS: Final[Mapping[str, Any]] = {
     "on_time_enabled": False,
     "on_time": UNUSED_TIME,
+    "on_kind": TimeKind.TIME.value,
+    "on_sun_offset": "00:00:00",
     "off_time_enabled": False,
     "off_time": UNUSED_TIME,
+    "off_kind": TimeKind.TIME.value,
+    "off_sun_offset": "00:00:00",
+    "on_at_sunrise": False,
+    "on_at_sunset": False,
+    "off_at_sunrise": False,
+    "off_at_sunset": False,
     "days_start": _ALL_DAY_VALUES,
     "days_end": _ALL_DAY_VALUES,
     "crosses_midnight": False,
@@ -128,6 +158,7 @@ INPUT_DEFAULTS: Final[Mapping[str, Any]] = {
     "catch_up": True,
     "late_start_window_min": 15,
     "late_window_end": "00:15:00",
+    "late_sun_offset": "00:15:00",
     "respect_manual": True,
     "override_entity": UNUSED_SWITCH,
     "paused_until_entity": UNUSED_DATETIME,
@@ -164,8 +195,12 @@ _NAMED_DAYS: Final[Mapping[frozenset[Weekday], Days]] = {
     WEEKEND: Days.WEEKENDS,
 }
 _WEEKDAY_VALUES: Final = frozenset(_ALL_DAY_VALUES)
+_KIND_VALUES: Final = frozenset(kind.value for kind in TimeKind)
 _NAME: Final = re.compile(r"[a-z0-9_]+\.[a-z0-9_]+")
 _TIME: Final = re.compile(r"(\d{1,2}):(\d{2})(?::(\d{2}))?")
+# A sun offset: `[-]HH:MM:SS` as compile writes it, `H:MM`, or a leading `+` as the core's
+# time period text allows; seconds are dropped toward zero.
+_OFFSET: Final = re.compile(r"([-+])?(\d{1,2}):([0-5]\d)(?::[0-5]\d)?")
 _MINUTES_PER_DAY: Final = 1440
 
 
@@ -197,21 +232,32 @@ def _named(day_set: frozenset[Weekday]) -> tuple[Days, frozenset[Weekday]]:
     return named, ALL_DAYS
 
 
+def _bound(kind: TimeKind, at: time | None, offset_min: int) -> tuple[time | None, int]:
+    """Return a side's time and offset as the inputs hold them: a time or an offset."""
+    if kind is TimeKind.TIME:
+        return (None if at is None else _whole(at)), 0
+    return None, offset_min
+
+
 def canonical(settings: RoutineSettings) -> RoutineSettings:
     """Return the settings in the form `decompile` reads back (see the module docstring)."""
     days, day_set = settings.days, ALL_DAYS
     if days is Days.SOME_DAYS:
         days, day_set = _named(settings.day_set)
     pulse = settings.pulse
+    on_time, on_offset = _bound(settings.on_kind, settings.on_time, settings.on_sun_offset_min)
+    off_time, off_offset = _bound(settings.off_kind, settings.off_time, settings.off_sun_offset_min)
     return replace(
         settings,
         days=days,
         day_set=day_set,
         schedule_entity=settings.schedule_entity if days is Days.WEEKLY_SCHEDULE else None,
-        on_time=None if settings.on_time is None else _whole(settings.on_time),
-        off_time=None if settings.off_time is None else _whole(settings.off_time),
+        on_time=on_time,
+        off_time=off_time,
         pulse=None if pulse is None else replace(pulse, at=_whole(pulse.at)),
         extra_conditions=tuple(settings.extra_conditions),
+        on_sun_offset_min=on_offset,
+        off_sun_offset_min=off_offset,
     )
 
 
@@ -230,17 +276,32 @@ def _refusals(profile: DomainProfile) -> list[Problem]:
     ]
 
 
+def _same_bounds(settings: RoutineSettings) -> bool:
+    """Tell whether both sides are the same bound: one kind with one time or one offset."""
+    if not (settings.has_on and settings.has_off) or settings.on_kind is not settings.off_kind:
+        return False
+    if settings.on_kind is TimeKind.TIME:
+        return settings.on_time == settings.off_time
+    return settings.on_sun_offset_min == settings.off_sun_offset_min
+
+
 def _schedule_problems(settings: RoutineSettings, profile: DomainProfile) -> list[Problem]:
-    """Reject times and days that cannot run: TECH_SPEC 3.3 and the weekly schedule rule."""
+    """Reject times and days that cannot run: TECH_SPEC 3.3 and the weekly schedule rule.
+
+    A sun bound is a scheduled time like any other (L60): an on side needs an on action,
+    two equal bounds are the same time, and a weekly schedule takes none.
+    """
     found: list[Problem] = []
-    if settings.on_time is not None and not _supports(profile, Option.ON_TIME):
-        found.append(Problem("on_time", "on_time_not_supported", {"domain": profile.domain}))
-    if settings.on_time is not None and settings.on_time == settings.off_time:
-        found.append(Problem("off_time", "same_on_and_off_time"))
+    if settings.has_on and not _supports(profile, Option.ON_TIME):
+        key = "on_time" if settings.on_kind is TimeKind.TIME else "on_kind"
+        found.append(Problem(key, "on_time_not_supported", {"domain": profile.domain}))
+    if _same_bounds(settings):
+        key = "off_time" if settings.off_kind is TimeKind.TIME else "off_sun_offset_min"
+        found.append(Problem(key, "same_on_and_off_time"))
     if settings.days is Days.WEEKLY_SCHEDULE:
         if settings.schedule_entity in {None, UNUSED_SCHEDULE}:
             found.append(Problem("schedule_entity", "schedule_entity_missing"))
-        if settings.on_time is not None or settings.off_time is not None:
+        if settings.has_on or settings.has_off:
             found.append(Problem("days", "times_with_weekly_schedule"))
     if settings.days is Days.SOME_DAYS and not settings.day_set:
         found.append(Problem("day_set", "no_days_selected"))
@@ -268,6 +329,13 @@ def _range_problems(settings: RoutineSettings) -> list[Problem]:
         ("turn_off_after_min", settings.turn_off_after_min, 0, MAX_DURATION_MIN),
         ("turn_back_on_after_min", settings.turn_back_on_after_min, 0, MAX_DURATION_MIN),
         ("late_start_window_min", settings.late_start_window_min, 0, MAX_LATE_START_MIN),
+        ("on_sun_offset_min", settings.on_sun_offset_min, -MAX_SUN_OFFSET_MIN, MAX_SUN_OFFSET_MIN),
+        (
+            "off_sun_offset_min",
+            settings.off_sun_offset_min,
+            -MAX_SUN_OFFSET_MIN,
+            MAX_SUN_OFFSET_MIN,
+        ),
     ]
     if settings.pulse is not None:
         ranges += [
@@ -311,6 +379,12 @@ def _late_window_end(on_time: time | None, minutes: int) -> str:
     return _clock(time(total // 60, total % 60, start.second))
 
 
+def _offset(minutes: int) -> str:
+    """Return a sun offset as the blueprint's text: `[-]HH:MM:SS`, whole minutes."""
+    hours, rest = divmod(abs(minutes), 60)
+    return f"{'-' if minutes < 0 else ''}{hours:02d}:{rest:02d}:00"
+
+
 def compile(  # noqa: A001  # the contract name (plan Section 4.2)
     settings: RoutineSettings, profile: DomainProfile, refs: HelperRefs
 ) -> CompiledInputs:
@@ -331,8 +405,16 @@ def compile(  # noqa: A001  # the contract name (plan Section 4.2)
         "device_id": refs.device_id,
         "on_time_enabled": settings.on_time is not None,
         "on_time": UNUSED_TIME if settings.on_time is None else _clock(settings.on_time),
+        "on_kind": settings.on_kind.value,
+        "on_sun_offset": _offset(settings.on_sun_offset_min),
         "off_time_enabled": settings.off_time is not None,
         "off_time": UNUSED_TIME if settings.off_time is None else _clock(settings.off_time),
+        "off_kind": settings.off_kind.value,
+        "off_sun_offset": _offset(settings.off_sun_offset_min),
+        "on_at_sunrise": settings.on_kind is TimeKind.SUNRISE,
+        "on_at_sunset": settings.on_kind is TimeKind.SUNSET,
+        "off_at_sunrise": settings.off_kind is TimeKind.SUNRISE,
+        "off_at_sunset": settings.off_kind is TimeKind.SUNSET,
         "days_start": _day_values(settings.effective_days),
         "days_end": _day_values(settings.end_days),
         "crosses_midnight": settings.crosses_midnight,
@@ -344,6 +426,7 @@ def compile(  # noqa: A001  # the contract name (plan Section 4.2)
         "catch_up": bool(settings.catch_up),
         "late_start_window_min": int(settings.late_start_window_min),
         "late_window_end": _late_window_end(settings.on_time, settings.late_start_window_min),
+        "late_sun_offset": _offset(settings.on_sun_offset_min + settings.late_start_window_min),
         "respect_manual": bool(settings.respect_manual),
         "override_entity": refs.override_entity,
         "paused_until_entity": refs.paused_until_entity,
@@ -372,6 +455,15 @@ def _parse_time(value: object) -> time | None:
         return None
 
 
+def _parse_offset(value: object) -> int | None:
+    """Return a sun offset text as whole minutes, the seconds dropped toward zero."""
+    if not isinstance(value, str) or (match := _OFFSET.fullmatch(value)) is None:
+        return None
+    sign, hours, minutes = match.groups()
+    total = int(hours) * 60 + int(minutes)
+    return -total if sign == "-" else total
+
+
 def _is_name(value: object) -> bool:
     return isinstance(value, str) and _NAME.fullmatch(value) is not None
 
@@ -394,6 +486,14 @@ def _is_time(value: object) -> bool:
     return _parse_time(value) is not None
 
 
+def _is_offset(value: object) -> bool:
+    return _parse_offset(value) is not None
+
+
+def _is_kind(value: object) -> bool:
+    return isinstance(value, str) and value in _KIND_VALUES
+
+
 def _is_days(value: object) -> bool:
     return isinstance(value, list | tuple) and all(
         isinstance(day, str) and day in _WEEKDAY_VALUES for day in value
@@ -412,8 +512,16 @@ _KINDS: Final[Mapping[str, Callable[[object], bool]]] = {
     "device_id": _is_text,
     "on_time_enabled": _is_flag,
     "on_time": _is_time,
+    "on_kind": _is_kind,
+    "on_sun_offset": _is_offset,
     "off_time_enabled": _is_flag,
     "off_time": _is_time,
+    "off_kind": _is_kind,
+    "off_sun_offset": _is_offset,
+    "on_at_sunrise": _is_flag,
+    "on_at_sunset": _is_flag,
+    "off_at_sunrise": _is_flag,
+    "off_at_sunset": _is_flag,
     "days_start": _is_days,
     "days_end": _is_days,
     "crosses_midnight": _is_flag,
@@ -425,6 +533,7 @@ _KINDS: Final[Mapping[str, Callable[[object], bool]]] = {
     "catch_up": _is_flag,
     "late_start_window_min": _is_minutes,
     "late_window_end": _is_time,
+    "late_sun_offset": _is_offset,
     "respect_manual": _is_flag,
     "override_entity": _is_name,
     "paused_until_entity": _is_name,
@@ -441,8 +550,9 @@ def is_valid_shape(inputs: object) -> bool:
     """Tell whether blueprint inputs are readable, as sync back must know first.
 
     Readable means no unknown key, no missing required key, and every value of the type
-    `compile` writes. A form may write `HH:MM` times and whole numbers as floats, which
-    read the same.
+    `compile` writes. A form may write `HH:MM` times and offsets and whole numbers as
+    floats, which read the same. The schema 2 inputs may be missing, as every input with a
+    default may: schema 1 inputs are readable.
     """
     if not isinstance(inputs, Mapping):
         return False
@@ -465,6 +575,17 @@ def _time(value: str) -> time:
     return parsed
 
 
+def _side(values: Mapping[str, Any], side: str) -> tuple[time | None, TimeKind, int]:
+    """Return one side's time, kind and offset from its primary inputs only."""
+    kind = TimeKind(values[f"{side}_kind"])
+    if kind is TimeKind.TIME:
+        enabled = values[f"{side}_time_enabled"]
+        return (_time(values[f"{side}_time"]) if enabled else None), kind, 0
+    offset = _parse_offset(values[f"{side}_sun_offset"])
+    assert offset is not None  # noqa: S101  # the shape was checked
+    return None, kind, offset
+
+
 def decompile(inputs: Mapping[str, Any]) -> RoutineSettings:
     """Return the canonical settings blueprint inputs describe; raise for a bad shape."""
     values = _filled(inputs)
@@ -478,10 +599,12 @@ def decompile(inputs: Mapping[str, Any]) -> RoutineSettings:
         minutes=int(values["pulse_minutes"]),
         min_steady_min=int(values["pulse_min_steady_min"]),
     )
+    on_time, on_kind, on_offset = _side(values, "on")
+    off_time, off_kind, off_offset = _side(values, "off")
     return RoutineSettings(
         target_entity=values["target_entity"],
-        on_time=_time(values["on_time"]) if values["on_time_enabled"] else None,
-        off_time=_time(values["off_time"]) if values["off_time_enabled"] else None,
+        on_time=on_time,
+        off_time=off_time,
         days=days,
         day_set=day_set,
         schedule_entity=(
@@ -497,6 +620,10 @@ def decompile(inputs: Mapping[str, Any]) -> RoutineSettings:
         pulse=pulse if values["pulse_enabled"] else None,
         extra_conditions=tuple(values["extra_conditions"]),
         docked_guard=values["docked_guard"],
+        on_kind=on_kind,
+        on_sun_offset_min=on_offset,
+        off_kind=off_kind,
+        off_sun_offset_min=off_offset,
     )
 
 

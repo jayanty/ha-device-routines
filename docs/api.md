@@ -117,7 +117,9 @@ accepts the JSON forms shown, and the native forms the manager stores (`apply_pa
 | Field | JSON form | Default |
 | --- | --- | --- |
 | `target_entity` | entity id of one of the device's controllable entities | the first candidate |
-| `on_time`, `off_time` | `"HH:MM"` or `"HH:MM:SS"`, or null | null |
+| `on_time`, `off_time` | `"HH:MM"` or `"HH:MM:SS"`, or null; counts only with the kind `time` | null |
+| `on_kind`, `off_kind` | `time`, `sunrise` or `sunset` (FR-R10); a sun kind sets its side without a time | `time` |
+| `on_sun_offset_min`, `off_sun_offset_min` | whole minutes from -180 to 180, negative before the event; counts only with a sun kind | 0 |
 | `days` | `every_day`, `weekdays`, `weekends`, `some_days`, `weekly_schedule` | `every_day` |
 | `day_set` | list of `mon` to `sun`; counts only with `some_days` | all seven |
 | `schedule_entity` | a `schedule` entity id, with `weekly_schedule` | null |
@@ -172,7 +174,11 @@ opted out whose routine waits for cleanup.
         "respect_manual": true,
         "pulse": null,
         "extra_conditions": [],
-        "docked_guard": true
+        "docked_guard": true,
+        "on_kind": "time",
+        "on_sun_offset_min": 0,
+        "off_kind": "time",
+        "off_sun_offset_min": 0
       },
       "status": "active",
       "enabled": true,

@@ -26,6 +26,7 @@ from custom_components.device_routines.models import (
     RoutineSettings,
     StateTrigger,
     SunTrigger,
+    TimeKind,
     TimeTrigger,
     TimeWindow,
     Verb,
@@ -169,6 +170,9 @@ def test_follow_ups_are_occurrences() -> None:
 def test_event_driven_and_not_understood_lines_have_no_run() -> None:
     assert nextrun.next_run(line(StateTrigger(entity=FAN, to="on")), MONDAY_8) is None
     assert nextrun.next_run(line(at(9), understood=False), MONDAY_8) is None
+    # A line with a time and an event runs at the time.
+    mixed = line(StateTrigger(entity=FAN, to="on"), at(9))
+    assert nextrun.next_run(mixed, MONDAY_8) == datetime(2026, 10, 19, 9, tzinfo=LA)
 
 
 def test_limit_and_horizon() -> None:
@@ -500,6 +504,13 @@ def test_routine_occurrences_follow_the_core_on_dst_nights() -> None:
     assert (target.at, target.paired_end) == (first.at, end.at)
 
 
+def seasonal_sun(day: date, event: str) -> datetime | None:
+    """A sun that moves with the seasons in Berlin, as the astral helper's answer in UTC."""
+    shift = timedelta(minutes=day.timetuple().tm_yday % 120)
+    base = time(6) if event == "sunrise" else time(16, 30)
+    return (datetime.combine(day, base, tzinfo=BERLIN) + shift).astimezone(UTC)
+
+
 @settings(max_examples=300, deadline=None)
 @given(
     case=strategies.routines(),
@@ -519,7 +530,8 @@ def test_skip_target_equals_the_sentence_action(
     routine = case[2]
     countdown = None if countdown_in is None else now + timedelta(minutes=countdown_in)
     lookups = nextrun.Lookups(
-        entity_times={routine.schedule_entity or "": now + timedelta(minutes=next_event_in)}
+        sun=seasonal_sun,
+        entity_times={routine.schedule_entity or "": now + timedelta(minutes=next_event_in)},
     )
     target = nextrun.skip_target(
         routine, now, None, schedule_state, lookups, countdown_ends=countdown
@@ -658,3 +670,214 @@ def test_skip_target_skips_a_block_start_with_its_end() -> None:
     assert ends == nextrun.SkipTarget(Verb.OFF, block_starts, None, block_starts + MINUTE)
     # Without the block, a block start still cannot be skipped.
     assert nextrun.skip_target(WEEKLY, local(19, 12), None, "off", lookups) is None
+
+
+# --------------------------------------------------------------------------------------
+# Sun relative bounds (FR-R10, decision L60)
+# --------------------------------------------------------------------------------------
+
+LIGHT = "light.patio_light"
+# Sunset to sunrise on weekdays: Friday's sunset starts a window Saturday's sunrise ends.
+SUN_NIGHTS = RoutineSettings(
+    target_entity=LIGHT,
+    days=Days.WEEKDAYS,
+    on_kind=TimeKind.SUNSET,
+    on_sun_offset_min=30,
+    off_kind=TimeKind.SUNRISE,
+    off_sun_offset_min=-15,
+)
+SUN_DAYS = RoutineSettings(
+    target_entity=LIGHT,
+    on_kind=TimeKind.SUNRISE,
+    on_sun_offset_min=30,
+    off_kind=TimeKind.SUNSET,
+    off_sun_offset_min=-30,
+)
+
+
+def la_sun(day: date, event: str) -> datetime | None:
+    """Sunrise at 07:00 and sunset at 18:00 in Los Angeles, answered in UTC; none on the 30th."""
+    if day == date(2026, 10, 30):
+        return None
+    at = time(7) if event == "sunrise" else time(18)
+    return datetime.combine(day, at, tzinfo=LA).astimezone(UTC)
+
+
+SUN = nextrun.Lookups(sun=la_sun)
+
+
+def in_zone(moment: datetime | None, tz: ZoneInfo) -> datetime | None:
+    return None if moment is None else moment.astimezone(tz)
+
+
+@pytest.mark.parametrize(
+    ("moment", "expected"),
+    [
+        (local(19, 7, 29), "off"),
+        (local(19, 7, 30), "on"),  # sunrise plus 30
+        (local(19, 12), "on"),
+        (local(19, 17, 29), "on"),
+        (local(19, 17, 30), "off"),  # sunset minus 30
+        (local(19, 23), "off"),
+    ],
+)
+def test_expected_state_sun_window_same_day(moment: datetime, expected: str) -> None:
+    assert nextrun.expected_state(SUN_DAYS, moment, None, SUN) == expected
+    # The lookup's zone does not matter: the bounds are read in the zone of now.
+    in_berlin = nextrun.Lookups(sun=lambda day, event: in_zone(la_sun(day, event), BERLIN))
+    assert nextrun.expected_state(SUN_DAYS, moment, None, in_berlin) == expected
+
+
+@pytest.mark.parametrize(
+    ("moment", "expected"),
+    [
+        (local(19, 2), "off"),  # Monday night: Sunday is not a start day
+        (local(19, 18, 29), "off"),
+        (local(19, 18, 30), "on"),  # Monday's sunset plus 30
+        (local(20, 6, 44), "on"),  # Tuesday before sunrise minus 15 ends Monday's window
+        (local(20, 6, 45), "off"),
+        (local(23, 20), "on"),  # Friday evening
+        (local(24, 2), "on"),  # Saturday 02:00, Friday's window
+        (local(24, 8), "off"),
+        (local(24, 20), "off"),  # Saturday's sunset does nothing
+        (local(25, 2), "off"),  # nor does it make Sunday 02:00 on
+    ],
+)
+def test_expected_state_sunset_to_sunrise_crossing_with_weekdays(
+    moment: datetime, expected: str
+) -> None:
+    assert SUN_NIGHTS.crosses_midnight
+    assert nextrun.expected_state(SUN_NIGHTS, moment, None, SUN) == expected
+
+
+def test_expected_state_mixes_a_time_and_a_sun_bound() -> None:
+    late_nights = RoutineSettings(LIGHT, on_time=time(22), off_kind=TimeKind.SUNRISE)
+    assert late_nights.crosses_midnight
+    assert nextrun.expected_state(late_nights, local(19, 23), None, SUN) == "on"
+    assert nextrun.expected_state(late_nights, local(20, 6, 59), None, SUN) == "on"
+    assert nextrun.expected_state(late_nights, local(20, 7), None, SUN) == "off"
+    evenings = RoutineSettings(LIGHT, on_kind=TimeKind.SUNSET, off_time=time(23))
+    assert not evenings.crosses_midnight
+    assert nextrun.expected_state(evenings, local(19, 17, 59), None, SUN) == "off"
+    assert nextrun.expected_state(evenings, local(19, 18), None, SUN) == "on"
+    assert nextrun.expected_state(evenings, local(19, 23), None, SUN) == "off"
+    assert nextrun.expected_state(evenings, local(20, 1), None, SUN) == "off"
+
+
+def test_expected_state_without_sun_lookup_is_none() -> None:
+    for lookups in (None, nextrun.Lookups(), nextrun.Lookups(entity_times={"x.y": time(7)})):
+        assert nextrun.expected_state(SUN_DAYS, local(19, 12), None, lookups) is None
+        assert nextrun.expected_state(SUN_NIGHTS, local(23, 20), None, lookups) is None
+    # A day without a sunset (the lookup's 30th): the window that needs it reads None.
+    assert nextrun.expected_state(SUN_DAYS, local(30, 12), None, SUN) is None
+    assert nextrun.expected_state(SUN_NIGHTS, local(30, 22), None, SUN) is None
+    # Saturday 02:00 after a Friday without sunrise or sunset needs Saturday's sunrise only.
+    assert nextrun.expected_state(SUN_NIGHTS, local(31, 2), None, SUN) == "on"
+    # A day no half of the window applies to needs no sun time at all.
+    assert nextrun.expected_state(SUN_NIGHTS, local(25, 2)) == "off"
+    mondays = replace(SUN_DAYS, days=Days.SOME_DAYS, day_set=frozenset({Weekday.MON}))
+    assert nextrun.expected_state(mondays, local(21, 12)) == "off"
+    # Time bounds never need the sun.
+    assert nextrun.expected_state(NIGHTLY, local(21, 18)) == "on"
+    one_sided = RoutineSettings(LIGHT, on_kind=TimeKind.SUNSET)
+    assert nextrun.expected_state(one_sided, local(21, 19), None, SUN) is None
+
+
+def test_occurrences_place_sun_actions_on_their_days() -> None:
+    friday_noon = local(23, 12)
+    upcoming = nextrun.routine_occurrences(SUN_NIGHTS, friday_noon, None, SUN)
+    assert upcoming[:5] == [
+        Occurrence(local(23, 18, 30), Verb.ON),  # Friday's sunset plus 30
+        Occurrence(local(24, 6, 45), Verb.OFF),  # Saturday's sunrise minus 15
+        Occurrence(local(26, 18, 30), Verb.ON),  # nothing at the weekend
+        Occurrence(local(27, 6, 45), Verb.OFF),
+        Occurrence(local(27, 18, 30), Verb.ON),
+    ]
+    assert all(occurrence.at.tzinfo is LA for occurrence in upcoming)
+    # A day the lookup has no sun time for (the 30th) has no sun action.
+    days = [o.at.date() for o in nextrun.routine_occurrences(SUN_DAYS, local(29, 12), None, SUN)]
+    assert date(2026, 10, 30) not in days
+    assert days[:3] == [date(2026, 10, 29), date(2026, 10, 31), date(2026, 10, 31)]
+    # Without the sun the sun bounds have no action, but a pulse still runs.
+    assert nextrun.routine_occurrences(SUN_NIGHTS, friday_noon) == []
+    pulsed = replace(SUN_NIGHTS, pulse=Pulse(time(13)))
+    assert nextrun.routine_occurrences(pulsed, friday_noon)[0] == Occurrence(
+        local(23, 13), Verb.TOGGLE
+    )
+
+
+def test_sun_actions_follow_the_lookup_on_dst_nights() -> None:
+    """A sun bound is the lookup's instant plus the offset, on the 2026 US and EU nights."""
+
+    def wall_sun(tz: ZoneInfo, sunset: time) -> nextrun.SunLookup:
+        def sun(day: date, event: str) -> datetime | None:
+            at = time(6, 40) if event == "sunrise" else sunset
+            return datetime.combine(day, at, tzinfo=tz).astimezone(UTC)
+
+        return sun
+
+    for tz, saturday in ((LA, date(2026, 3, 7)), (BERLIN, date(2026, 3, 28))):
+        lookups = nextrun.Lookups(sun=wall_sun(tz, time(18, 5)))
+        dusk = RoutineSettings(LIGHT, on_kind=TimeKind.SUNSET, on_sun_offset_min=30)
+        now = datetime.combine(saturday, time(12), tzinfo=tz)
+        first, second = nextrun.routine_occurrences(dusk, now, None, lookups)[:2]
+        assert first.at == datetime.combine(saturday, time(18, 35), tzinfo=tz)
+        assert second.at == datetime.combine(saturday + timedelta(days=1), time(18, 35), tzinfo=tz)
+        assert second.at.utcoffset() - first.at.utcoffset() == timedelta(hours=1)  # type: ignore[operator]
+    # The fall back night: sunrise minus 180 lands after the repeated hour, once.
+    lookups = nextrun.Lookups(sun=wall_sun(LA, time(17)))
+    dawn = RoutineSettings(LIGHT, off_kind=TimeKind.SUNRISE, off_sun_offset_min=-180)
+    halloween = datetime(2026, 10, 31, 23, tzinfo=LA)
+    first, second = nextrun.routine_occurrences(dawn, halloween, None, lookups)[:2]
+    assert first.at == datetime(2026, 11, 1, 3, 40, tzinfo=LA)
+    assert first.at.utcoffset() == timedelta(hours=-8)
+    assert second.at - first.at == timedelta(days=1)
+
+
+def test_skip_target_sun_start_pairs_its_end() -> None:
+    """D18 for a sun window: at 15:00, skip tonight's sunset start and the sunrise end."""
+    wednesday = replace(SUN_NIGHTS, days=Days.EVERY_DAY)
+    target = nextrun.skip_target(wednesday, WEDNESDAY_3PM, None, None, SUN)
+    assert target == nextrun.SkipTarget(
+        verb=Verb.ON,
+        at=local(21, 18, 30),
+        paired_end=local(22, 6, 45),
+        paused_until=local(22, 6, 46),
+    )
+    following = nextrun.routine_occurrences(
+        wednesday, WEDNESDAY_3PM, None, SUN, not_before=target.paused_until
+    )
+    assert following[0] == Occurrence(local(22, 18, 30), Verb.ON)
+    assert WRITER.skipped(Verb.ON, following[0].at, WEDNESDAY_3PM) == "Skipped, on Thu 6:30 PM"
+    # Inside the window the end is skipped alone (D19).
+    assert nextrun.skip_target(wednesday, local(22, 2), None, None, SUN) == nextrun.SkipTarget(
+        Verb.OFF, local(22, 6, 45), None, local(22, 6, 46)
+    )
+    # Without the sun nothing is scheduled to skip.
+    assert nextrun.skip_target(wednesday, WEDNESDAY_3PM) is None
+
+
+def test_routine_lines_read_sun_bounds() -> None:
+    on, off = nextrun.routine_lines(SUN_NIGHTS, "a", "Routine: Patio light")
+    assert on.triggers == (SunTrigger("sunset", timedelta(minutes=30)),)
+    assert (on.verb, on.weekdays) == (Verb.ON, WEEKDAYS)
+    assert off.triggers == (SunTrigger("sunrise", timedelta(minutes=-15)),)
+    # The end runs the day after each start day.
+    assert (off.verb, off.weekdays) == (Verb.OFF, frozenset(day.following for day in WEEKDAYS))
+    every_day = nextrun.routine_lines(replace(SUN_NIGHTS, days=Days.EVERY_DAY), "a", "A")
+    assert [line.weekdays for line in every_day] == [None, None]
+    # A time keeps its days on its trigger, next to a sun bound.
+    mixed = RoutineSettings(LIGHT, on_time=time(22), off_kind=TimeKind.SUNRISE, days=Days.WEEKENDS)
+    start, end = nextrun.routine_lines(mixed, "a", "A")
+    assert start.triggers == (TimeTrigger(at=time(22), weekdays=WEEKEND),)
+    assert start.weekdays is None
+    assert end.triggers == (SunTrigger("sunrise", timedelta(0)),)
+    assert end.weekdays == frozenset({Weekday.SUN, Weekday.MON})
+    # The lines run when the routine's own actions do.
+    friday_noon = local(23, 12)
+    from_lines = sorted(
+        (o for line in (on, off) for o in nextrun.next_occurrences(line, friday_noon, SUN)),
+        key=lambda occurrence: occurrence.at,
+    )
+    own = nextrun.routine_occurrences(SUN_NIGHTS, friday_noon, None, SUN)
+    assert from_lines[:6] == own[:6]

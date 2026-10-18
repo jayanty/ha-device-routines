@@ -5,8 +5,10 @@ The schema migration runs against a fake of the manager's side of the contract
 (`SchemaMigrationTarget`): it compiles with the real compiler and writes through the real
 adapter, so every rewrite lands in `automations.yaml` and reloads. Schema 0 is a fake:
 start and stop as `HH:MM` text, a weekdays flag and an `off_after` number. The blueprint is
-a synthetic stand in that declares every schema 1 input; the shipped one is lane 2's.
-Every id and name is synthetic.
+a synthetic stand in that declares every input of the current schema; the shipped one is
+lane 2's. Schema 1 is real: `DECOMPILERS[1]` reads it (Build B lane 16), pinned by the
+inputs the schema 1 compiler wrote in `tests/fixtures/schema1/inputs.json`. Every id and
+name is synthetic.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from dataclasses import replace
 from datetime import time
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from homeassistant.config import AUTOMATION_CONFIG_PATH
 from homeassistant.config_entries import ConfigEntryState
@@ -31,8 +33,14 @@ import custom_components.device_routines as integration
 from custom_components.device_routines import compiler, ha_adapter, markers, migration, settings
 from custom_components.device_routines.config_flow import DeviceRoutinesConfigFlow
 from custom_components.device_routines.const import DOMAIN, INTEGRATION_TITLE
-from custom_components.device_routines.domains import profile_for
-from custom_components.device_routines.models import CompileError, Days, RoutineSettings
+from custom_components.device_routines.domains import PROFILES, profile_for
+from custom_components.device_routines.models import (
+    CompileError,
+    Days,
+    Pulse,
+    RoutineSettings,
+    Weekday,
+)
 from custom_components.device_routines.store import OwnedRecord, RoutineStore
 
 FAN_DEVICE = "synthetic-living-room-fan"
@@ -79,11 +87,11 @@ actions:
 """
 
 
-def schema_1_blueprint() -> str:
-    """A stand in declaring every schema 1 input, the required ones without a default."""
+def current_blueprint() -> str:
+    """A stand in declaring every current input, the required ones without a default."""
     lines = [
         "blueprint:",
-        "  name: Synthetic routine, schema 1",
+        "  name: Synthetic routine, current schema",
         "  domain: automation",
         "  input:",
     ]
@@ -193,7 +201,7 @@ class FakeManager:
     async def async_ensure_blueprint(self) -> bool:
         self.ensure_calls += 1
         if self.blueprint_is_shipped:
-            await ha_adapter.async_install_blueprint(self.hass, schema_1_blueprint())
+            await ha_adapter.async_install_blueprint(self.hass, current_blueprint())
         return self.blueprint_is_shipped
 
     async def async_write_settings(self, automation_id: str, new: RoutineSettings) -> None:
@@ -246,7 +254,7 @@ def schema_0(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 async def automations(hass: HomeAssistant, tmp_path: Path) -> Path:
-    """Four routines on schema 0 (one unreadable, one detached), one already on schema 1."""
+    """Four routines on schema 0 (one unreadable, one detached), one on the current schema."""
     hass.config.config_dir = str(tmp_path)
     (tmp_path / "configuration.yaml").write_text(
         "automation: !include automations.yaml\n", encoding="utf-8"
@@ -287,7 +295,9 @@ def routines(hass: HomeAssistant, hass_storage: dict[str, Any]) -> RoutineStore:
         FAN_ID: record_of(FAN_DEVICE, "fan.living_room", FAN_OLD, 0),
         LIGHT_ID: record_of(LIGHT_DEVICE, "light.hallway", LIGHT_OLD, 0),
         VACUUM_ID: record_of(VACUUM_DEVICE, "vacuum.robot", None, 0),
-        COFFEE_ID: record_of(COFFEE_DEVICE, "switch.coffee_maker", COFFEE_INPUTS, 1),
+        COFFEE_ID: record_of(
+            COFFEE_DEVICE, "switch.coffee_maker", COFFEE_INPUTS, compiler.BLUEPRINT_SCHEMA_VERSION
+        ),
         PUMP_ID: record_of(PUMP_DEVICE, "switch.garden_pump", None, 0),
         PORCH_ID: record_of(PORCH_DEVICE, "light.porch", None, 0),
     }
@@ -442,7 +452,7 @@ async def test_async_migrate_blueprint_schema_rewrites_every_owned_automation_fr
     assert routines.data.owned[VACUUM_ID] == record_of(VACUUM_DEVICE, "vacuum.robot", None, 0)
     assert routines.data.owned[PORCH_ID] == record_of(PORCH_DEVICE, "light.porch", None, 0)
     assert routines.data.owned[PUMP_ID] == record_of(PUMP_DEVICE, "switch.garden_pump", None, 0)
-    # The routine already on schema 1 is neither read nor written.
+    # The routine already on the current schema is neither read nor written.
     assert routines.data.owned[COFFEE_ID].previous_inputs is None
 
     assert routines.data.blueprint_schema == compiler.BLUEPRINT_SCHEMA_VERSION
@@ -504,10 +514,11 @@ async def test_schema_migration_waits_for_the_shipped_blueprint(
 
 
 async def test_nothing_due_returns_at_once(hass: HomeAssistant, routines: RoutineStore) -> None:
+    current = compiler.BLUEPRINT_SCHEMA_VERSION
     routines.data.owned = {
-        COFFEE_ID: record_of(COFFEE_DEVICE, "switch.coffee_maker", COFFEE_INPUTS, 1)
+        COFFEE_ID: record_of(COFFEE_DEVICE, "switch.coffee_maker", COFFEE_INPUTS, current)
     }
-    routines.data.blueprint_schema = compiler.BLUEPRINT_SCHEMA_VERSION
+    routines.data.blueprint_schema = current
     manager = FakeManager(hass, routines)
 
     assert await migration.async_migrate_blueprint_schema(hass, manager, routines) == []
@@ -580,3 +591,124 @@ def test_decompile_inputs_picks_the_rules_of_the_schema(schema_0: None) -> None:
     with pytest.raises(CompileError) as raised:
         migration.decompile_inputs(FAN_OLD, -5)
     assert raised.value.translation_key == "invalid_inputs"
+
+
+# --------------------------------------------------------------------------------------
+# Schema 1, read by DECOMPILERS[1] (Build B lane 16, decision L60)
+# --------------------------------------------------------------------------------------
+
+SCHEMA_1_FIXTURE: Final = Path(__file__).parents[1] / "fixtures" / "schema1" / "inputs.json"
+SCHEMA_1_CASES: Final[list[dict[str, Any]]] = json.loads(
+    SCHEMA_1_FIXTURE.read_text(encoding="utf-8")
+)["cases"]
+
+
+def _clock(value: str | None) -> time | None:
+    return None if value is None else time.fromisoformat(value)
+
+
+def recorded_settings(recorded: Mapping[str, Any]) -> RoutineSettings:
+    """The settings a fixture case recorded, in the fields RoutineSettings had at schema 1.
+
+    A field added since takes its default: that is what schema 1 inputs must read as.
+    """
+    pulse = recorded["pulse"]
+    return RoutineSettings(
+        target_entity=recorded["target_entity"],
+        on_time=_clock(recorded["on_time"]),
+        off_time=_clock(recorded["off_time"]),
+        days=Days(recorded["days"]),
+        day_set=frozenset(Weekday(day) for day in recorded["day_set"]),
+        schedule_entity=recorded["schedule_entity"],
+        turn_off_after_min=recorded["turn_off_after_min"],
+        turn_back_on_after_min=recorded["turn_back_on_after_min"],
+        catch_up=recorded["catch_up"],
+        late_start_window_min=recorded["late_start_window_min"],
+        respect_manual=recorded["respect_manual"],
+        pulse=None if pulse is None else _pulse(pulse),
+        extra_conditions=tuple(recorded["extra_conditions"]),
+        docked_guard=recorded["docked_guard"],
+    )
+
+
+def _pulse(recorded: Mapping[str, Any]) -> Pulse:
+    return Pulse(
+        time.fromisoformat(recorded["at"]), recorded["minutes"], recorded["min_steady_min"]
+    )
+
+
+def test_the_schema_1_fixture_covers_what_the_brief_lists() -> None:
+    """Every profile, every option, a crossing window, Some days, a weekly schedule..."""
+    compiled_cases = [case for case in SCHEMA_1_CASES if not case["name"].startswith("form edit")]
+    inputs = [case["inputs"] for case in compiled_cases]
+    assert all(set(item) == migration.SCHEMA_1_KEYS for item in inputs)
+    assert len(migration.SCHEMA_1_KEYS) == 29
+    assert {item["target_entity"].partition(".")[0] for item in inputs} == set(PROFILES)
+    assert any(item["crosses_midnight"] for item in inputs)
+    assert any(item["schedule_enabled"] for item in inputs)
+    assert any(item["turn_off_after_min"] for item in inputs)
+    assert any(item["turn_back_on_after_min"] for item in inputs)
+    assert any(item["pulse_enabled"] for item in inputs)
+    assert any(item["extra_conditions"] for item in inputs)
+    assert any(case["settings"]["days"] == "some_days" for case in compiled_cases)
+    assert any(not item["catch_up"] and not item["respect_manual"] for item in inputs)
+    names = [case["name"] for case in SCHEMA_1_CASES]
+    assert len(names) == len(set(names))
+
+
+@pytest.mark.parametrize("case", SCHEMA_1_CASES, ids=[case["name"] for case in SCHEMA_1_CASES])
+def test_schema_1_fixture_reads_unchanged(case: dict[str, Any]) -> None:
+    """L60: `decompile_inputs(inputs, 1)` reads every recorded case as schema 1 did."""
+    expected = recorded_settings(case["settings"])
+
+    assert migration.DECOMPILERS[1] is migration.decompile_schema_1
+    assert migration.decompile_inputs(case["inputs"], 1) == expected
+
+
+@pytest.mark.parametrize(
+    "case",
+    [case for case in SCHEMA_1_CASES if not case["name"].startswith("form edit")],
+    ids=[case["name"] for case in SCHEMA_1_CASES if not case["name"].startswith("form edit")],
+)
+def test_a_schema_1_routine_rewrites_to_the_same_inputs_plus_the_schema_2_defaults(
+    case: dict[str, Any],
+) -> None:
+    """The migration writes what schema 1 had, and the new inputs at their defaults."""
+    old = case["inputs"]
+    domain, _, device_class = case["name"].partition(":")[0].partition(" ")
+    profile = profile_for(domain, device_class or None)
+    assert profile is not None
+    settings_ = migration.decompile_inputs(old, 1)
+
+    new = dict(compiler.compile(settings_, profile, compiler.refs_of(old)).inputs)
+
+    assert {key: value for key, value in new.items() if key in migration.SCHEMA_1_KEYS} == old
+    added = {key: new[key] for key in new if key not in migration.SCHEMA_1_KEYS}
+    window = old["late_start_window_min"]
+    assert added == {
+        key: compiler.INPUT_DEFAULTS[key] for key in added if key != "late_sun_offset"
+    } | {"late_sun_offset": f"{window // 60:02d}:{window % 60:02d}:00"}
+    assert compiler.decompile(new) == settings_
+
+
+@pytest.mark.parametrize(
+    "key",
+    [key for key in compiler.INPUT_KEYS if key not in migration.SCHEMA_1_KEYS],
+)
+def test_decompilers_1_refuses_schema_2_keys(key: str) -> None:
+    old = SCHEMA_1_CASES[0]["inputs"]
+    assert migration.decompile_inputs(old, 1) == recorded_settings(SCHEMA_1_CASES[0]["settings"])
+
+    with pytest.raises(CompileError) as raised:
+        migration.decompile_inputs(old | {key: compiler.INPUT_DEFAULTS[key]}, 1)
+
+    assert raised.value.translation_key == "invalid_inputs"
+
+
+def test_decompilers_1_refuses_what_is_not_schema_1_inputs() -> None:
+    schema_2 = compiled(FAN_NEW, FAN_DEVICE)
+    assert migration.decompile_inputs(schema_2, compiler.BLUEPRINT_SCHEMA_VERSION) == FAN_NEW
+    for broken in (schema_2, ["not", "a", "mapping"], {"unknown_input": 1}):
+        with pytest.raises(CompileError) as raised:
+            migration.decompile_inputs(broken, 1)  # type: ignore[arg-type]
+        assert raised.value.translation_key == "invalid_inputs"

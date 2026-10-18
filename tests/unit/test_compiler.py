@@ -14,6 +14,7 @@ import pytest
 from custom_components.device_routines import compiler, domains, markers
 from custom_components.device_routines.models import (
     ALL_DAYS,
+    NOMINAL_SUN_TIMES,
     WEEKDAYS,
     CompileError,
     Days,
@@ -26,6 +27,7 @@ from custom_components.device_routines.models import (
     RoutineView,
     Source,
     Status,
+    TimeKind,
     Verb,
     Weekday,
 )
@@ -59,8 +61,18 @@ REFS = compiler.HelperRefs(
 WINDOW = RoutineSettings(
     target_entity="fan.living_room_fan", on_time=time(17), off_time=time(9), days=Days.WEEKDAYS
 )
+# On 30 minutes after sunset, off 45 minutes before sunrise: a window across midnight.
+SUN_WINDOW = RoutineSettings(
+    target_entity="light.patio_light",
+    days=Days.WEEKDAYS,
+    on_kind=TimeKind.SUNSET,
+    on_sun_offset_min=30,
+    off_kind=TimeKind.SUNRISE,
+    off_sun_offset_min=-45,
+)
+LIGHT = domains.PROFILES["light"]
 
-# TECH_SPEC 5.2, in the table's order: 29 inputs.
+# Blueprint input schema 2 (plan Section 6.2.1), in the table's order: 38 inputs.
 SPEC_KEYS = (
     "target_entity",
     "on_action",
@@ -69,8 +81,16 @@ SPEC_KEYS = (
     "device_id",
     "on_time_enabled",
     "on_time",
+    "on_kind",
+    "on_sun_offset",
     "off_time_enabled",
     "off_time",
+    "off_kind",
+    "off_sun_offset",
+    "on_at_sunrise",
+    "on_at_sunset",
+    "off_at_sunrise",
+    "off_at_sunset",
     "days_start",
     "days_end",
     "crosses_midnight",
@@ -82,6 +102,7 @@ SPEC_KEYS = (
     "catch_up",
     "late_start_window_min",
     "late_window_end",
+    "late_sun_offset",
     "respect_manual",
     "override_entity",
     "paused_until_entity",
@@ -92,6 +113,18 @@ SPEC_KEYS = (
     "docked_guard",
     "extra_conditions",
 )
+# The inputs schema 2 added, with the defaults that reproduce schema 1 behavior.
+SCHEMA_2_DEFAULTS = {
+    "on_kind": "time",
+    "on_sun_offset": "00:00:00",
+    "off_kind": "time",
+    "off_sun_offset": "00:00:00",
+    "on_at_sunrise": False,
+    "on_at_sunset": False,
+    "off_at_sunrise": False,
+    "off_at_sunset": False,
+    "late_sun_offset": "00:15:00",
+}
 
 
 def compiled(
@@ -113,8 +146,10 @@ def problems(settings: RoutineSettings, profile: DomainProfile = FAN) -> list[Pr
 
 def test_input_keys_order_is_fixed() -> None:
     assert compiler.INPUT_KEYS == SPEC_KEYS
-    assert len(compiler.INPUT_KEYS) == 29
+    assert len(compiler.INPUT_KEYS) == 38
+    assert compiler.BLUEPRINT_SCHEMA_VERSION == 2
     assert list(compiled(WINDOW)) == list(SPEC_KEYS)
+    assert list(compiled(SUN_WINDOW, LIGHT)) == list(SPEC_KEYS)
     assert {
         "target_entity",
         "on_action",
@@ -127,7 +162,8 @@ def test_input_keys_order_is_fixed() -> None:
 
 
 def test_contract_constants() -> None:
-    assert compiler.BLUEPRINT_SCHEMA_VERSION == 1
+    assert compiler.BLUEPRINT_SCHEMA_VERSION == 2
+    assert compiler.MAX_SUN_OFFSET_MIN == 180
     assert compiler.BLUEPRINT_PATH == "device_routines/device_routine.yaml"
     assert compiler.BLUEPRINT_PATH is markers.BLUEPRINT_PATH
     assert compiler.EVENT_ACTION_SKIPPED == "device_routines_action_skipped"
@@ -155,8 +191,16 @@ def test_compile_writes_every_input_of_a_window() -> None:
         "device_id": "device-1",
         "on_time_enabled": True,
         "on_time": "17:00:00",
+        "on_kind": "time",
+        "on_sun_offset": "00:00:00",
         "off_time_enabled": True,
         "off_time": "09:00:00",
+        "off_kind": "time",
+        "off_sun_offset": "00:00:00",
+        "on_at_sunrise": False,
+        "on_at_sunset": False,
+        "off_at_sunrise": False,
+        "off_at_sunset": False,
         "days_start": ["mon", "tue", "wed", "thu", "fri"],
         "days_end": ["tue", "wed", "thu", "fri", "sat"],
         "crosses_midnight": True,
@@ -168,6 +212,7 @@ def test_compile_writes_every_input_of_a_window() -> None:
         "catch_up": True,
         "late_start_window_min": 15,
         "late_window_end": "17:15:00",
+        "late_sun_offset": "00:15:00",
         "respect_manual": True,
         "override_entity": "switch.living_room_fan_manual_override",
         "paused_until_entity": "datetime.living_room_fan_paused_until",
@@ -178,6 +223,64 @@ def test_compile_writes_every_input_of_a_window() -> None:
         "docked_guard": True,
         "extra_conditions": [],
     }
+
+
+def test_compile_writes_every_input_of_a_sun_window() -> None:
+    """A sun bound writes its kind, its offset and its sun flag; its time is the sentinel."""
+    inputs = compiled(SUN_WINDOW, LIGHT)
+    sun_inputs = {key: inputs[key] for key in SPEC_KEYS if key in SCHEMA_2_DEFAULTS}
+    assert sun_inputs == {
+        "on_kind": "sunset",
+        "on_sun_offset": "00:30:00",
+        "off_kind": "sunrise",
+        "off_sun_offset": "-00:45:00",
+        "on_at_sunrise": False,
+        "on_at_sunset": True,
+        "off_at_sunrise": True,
+        "off_at_sunset": False,
+        "late_sun_offset": "00:45:00",
+    }
+    assert (inputs["on_time_enabled"], inputs["on_time"]) == (False, compiler.UNUSED_TIME)
+    assert (inputs["off_time_enabled"], inputs["off_time"]) == (False, compiler.UNUSED_TIME)
+    # Sunset to sunrise crosses midnight by the nominal times, so it ends the day after.
+    assert inputs["crosses_midnight"] is True
+    assert inputs["days_end"] == ["tue", "wed", "thu", "fri", "sat"]
+    # The late window of a time start has no time to follow: it starts at midnight.
+    assert inputs["late_window_end"] == "00:15:00"
+    morning = compiled(
+        RoutineSettings(
+            "light.patio_light", on_kind=TimeKind.SUNRISE, off_time=time(9, 30), days=Days.WEEKENDS
+        ),
+        LIGHT,
+    )
+    assert (morning["on_at_sunrise"], morning["on_at_sunset"], morning["on_kind"]) == (
+        True,
+        False,
+        "sunrise",
+    )
+    assert (morning["off_kind"], morning["off_time_enabled"], morning["off_time"]) == (
+        "time",
+        True,
+        "09:30:00",
+    )
+    assert (morning["crosses_midnight"], morning["days_end"]) == (False, ["sat", "sun"])
+
+
+def test_schema_2_defaults_reproduce_schema_1() -> None:
+    """Every new input defaults to schema 1 behavior: time bounds, no sun trigger (L60)."""
+    assert {key: compiler.INPUT_DEFAULTS[key] for key in SCHEMA_2_DEFAULTS} == SCHEMA_2_DEFAULTS
+    # A routine of time bounds writes exactly the defaults, with the default late window.
+    for settings in (WINDOW, replace(WINDOW, off_time=None), RoutineSettings("fan.x")):
+        inputs = compiled(settings)
+        assert {key: inputs[key] for key in SCHEMA_2_DEFAULTS} == SCHEMA_2_DEFAULTS
+    # Schema 1 inputs (no schema 2 key) read as the same inputs with the defaults filled in.
+    schema_1 = {
+        key: value for key, value in compiled(WINDOW).items() if key not in SCHEMA_2_DEFAULTS
+    }
+    assert compiler.is_valid_shape(schema_1)
+    assert compiler.decompile(schema_1) == WINDOW
+    assert compiler.decompile(schema_1 | SCHEMA_2_DEFAULTS) == WINDOW
+    assert compiler.compile(compiler.decompile(schema_1), FAN, REFS).inputs == compiled(WINDOW)
 
 
 def test_compile_writes_plain_types_for_yaml() -> None:
@@ -293,6 +396,26 @@ def test_late_window_end_wraps_at_midnight(on_time: time | None, window: int, en
     assert compiled(settings, VACUUM)["late_window_end"] == end
 
 
+def test_late_sun_offset_is_offset_plus_window() -> None:
+    def late(offset: int, window: int) -> str:
+        settings = RoutineSettings(
+            "light.patio_light",
+            on_kind=TimeKind.SUNSET,
+            on_sun_offset_min=offset,
+            late_start_window_min=window,
+        )
+        return str(compiled(settings, LIGHT)["late_sun_offset"])
+
+    assert late(0, 15) == "00:15:00"
+    assert late(30, 15) == "00:45:00"
+    assert late(-30, 15) == "-00:15:00"
+    assert late(-30, 30) == "00:00:00"
+    assert late(-180, 0) == "-03:00:00"
+    assert late(180, 180) == "06:00:00"
+    # A time start has offset 0, so its late sun offset is its window.
+    assert compiled(replace(WINDOW, late_start_window_min=40))["late_sun_offset"] == "00:40:00"
+
+
 def test_settings_know_whether_their_window_crosses_midnight() -> None:
     assert WINDOW.crosses_midnight
     assert WINDOW.end_days == frozenset(
@@ -301,6 +424,62 @@ def test_settings_know_whether_their_window_crosses_midnight() -> None:
     assert not replace(WINDOW, off_time=None).crosses_midnight
     assert replace(WINDOW, off_time=None).end_days == WEEKDAYS
     assert Weekday.SUN.following is Weekday.MON
+
+
+@pytest.mark.parametrize(
+    ("on", "off", "crosses"),
+    [
+        ((TimeKind.SUNSET, None, 0), (TimeKind.SUNRISE, None, 0), True),
+        ((TimeKind.SUNRISE, None, 0), (TimeKind.SUNSET, None, 0), False),
+        ((TimeKind.TIME, time(22), 0), (TimeKind.SUNRISE, None, 0), True),
+        ((TimeKind.SUNSET, None, 0), (TimeKind.TIME, time(23), 0), False),
+        # The offsets move the nominal times: 06:00 + 180 is after 18:00 - 180.
+        ((TimeKind.SUNSET, None, -180), (TimeKind.SUNRISE, None, 180), True),
+        ((TimeKind.SUNRISE, None, 30), (TimeKind.SUNRISE, None, -30), True),
+        ((TimeKind.SUNRISE, None, -30), (TimeKind.SUNRISE, None, 30), False),
+        ((TimeKind.SUNSET, None, 0), (TimeKind.TIME, time(18), 0), False),
+        ((TimeKind.SUNSET, None, 0), (TimeKind.TIME, None, 0), False),
+    ],
+)
+def test_nominal_order_decides_crossing(
+    on: tuple[TimeKind, time | None, int], off: tuple[TimeKind, time | None, int], crosses: bool
+) -> None:
+    """L60: nominal sunrise 06:00 and sunset 18:00 order the bounds, for crossing only."""
+    settings = RoutineSettings(
+        "light.patio_light",
+        on_kind=on[0],
+        on_time=on[1],
+        on_sun_offset_min=on[2],
+        off_kind=off[0],
+        off_time=off[1],
+        off_sun_offset_min=off[2],
+        days=Days.WEEKENDS,
+    )
+    assert settings.crosses_midnight is crosses
+    assert settings.end_days == (
+        frozenset({Weekday.SUN, Weekday.MON}) if crosses else frozenset({Weekday.SAT, Weekday.SUN})
+    )
+
+
+def test_settings_know_which_sides_are_set_and_their_nominal_times() -> None:
+    assert (SUN_WINDOW.has_on, SUN_WINDOW.has_off) == (True, True)
+    assert (SUN_WINDOW.nominal_on, SUN_WINDOW.nominal_off) == (time(18, 30), time(5, 15))
+    assert (WINDOW.nominal_on, WINDOW.nominal_off) == (time(17), time(9))
+    empty = RoutineSettings("fan.x")
+    assert (empty.has_on, empty.has_off, empty.nominal_on, empty.nominal_off) == (
+        False,
+        False,
+        None,
+        None,
+    )
+    # A sun kind sets its side whatever the time field holds.
+    stale = RoutineSettings("fan.x", off_kind=TimeKind.SUNSET, off_time=time(9))
+    assert stale.has_off
+    assert stale.nominal_off == time(18)
+    # Out of range offsets (which `validate` refuses) still give a time of day.
+    far = RoutineSettings("fan.x", on_kind=TimeKind.SUNRISE, on_sun_offset_min=-400)
+    assert far.nominal_on == time(23, 20)
+    assert dict(NOMINAL_SUN_TIMES) == {TimeKind.SUNRISE: time(6), TimeKind.SUNSET: time(18)}
 
 
 # --------------------------------------------------------------------------------------
@@ -425,6 +604,65 @@ def test_validate_rejects_minutes_out_of_range(
     ]
 
 
+@pytest.mark.parametrize(
+    ("key", "offset", "edge"),
+    [
+        ("on_sun_offset_min", -181, -180),
+        ("on_sun_offset_min", 181, 180),
+        ("off_sun_offset_min", 181, 180),
+        ("off_sun_offset_min", -999, -180),
+    ],
+)
+def test_validate_rejects_a_sun_offset_out_of_range(key: str, offset: int, edge: int) -> None:
+    beyond: dict[str, Any] = {key: offset}
+    settings = replace(SUN_WINDOW, **beyond)
+    assert problems(settings, LIGHT) == [
+        Problem(key, "out_of_range", {"setting": key, "min": "-180", "max": "180"})
+    ]
+    at_edge: dict[str, Any] = {key: edge}
+    assert problems(replace(settings, **at_edge), LIGHT) == []
+
+
+@pytest.mark.parametrize("kind", [TimeKind.SUNRISE, TimeKind.SUNSET])
+@pytest.mark.parametrize("profile", [LOCK, MEDIA, GARAGE])
+def test_validate_rejects_a_sun_start_without_an_on_action(
+    profile: DomainProfile, kind: TimeKind
+) -> None:
+    starting = RoutineSettings(target_entity=f"{profile.domain}.example", on_kind=kind)
+    assert problems(starting, profile) == [
+        Problem("on_kind", "on_time_not_supported", {"domain": profile.domain})
+    ]
+    # Lock at sunset only makes a device safer: every profile takes a sun bound to end.
+    ending = RoutineSettings(target_entity=f"{profile.domain}.example", off_kind=kind)
+    assert problems(ending, profile) == []
+
+
+def test_validate_rejects_two_equal_sun_bounds() -> None:
+    same = replace(SUN_WINDOW, off_kind=TimeKind.SUNSET, off_sun_offset_min=30)
+    assert problems(same, LIGHT) == [Problem("off_sun_offset_min", "same_on_and_off_time")]
+    # Another offset or the other event is another time; so is a time at the nominal one.
+    assert problems(replace(same, off_sun_offset_min=31), LIGHT) == []
+    assert problems(replace(same, off_kind=TimeKind.SUNRISE), LIGHT) == []
+    at_nominal = replace(SUN_WINDOW, on_sun_offset_min=0, off_kind=TimeKind.TIME, off_time=time(18))
+    assert problems(at_nominal, LIGHT) == []
+    # A stale time under a sun kind is not compared.
+    stale = replace(SUN_WINDOW, on_time=time(9), off_kind=TimeKind.TIME, off_time=time(9))
+    assert problems(stale, LIGHT) == []
+
+
+@pytest.mark.parametrize(
+    "patch", [{"on_kind": TimeKind.SUNSET}, {"off_kind": TimeKind.SUNRISE, "off_sun_offset_min": 5}]
+)
+def test_validate_rejects_a_sun_bound_with_a_weekly_schedule(patch: dict[str, Any]) -> None:
+    weekly = RoutineSettings(
+        target_entity="light.patio_light",
+        days=Days.WEEKLY_SCHEDULE,
+        schedule_entity="schedule.x",
+        **patch,
+    )
+    assert problems(weekly, LIGHT) == [Problem("days", "times_with_weekly_schedule")]
+
+
 def test_validate_collects_every_problem_in_order() -> None:
     bad = RoutineSettings(
         target_entity="lock.front_door",
@@ -477,6 +715,9 @@ def test_every_problem_is_translated_with_its_placeholders() -> None:
         *problems(RoutineSettings(target_entity="fan.x", days=Days.WEEKLY_SCHEDULE)),
         *problems(replace(WINDOW, days=Days.WEEKLY_SCHEDULE, schedule_entity="schedule.x")),
         *problems(replace(WINDOW, late_start_window_min=999)),
+        *problems(replace(SUN_WINDOW, on_sun_offset_min=999, off_sun_offset_min=999), LIGHT),
+        *problems(RoutineSettings(target_entity="lock.x", on_kind=TimeKind.SUNSET), LOCK),
+        *problems(replace(SUN_WINDOW, off_kind=TimeKind.SUNSET, off_sun_offset_min=30), LIGHT),
     ]
     assert {problem.translation_key for problem in samples} | {"invalid_inputs"} == (
         compiler.PROBLEM_KEYS
@@ -596,6 +837,17 @@ def test_canonical_names_the_day_set_and_drops_what_the_inputs_cannot_hold() -> 
         assert compiled(loose) == compiled(compiler.canonical(loose))
 
 
+def test_canonical_keeps_a_time_or_an_offset_per_side() -> None:
+    """A time bound has offset 0 and a sun bound no time: the inputs hold one of them."""
+    offsets_on_times = replace(WINDOW, on_sun_offset_min=20, off_sun_offset_min=-5)
+    assert compiler.canonical(offsets_on_times) == WINDOW
+    times_on_sun = replace(SUN_WINDOW, on_time=time(5), off_time=time(7, 0, 0, 5))
+    assert compiler.canonical(times_on_sun) == SUN_WINDOW
+    for loose in (offsets_on_times, times_on_sun):
+        profile = FAN if loose.target_entity.startswith("fan.") else LIGHT
+        assert compiler.decompile(compiled(loose, profile)) == compiler.canonical(loose)
+
+
 def test_a_weekly_schedule_round_trips_through_settings_and_refs() -> None:
     weekly = RoutineSettings(
         target_entity="fan.living_room_fan",
@@ -656,6 +908,56 @@ def test_decompile_reads_the_primary_inputs_and_ignores_the_derived_ones() -> No
     assert compiler.decompile(sentinel_schedule).schedule_entity is None
 
 
+def test_decompile_reads_the_primary_sun_inputs_only() -> None:
+    """The kind decides a side; the sun flags and the late sun offset are never read."""
+    stale = compiled(SUN_WINDOW, LIGHT) | {
+        "on_at_sunset": False,
+        "on_at_sunrise": True,
+        "off_at_sunrise": False,
+        "late_sun_offset": "05:00:00",
+        "on_time_enabled": True,
+        "on_time": "12:00:00",
+        "crosses_midnight": False,
+    }
+    assert compiler.decompile(stale) == SUN_WINDOW
+    # A time bound's offset is not read either.
+    assert compiler.decompile(compiled(WINDOW) | {"on_sun_offset": "01:00:00"}) == WINDOW
+    # A form edit that picks a kind reads it with its offset.
+    edited = REQUIRED | {"off_kind": "sunrise", "off_sun_offset": "-1:30"}
+    assert compiler.decompile(edited) == RoutineSettings(
+        target_entity="fan.living_room_fan", off_kind=TimeKind.SUNRISE, off_sun_offset_min=-90
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "minutes"),
+    [
+        ("00:00:00", 0),
+        ("-00:00:00", 0),
+        ("00:30:00", 30),
+        ("-00:30:00", -30),
+        ("03:00:00", 180),
+        ("-03:00:00", -180),
+        ("1:30", 90),
+        ("-1:30", -90),
+        ("+00:45", 45),
+        ("00:30:59", 30),
+        ("-00:30:59", -30),
+        ("-00:00:59", 0),
+    ],
+)
+def test_sun_offset_text_round_trips(text: str, minutes: int) -> None:
+    """`compile` writes `[-]HH:MM:SS`; `decompile` also reads `H:MM` and drops seconds."""
+    inputs = REQUIRED | {"on_kind": "sunset", "on_sun_offset": text}
+    assert compiler.is_valid_shape(inputs)
+    read = compiler.decompile(inputs)
+    assert (read.on_kind, read.on_sun_offset_min) == (TimeKind.SUNSET, minutes)
+    written = compiled(read)["on_sun_offset"]
+    sign = "-" if minutes < 0 else ""
+    assert written == f"{sign}{abs(minutes) // 60:02d}:{abs(minutes) % 60:02d}:00"
+    assert compiler.decompile(compiled(read)) == read
+
+
 @pytest.mark.parametrize(
     "inputs",
     [
@@ -686,6 +988,18 @@ def test_decompile_reads_the_primary_inputs_and_ignores_the_derived_ones() -> No
         REQUIRED | {"extra_conditions": {"condition": "state"}},
         REQUIRED | {"extra_conditions": ["state"]},
         REQUIRED | {"timer_entity": None},
+        REQUIRED | {"on_kind": "noon"},
+        REQUIRED | {"off_kind": None},
+        REQUIRED | {"on_kind": "Sunset"},
+        REQUIRED | {"on_sun_offset": "30"},
+        REQUIRED | {"on_sun_offset": 30},
+        REQUIRED | {"on_sun_offset": "00:60:00"},
+        REQUIRED | {"on_sun_offset": "00:30:60"},
+        REQUIRED | {"off_sun_offset": "--00:30"},
+        REQUIRED | {"off_sun_offset": "123:00:00"},
+        REQUIRED | {"late_sun_offset": "soon"},
+        REQUIRED | {"on_at_sunset": "true"},
+        REQUIRED | {"off_at_sunrise": 1},
     ],
 )
 def test_is_valid_shape_rejects_unknown_missing_and_mistyped_keys(inputs: Any) -> None:
@@ -699,7 +1013,9 @@ def test_is_valid_shape_rejects_unknown_missing_and_mistyped_keys(inputs: Any) -
 
 def test_is_valid_shape_accepts_what_compile_and_the_form_write() -> None:
     assert compiler.is_valid_shape(compiled(WINDOW))
+    assert compiler.is_valid_shape(compiled(SUN_WINDOW, LIGHT))
     assert compiler.is_valid_shape(REQUIRED)
+    assert compiler.is_valid_shape(REQUIRED | {"on_kind": "sunrise", "on_sun_offset": "-0:05"})
     assert compiler.is_valid_shape(
         REQUIRED
         | {
