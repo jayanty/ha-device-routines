@@ -37,6 +37,10 @@ Build A (Phases 2 and 3) is in progress; the entries below grow with it.
   schedules, Turn back on after, pulse, the managed automation, editing it yourself,
   removal, dashboards and scripts, supported devices, settings, troubleshooting and the
   limitations.
+- Setup offers the devices that already have time based automations (optional); the
+  options are a menu of Settings (every global setting), Devices with routines and
+  Suggested devices; removing the integration keeps every routine running as a normal
+  automation (On removal: keep) or deletes them with their helpers (delete).
 
 ## [0.1.0] - 2026-10-18
 

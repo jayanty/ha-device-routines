@@ -128,7 +128,6 @@ controls, and they stay in sync:
   integration creates it, with a calendar clock icon). Removing the label takes the
   controls away again. The label is the visible truth: every other way applies it.
 
-<!-- A3: lane 10 -->
 - **The options.** Settings, Devices and services, Device Routines, Configure, then
   **Devices with routines**: a device picker that lists only devices with something a
   routine can drive.
@@ -600,11 +599,9 @@ itself. Climate is on and off only; there is no temperature scheduling.
 
 ## Settings
 
-<!-- A3: lane 10 -->
-Settings, Devices and services, Device Routines, Configure. Defaults apply to routines
+Settings, Devices and services, Device Routines, Configure, then **Settings**. Defaults apply to routines
 created afterwards; changing one never rewrites existing routines.
 
-<!-- A3: lane 10 -->
 | Setting | Values | Default |
 | --- | --- | --- |
 | Schedule sensor scope | All devices with automations, only devices with routines, none | All |
@@ -642,19 +639,17 @@ To stop using routines on one device, remove its `Routines` label: the controls 
 routine is turned off with its settings kept (adding the label back restores them), and
 the automation is cleaned up after the cleanup period.
 
-<!-- A3: lane 10 -->
 To remove the integration, first choose what happens to the routines with the **On
 removal** setting, because Home Assistant's removal dialog cannot ask:
 
-<!-- A3: lane 10 -->
 - **Keep** (the default): every routine is taken control of, so it becomes a normal
   automation with the description "Formerly managed by Device Routines." and keeps
   running. The blueprint is removed once nothing uses it. The helpers stay.
 - **Delete**: every routine automation and its helpers are deleted.
 
-<!-- A3: lane 10 -->
 Then remove Device Routines in Settings, Devices and services. The integration's own
-system user goes with it. If you only want to stop the integration for a while, disable
+system user, its Repairs issues and its stored data go with it, and so do the `Routines`
+label and the `Device Routines` category when nothing carries them any more. If you only want to stop the integration for a while, disable
 it instead: routines keep running (see [When the integration is off](#when-the-integration-is-off)).
 
 ## Troubleshooting
