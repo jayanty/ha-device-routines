@@ -45,6 +45,11 @@ counts are those of the commit that tags `v1.0.0-beta.1`.
 | Read before the deploy | `shell_command.device_routines_deploy_status` over MCP | deployed `efbf757` (`v0.3.0-beta.1`, 07:31:35Z), `hacs_managed: false`, `python_ok: true` | Pass | 2026-10-18 | L26 |
 | Hand deploy | `shell_command.deploy_device_routines` with `ref: v1.0.0-beta.1` | `ok: true`, `changed: true`, commit `db7fa10`, previous `efbf757`, 27 changed files, `restart_required: true`, no warnings | Pass | 2026-10-18 | L26 |
 | Read after the deploy | `device_routines_deploy_status`, Health, the auto deploy switch | deployed `db7fa10` at 18:02:19Z with a backup of `efbf757`; Health `ok` still running `efbf757` (version 0.3.0, blueprint schema 1, one owned routine); auto deploy `off` | Pass | 2026-10-18 | L26 |
+| Exit CI for `v1.0.0-beta.2` | GitHub Actions on `01ca0b3` (`v1.0.0-beta.1` plus the L73 race fix) | every job green; `main` fast forwarded `db7fa10..01ca0b3` | Pass | 2026-10-18 | n/a |
+| Pre release `v1.0.0-beta.2` | `release.yml` on the tag | a pre release built | Pass | 2026-10-18 | n/a |
+| Read before the second deploy | `device_routines_deploy_status` over MCP | deployed `db7fa10` (`v1.0.0-beta.1`, 18:02:19Z); Health running `efbf757` | Pass | 2026-10-18 | L26 |
+| Hand deploy of `v1.0.0-beta.2` | `shell_command.deploy_device_routines` with `ref: v1.0.0-beta.2`, on the owner's instruction so R2 loads the fix | `ok: true`, `changed: true`, commit `01ca0b3`, previous `db7fa10`, changed files `manager.py` only, `restart_required: true`, no warnings | Pass | 2026-10-18 | Jayant |
+| Read after the second deploy | `device_routines_deploy_status`, Health, the auto deploy switch | deployed `01ca0b3` at 19:36:49Z with a backup of `db7fa10`; Health `ok` still running `efbf757` (version 0.3.0); auto deploy `off` | Pass | 2026-10-18 | L26 |
 | R2 requested | Owner log O16 | the restart waits for the owner, after the live session stages the scenario of the hour | Pending | 2026-10-18 | Jayant |
 
 ## Live rows
