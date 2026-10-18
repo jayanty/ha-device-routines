@@ -37,7 +37,7 @@ class DeviceRoutinesConfigFlow(ConfigFlow, domain=DOMAIN):
     """Create the single config entry without asking anything."""
 
     VERSION = 1
-    MINOR_VERSION = 1
+    MINOR_VERSION = 2  # the options version (settings.OPTIONS_VERSION, migration.py)
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Show one empty confirmation form, then create the entry."""

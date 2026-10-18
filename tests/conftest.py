@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.device_routines.config_flow import DeviceRoutinesConfigFlow
 from custom_components.device_routines.const import DOMAIN, INTEGRATION_TITLE
 
 
@@ -25,6 +26,7 @@ def mock_config_entry() -> MockConfigEntry:
         options={},
         unique_id=DOMAIN,
         entry_id="device-routines-test-entry",
+        minor_version=DeviceRoutinesConfigFlow.MINOR_VERSION,
     )
 
 

@@ -22,6 +22,7 @@ from . import ha_adapter, health, repairs
 from .const import DOMAIN, PLATFORMS
 from .ha_adapter import AdapterReport
 from .health import HealthReport
+from .migration import async_migrate_entry
 from .sentence import load_phrases
 from .settings import GlobalSettings, from_options
 from .summary import SummaryCoordinator
@@ -31,6 +32,7 @@ __all__ = [
     "DOMAIN",
     "DeviceRoutinesConfigEntry",
     "DeviceRoutinesRuntimeData",
+    "async_migrate_entry",
     "async_setup",
     "async_setup_entry",
     "async_unload_entry",

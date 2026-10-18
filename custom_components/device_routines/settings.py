@@ -3,6 +3,12 @@
 The settings live in the config entry options. `from_options` is lenient, because stored
 options must always load: an unknown key is dropped and an invalid value takes its
 default. `validate` is strict and is what the options flow uses before it stores anything.
+
+Options versions. Version 1 (Phase 1) stored only `schedule_scope` and `time_format`.
+Version 2 holds the complete catalog: migrating from 1 adds every other key at its
+default and keeps whatever was stored, so a later change of a default never moves a
+setting an existing entry already had. The config entry's minor version carries the
+options version (`migration.async_migrate_entry`).
 """
 
 from __future__ import annotations
@@ -14,7 +20,7 @@ from typing import Any, Final
 
 from .models import Problem
 
-OPTIONS_VERSION: Final = 1
+OPTIONS_VERSION: Final = 2
 
 
 class ScheduleScope(StrEnum):
@@ -128,8 +134,15 @@ def validate(options: Mapping[str, Any]) -> list[Problem]:
     return [p for key, value in options.items() if (p := _problem(key, value)) is not None]
 
 
+def _from_version_1(options: dict[str, Any]) -> dict[str, Any]:
+    """Add every key version 1 never stored at its default; keep what it stored."""
+    return {**GlobalSettings().to_options(), **options}
+
+
 # Each entry turns options of version N into version N + 1.
-MIGRATIONS: Final[Mapping[int, Callable[[dict[str, Any]], dict[str, Any]]]] = {}
+MIGRATIONS: Final[Mapping[int, Callable[[dict[str, Any]], dict[str, Any]]]] = {
+    1: _from_version_1,
+}
 
 
 def migrate(options: Mapping[str, Any], version: int) -> dict[str, Any]:

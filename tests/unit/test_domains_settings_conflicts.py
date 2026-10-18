@@ -195,6 +195,48 @@ def test_migration_runs_each_step(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.migrate({"assign_area": False}, 2) == {"assign_area": False}
 
 
+def test_options_version_is_2() -> None:
+    assert settings.OPTIONS_VERSION == 2
+    assert set(settings.MIGRATIONS) == {1}
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        {"schedule_scope": "routines", "time_format": "24h"},
+        {"time_format": "12h"},
+        {},
+    ],
+)
+def test_migrate_from_version_1_adds_every_new_key_at_its_default(stored: dict[str, Any]) -> None:
+    """Phase 1 entries stored only the scope and the time format (options version 1)."""
+    migrated = settings.migrate(stored, 1)
+
+    assert set(migrated) == settings.KEYS
+    for key, value in stored.items():
+        assert migrated[key] == value
+    defaults = settings.GlobalSettings().to_options()
+    for key in settings.KEYS - set(stored):
+        assert migrated[key] == defaults[key]
+    assert settings.from_options(migrated) == settings.from_options(stored, 1)
+
+
+def test_migrate_from_version_1_keeps_what_it_cannot_judge() -> None:
+    """The lenient loader, not the migration, decides about a bad or unknown stored value."""
+    migrated = settings.migrate({"time_format": "sundial", "legacy_key": 1}, 1)
+
+    assert migrated["time_format"] == "sundial"
+    assert migrated["legacy_key"] == 1
+    assert settings.from_options(migrated).time_format is settings.TimeFormat.AUTO
+
+
+def test_migrate_leaves_current_options_alone() -> None:
+    current = settings.GlobalSettings(cleanup_after_days=7).to_options()
+
+    assert settings.migrate(current, settings.OPTIONS_VERSION) == current
+    assert settings.migrate(current, settings.OPTIONS_VERSION) is not current
+
+
 # --------------------------------------------------------------------------------------
 # conflicts
 # --------------------------------------------------------------------------------------

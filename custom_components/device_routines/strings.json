@@ -141,6 +141,9 @@
     },
     "invalid_inputs": {
       "message": "The routine's automation holds settings Device Routines cannot read. Fix them in the automation editor, or change any routine setting on the device page to write them again."
+    },
+    "store_version_unsupported": {
+      "message": "The Device Routines storage file has version {version}, newer than this version of Device Routines reads ({supported}). Update Device Routines, or restore a backup taken before the downgrade."
     }
   }
 }
