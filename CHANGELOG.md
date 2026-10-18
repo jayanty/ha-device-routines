@@ -24,6 +24,10 @@ Build A (Phases 2 and 3) is in progress; the entries below grow with it.
 - Automation triggers "Routine action skipped", "Routine paused" and "Routine resumed" and
   conditions "Routine is paused" and "Routine is active", with device, area, floor, label
   and entity targets.
+- Repairs for routines: a changed blueprint, settings edited into an invalid state, a
+  routine taken over in the editor, an empty weekly schedule, a lost save race, a routine
+  that does not load and (with Raise conflict repairs on) a routine colliding with another
+  automation; every fixable one has a one step fix.
 
 ## [0.1.0] - 2026-10-18
 

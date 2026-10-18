@@ -474,3 +474,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | Targets filter by entity domain (the supported domains, pinned to `SUPPORTED_DOMAINS` by a test), for the reason of L46. Paused means status `paused` or `skipping` (a skip pauses until its paired end, D18 and D19); active means status `active`. `all` is strict: off and broken routines count, so `paused` with `all` fires exactly when `is_paused` with `all` becomes true; an empty target is false for both `any` and `all`. `paused` fires on every manager paused event, a replaced or extended pause included; an off routine fires neither `paused` nor `resumed`; a status change without a manager event fires nothing. No `for` option (the PRD lists only behavior). Floor targets work through `resolve_targets`; without a loaded entry nothing fires and every condition is false. |
 | Consequence | The linked device record gap of L46 also affects these pickers (A4.0); the editor's picker look stays owner item O4. |
 | PRD register entry | no |
+
+## 2026-10-18 L48: Repairs fix flows and the conflict issue
+
+| Field | Content |
+| --- | --- |
+| Context | Lane 11 completed the TECH_SPEC 4.8 catalog. Open: how a fix flow reports a fix that did not take, how fine grained the `conflict` issue is, whether `schedule_blocks_needed` survives a restart, where the non fixable issues link, and gaps found in the manager. |
+| Options | Let the core delete an issue when its flow finishes, or abort when the problem remains; one conflict issue per pair, or per routine; persistent or not. |
+| Choice | Each fixable issue has one confirm step and one manager call; a call that raises, or a fix that leaves its issue open, aborts `not_fixed` and keeps the issue (the core would otherwise delete it on finish); a missing entry aborts `not_loaded`. `conflict` is one issue per routine (subject the automation id, L41), naming every colliding automation, raised only for a routine against another automation in the same minute while Raise conflict repairs is on, and cleared statelessly. `schedule_blocks_needed` is persistent, because its cause is seen once; it clears when the helper gets blocks, from a state listener or at reconcile. Links use `homeassistant://config/helpers` and `homeassistant://config/automation/dashboard`; `adapter_incompatible` links to the guide's Troubleshooting section. The manager now clears every per routine issue except `detached_routine` on detach, and every per routine issue on cleanup. |
+| Consequence | Lane 10's removal deletes every issue of the integration, the persistent one included (told); lane 15 writes the `## Troubleshooting` heading (told). Two small manager gaps go to plan A4.0. |
+| PRD register entry | no |
