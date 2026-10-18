@@ -111,7 +111,7 @@ from .models import (
 from .parser_grammar import ACTION_VERBS
 from .sentence import Writer
 from .settings import GlobalSettings, from_options
-from .store import OwnedRecord, RoutineStore
+from .store import OwnedRecord, RoutineStore, own_helpers_named
 from .summary import (
     KIND_DETACHED,
     KIND_ROUTINE,
@@ -1470,6 +1470,12 @@ class RoutineManager:
                 routine.slug = object_id.removeprefix("routine_")
                 return
 
+    def _generated_alias(self, alias: Any, device_id: str) -> tuple[str, ...]:
+        """Return an alias as a history of one while it is generated for the device's name."""
+        if isinstance(alias, str) and self._alias_generated(alias, device_id, ()):
+            return (alias,)
+        return ()
+
     def _alias_generated(self, alias: str, device_id: str, history: tuple[str, ...]) -> bool:
         template = self.summary.phrases["routine_alias"]
         return alias in history or markers.alias_is_generated(
@@ -2632,7 +2638,16 @@ class RoutineManager:
         self._changed(device_id)
 
     async def async_rebuild_index(self, *, dry_run: bool) -> builtins.list[str]:
-        """Rebuild `owned`, `opted_in` and `blueprint_hash` from the markers (TECH_SPEC 6)."""
+        """Rebuild the Store's index from the markers and the registries (TECH_SPEC 6).
+
+        `owned` from the entries carrying M1 and M2 (a record rebuilt from nothing takes
+        the entry's alias as its history while it is generated for the device's name),
+        `opted_in` from the label, `blueprint_hash` and `blueprint_schema` from the
+        installed file, `own_helpers` from the helpers the inputs name (kept ones stay).
+        What cannot be rebuilt is kept: `opted_out_at`, `ai_cache`, `suspended` (an
+        automation that is off reads the same whoever turned it off) and a record's
+        `previous_inputs`.
+        """
         data = self._store.data
         owned: dict[str, OwnedRecord] = {}
         for entry in await ha_adapter.async_read_automations(self.hass):
@@ -2651,6 +2666,7 @@ class RoutineManager:
                     str(_input(inputs, "target_entity") or ""),
                     last_hash=markers.config_hash(entry) if _refs(inputs) else None,
                     last_valid_inputs=dict(inputs) if _refs(inputs) else None,
+                    alias_history=self._generated_alias(entry.get("alias"), device_id),
                 )
             )
         changed = sorted(
@@ -2666,6 +2682,14 @@ class RoutineManager:
             ha_adapter.installed_blueprint_text, self.hass
         )
         data.blueprint_hash = None if installed is None else maintenance.blueprint_hash(installed)
+        shipped = await self.hass.async_add_executor_job(maintenance.shipped_blueprint_text)
+        current = compiler.BLUEPRINT_SCHEMA_VERSION
+        if installed == shipped and (data.blueprint_schema or 0) < current:
+            data.blueprint_schema = current  # what the schema migration records (TECH_SPEC 4.11)
+        for record in owned.values():
+            if named := own_helpers_named(record.last_valid_inputs):
+                kept_helpers = data.own_helpers.get(record.device_id, [])
+                data.own_helpers[record.device_id] = sorted({*kept_helpers, *named})
         data.owned = owned
         await self._store.async_save()
         self._load_routines()

@@ -229,6 +229,20 @@ def _from_version_0(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def own_helpers_named(inputs: Mapping[str, Any] | None) -> set[str]:
+    """Return the routine's own helpers blueprint inputs name (M8: the routine prefix).
+
+    What the migration to 1.2 and `rebuild_index` can know of `own_helpers`: a helper the
+    routine no longer names is known only to the Store that remembered it.
+    """
+    found: set[str] = set()
+    for key in _HELPER_INPUTS:
+        helper = (inputs or {}).get(key)
+        if isinstance(helper, str) and helper.partition(".")[2].startswith(_OWN_HELPER_PREFIX):
+            found.add(helper)
+    return found
+
+
 def _from_minor_1(data: dict[str, Any]) -> dict[str, Any]:
     """1.1 to 1.2: add `suspended` (empty) and `own_helpers` (read from the inputs).
 
@@ -238,11 +252,8 @@ def _from_minor_1(data: dict[str, Any]) -> dict[str, Any]:
     """
     own: dict[str, set[str]] = {}
     for item in data.get("owned", {}).values():
-        inputs = item.get("last_valid_inputs") or {}
-        for key in _HELPER_INPUTS:
-            helper = inputs.get(key)
-            if isinstance(helper, str) and helper.partition(".")[2].startswith(_OWN_HELPER_PREFIX):
-                own.setdefault(item["device_id"], set()).add(helper)
+        if found := own_helpers_named(item.get("last_valid_inputs")):
+            own.setdefault(item["device_id"], set()).update(found)
     helpers = {device_id: sorted(found) for device_id, found in own.items()}
     return {**data, "suspended": {}, "own_helpers": helpers}
 

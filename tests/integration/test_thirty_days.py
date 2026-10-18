@@ -1292,8 +1292,9 @@ async def test_thirty_days_of_upkeep_need_no_person_and_raise_no_issue(  # noqa:
     assert unexpected_errors(caplog.records) == []
 
     # The Store rebuilt from the markers equals the Store kept (TECH_SPEC 6), apart from
-    # `opted_out_at` and `ai_cache`, which the spec says cannot be rebuilt, and the three
-    # fields `test_a_store_rebuilt_from_nothing_equals_the_store_kept` pins as a defect.
+    # what cannot be rebuilt: `opted_out_at` and `ai_cache` (the spec), `suspended` (an
+    # automation that is off reads the same whoever turned it off) and the
+    # `previous_inputs` a schema migration kept (plan A4.0 item 27).
     store = sim.manager.store
     kept = copy.deepcopy(store.data)
     assert set(kept.owned) == {sim.automation_id(LIGHT), sim.automation_id(FAN)}
@@ -1304,13 +1305,12 @@ async def test_thirty_days_of_upkeep_need_no_person_and_raise_no_issue(  # noqa:
     assert report.changed == sorted(kept.owned)
     rebuilt = store.data.to_dict()
     expected = kept.to_dict()
-    for key in ("opted_out_at", "ai_cache", "blueprint_schema"):
+    for key in ("opted_out_at", "ai_cache", "suspended"):
         del rebuilt[key], expected[key]
     for automation_id, record in expected["owned"].items():
         assert record.pop("previous_inputs") == migrated_from[automation_id]
-        assert record.pop("alias_history")
+        assert record["alias_history"]
         del rebuilt["owned"][automation_id]["previous_inputs"]
-        del rebuilt["owned"][automation_id]["alias_history"]
     assert rebuilt == expected
     assert kept.blueprint_schema == compiler.BLUEPRINT_SCHEMA_VERSION
     sim.check_no_issue()
@@ -1427,18 +1427,15 @@ async def test_removing_a_device_with_a_routine_logs_no_error(
     assert [r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR] == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "manager.py (async_rebuild_index) against TECH_SPEC 6: rebuilt from an empty "
-        "Store, `blueprint_schema` stays None and every owned record loses "
-        "`alias_history` and the `previous_inputs` a schema migration kept, although the "
-        "spec says everything but `opted_out_at` and `ai_cache` can be rebuilt"
-    ),
-)
 async def test_a_store_rebuilt_from_nothing_equals_the_store_kept(
     simulation: Simulation, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Plan A4.0 item 27: `blueprint_schema` and `alias_history` are rebuilt too.
+
+    What cannot be rebuilt stays out of the comparison: `opted_out_at` and `ai_cache`
+    (TECH_SPEC 6), `suspended` (an automation that is off reads the same whoever turned
+    it off) and the `previous_inputs` a schema migration kept, which only the Store saw.
+    """
     sim = simulation
     await set_up_routines(sim)
     await update_from_schema_0(sim, monkeypatch)
@@ -1449,8 +1446,11 @@ async def test_a_store_rebuilt_from_nothing_equals_the_store_kept(
     await maintenance.async_run(sim.hass, sim.manager, MaintenanceAction.REBUILD_INDEX, False)
 
     rebuilt = store.data.to_dict()
-    for key in ("opted_out_at", "ai_cache"):
+    for key in ("opted_out_at", "ai_cache", "suspended"):
         del rebuilt[key], kept[key]
+    for automation_id, record in kept["owned"].items():
+        assert record.pop("previous_inputs") is not None
+        assert rebuilt["owned"][automation_id].pop("previous_inputs") is None
     assert rebuilt == kept
 
 

@@ -25,6 +25,7 @@ from custom_components.device_routines.const import DOMAIN
 from custom_components.device_routines.maintenance import MaintenanceAction
 from custom_components.device_routines.manager import RoutineManager
 from custom_components.device_routines.models import Status
+from custom_components.device_routines.store import StoreData
 from tests.integration.conftest import (
     AUTOMATION,
     FAN,
@@ -572,3 +573,25 @@ async def test_an_opted_out_routine_is_cleaned_up_after_the_period(
     assert home.fan not in manager.store.data.opted_out_at
     assert manager.get(home.fan) is None
     assert manager.routine_for(FAN) is None
+
+
+async def test_a_rebuild_from_nothing_reads_the_alias_and_the_schema_it_can(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any
+) -> None:
+    """Plan A4.0 item 27: a generated alias is history, a person's alias is not."""
+    fan_id = await give_routine(hass, manager, home.fan, freezer, on_time=time(17))
+    lamp_id = await give_routine(hass, manager, home.lamp, freezer, on_time=time(18))
+    entry = file_entry(hass, lamp_id)
+    assert entry is not None
+    entry["alias"] = "Reading light in the evening"
+    await save_entry(hass, entry)
+    installed_path(hass).write_text(OLD_BLUEPRINT, encoding="utf-8")
+    manager.store.data = StoreData()
+
+    await manager.async_rebuild_index(dry_run=False)
+
+    owned = manager.store.data.owned
+    assert owned[fan_id].alias_history == ("Routine: Living room fan",)
+    assert owned[lamp_id].alias_history == ()
+    assert manager.store.data.blueprint_schema is None  # not the shipped blueprint
+    assert manager.store.data.own_helpers == {}
