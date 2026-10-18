@@ -27,3 +27,17 @@ HEALTH_STATES: Final[list[str]] = [HEALTH_OK, HEALTH_DEGRADED, HEALTH_ERROR]
 CHANNEL_DEV: Final = "dev"
 CHANNEL_HACS: Final = "hacs"
 CHANNEL_UNKNOWN: Final = "unknown"
+
+# The config entry data key holding the integration's system user (decision L23).
+CONF_SYSTEM_USER_ID: Final = "system_user_id"
+
+# Bus events the manager fires when a routine becomes paused or skipping and when that
+# ends (PRD FR-R17; the trigger platform of Build A lane 13 listens to them). Data:
+# `device_id`, `automation_id` and `until` (the Paused until value, ISO 8601).
+EVENT_PAUSED: Final = "device_routines_paused"
+EVENT_RESUMED: Final = "device_routines_resumed"
+
+# Device page entity keys whose entity ids the blueprint reads (TECH_SPEC 4.5): the
+# manager registers both at opt in, before the platforms add the entities.
+KEY_MANUAL_OVERRIDE: Final = "manual_override"
+KEY_PAUSED_UNTIL: Final = "paused_until"

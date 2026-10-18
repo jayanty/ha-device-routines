@@ -144,11 +144,18 @@ class IndexedLine:
 
 @dataclass(frozen=True, slots=True)
 class _OwnedRoutine:
-    """A device's own routine automation (M1 and M2) with the settings its inputs hold."""
+    """A device's own routine automation (M1 and M2) with the settings its inputs hold.
+
+    `automation_id` and `device_id` (the `device_id` input) tie it to its device even
+    under an id other than `markers.automation_id(device_id)`: the manager gives a new
+    routine the next free id when the device's old one was taken over (detached).
+    """
 
     automation_entity: str
     settings: RoutineSettings
     timer_entity: str | None
+    automation_id: str = ""
+    device_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -400,7 +407,10 @@ class SummaryCoordinator:
             kind = _kind(config)
             owned = _owned_routine(refs.entity_id, config) if kind == KIND_ROUTINE else None
             for device_id in sorted(self._reachable_devices(refs)):
-                if owned is not None and config.get("id") == markers.automation_id(device_id):
+                if owned is not None and (
+                    owned.device_id == device_id
+                    or config.get("id") == markers.automation_id(device_id)
+                ):
                     routines[device_id] = owned
                 context = contexts.get(device_id)
                 if context is None:
@@ -550,7 +560,8 @@ class SummaryCoordinator:
         routine_next = (
             rows[0].occurrences[0] if rows and rows[0].routine and rows[0].occurrences else None
         )
-        own_id = markers.automation_id(device.id)
+        owned_routine = self._index.routines.get(device.id)
+        own_id = owned_routine.automation_id if owned_routine else markers.automation_id(device.id)
         for entry in indexed:
             if provided and entry.kind == KIND_ROUTINE and entry.line.automation_id == own_id:
                 continue
@@ -782,11 +793,14 @@ def _owned_routine(entity_id: str, config: Mapping[str, Any]) -> _OwnedRoutine |
     inputs = config["use_blueprint"].get("input")
     if not compiler.is_valid_shape(inputs):
         return None
-    timer = compiler.refs_of(inputs).timer_entity
+    refs = compiler.refs_of(inputs)
+    timer = refs.timer_entity
     return _OwnedRoutine(
         automation_entity=entity_id,
         settings=compiler.decompile(inputs),
         timer_entity=None if timer == compiler.UNUSED_TIMER else timer,
+        automation_id=str(config.get("id", "")),
+        device_id=refs.device_id,
     )
 
 

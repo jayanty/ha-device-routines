@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import shutil
+
 from homeassistant.core import HomeAssistant
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import MockConfigEntry, get_test_config_dir
 
 from custom_components.device_routines.config_flow import DeviceRoutinesConfigFlow
 from custom_components.device_routines.const import DOMAIN, INTEGRATION_TITLE
@@ -14,6 +16,20 @@ from custom_components.device_routines.const import DOMAIN, INTEGRATION_TITLE
 def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
     """Load custom_components/device_routines in every test."""
     return
+
+
+@pytest.fixture
+def hass_config_dir(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """Give every test its own copy of the harness config directory.
+
+    Setting the integration up installs the routine blueprint into the config directory
+    (TECH_SPEC 7 step 2); the default directory lives inside the harness package and is
+    shared by every test run, so each test writes into its own temporary copy instead,
+    apart from `tmp_path`, which tests use for their own files.
+    """
+    config_dir = tmp_path_factory.mktemp("config")
+    shutil.copytree(get_test_config_dir(), config_dir, symlinks=True, dirs_exist_ok=True)
+    return str(config_dir)
 
 
 @pytest.fixture

@@ -144,6 +144,51 @@
     },
     "store_version_unsupported": {
       "message": "The Device Routines storage file has version {version}, newer than this version of Device Routines reads ({supported}). Update Device Routines, or restore a backup taken before the downgrade."
+    },
+    "unknown_setting": {
+      "message": "{setting} is not a routine setting."
+    },
+    "invalid_value": {
+      "message": "{setting} has a value a routine cannot use."
+    },
+    "invalid_target": {
+      "message": "{entity} is not an entity the routine of this device can control."
+    },
+    "unknown_device": {
+      "message": "Device {device} is not known to Home Assistant, or belongs to Device Routines itself."
+    },
+    "not_eligible": {
+      "message": "{device} has no entity a routine can control."
+    },
+    "not_opted_in": {
+      "message": "{device} has no routine controls. Add the Routines label to it, or choose it in the Device Routines options."
+    },
+    "detached": {
+      "message": "The routine of {device} is a normal automation now. Create a new routine to use the controls again."
+    },
+    "editing_unavailable": {
+      "message": "Routine settings cannot be changed on this Home Assistant version. The routines keep running; see the Device Routines Repairs issue."
+    },
+    "no_routine": {
+      "message": "{device} has no routine yet. Set a start or stop time first."
+    },
+    "nothing_to_skip": {
+      "message": "Nothing is scheduled for {device}, so there is nothing to skip."
+    },
+    "pause_until_or_for": {
+      "message": "Give the pause either an end time or a duration, exactly one of them."
+    },
+    "paused_until_in_past": {
+      "message": "Paused until must be in the future."
+    },
+    "no_routine_targets": {
+      "message": "None of the chosen targets has a routine."
+    },
+    "no_valid_settings": {
+      "message": "There are no earlier valid settings for the routine of {device} to restore."
+    },
+    "unknown_routine": {
+      "message": "{automation} is not a routine Device Routines manages."
     }
   }
 }
