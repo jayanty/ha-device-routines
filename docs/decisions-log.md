@@ -344,3 +344,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | (b). `markers.py` on `dev` holds `AUTOMATION_ID_PREFIX`, `BLUEPRINT_PATH`, `automation_id`, `has_routine_id` (M1 alone, which `is_detached` needs) and `is_owned`, each tested at 100 percent. `BLUEPRINT_PATH` is defined in `markers` and re exported by `compiler`, so the contract name `compiler.BLUEPRINT_PATH` holds and `markers` stays free of a compiler import. |
 | Consequence | Plan Section 4.2 (`markers.py` row) and the lane 1 and lane 3 file lists amended. TECH_SPEC 3.4 is unchanged; `has_routine_id` is the M1 half of `is_owned` that TECH_SPEC 4.2's take control detection already describes. |
 | PRD register entry | no |
+
+## 2026-10-18 L35: attribution edges TECH_SPEC 4.3 leaves open
+
+| Field | Content |
+| --- | --- |
+| Context | Lane 4 implemented the attributor. TECH_SPEC 4.3 does not say what counts as a change, when the 30 second grace starts if the integration is set up in a running instance, which source wins when a run context also carries a user id, or how the sink calls are ordered. |
+| Options | For each: read every state event, or only value changes between available states; a grace from setup, or from the started event only; user id first, or the run map first; awaited sink calls, or tasks. |
+| Choice | A change is a new state value between two available states: attribute updates, an entity appearing or going away and every transition to or from `unknown` or `unavailable` are ignored (a device coming back is catch up's job, PRD FR-R5, and an override set by its return would suppress that catch up). The grace runs while Home Assistant boots and until 30 seconds after the started event; set up in a running instance (install, reload) there is none. The run map wins over a user id (a script a person starts from a dashboard is an automation change), per the order of TECH_SPEC 4.3. Every value change of a watched entity reaches the sink, even when the on and off reading does not move, so `last_change_source` stays current; sink calls run as eagerly started tasks in event order. The run event names are local constants pinned to the core's by a test, because only the adapter may import the automation and script components. |
+| Consequence | Lane 5 implements `OverrideSink` idempotently and applies its state before its first await; `await attributor.async_start()`, `attributor.async_stop()` without await. Plan Section 4.2 attribution row annotated. |
+| PRD register entry | no |
