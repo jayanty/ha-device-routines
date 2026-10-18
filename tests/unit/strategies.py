@@ -14,11 +14,15 @@ the pure modules.
 - `any_settings(profile)` draws settings with no regard for validity, for properties that
   must hold for every input (refused actions are never emitted, whatever is asked).
 - `helper_refs()` draws helper references, real ids or the sentinels.
+- `loose_settings(profile)` (wave A4) draws valid settings in any form a caller may hand
+  the manager: a named day set as Some days, a stray day set or schedule, times with
+  microseconds or a zone. `compiler.canonical` of a draw is a `routine_settings` draw.
 """
 
 from __future__ import annotations
 
-from datetime import time
+from dataclasses import replace
+from datetime import UTC, time
 from typing import Any
 
 from hypothesis import strategies as st
@@ -187,4 +191,42 @@ def helper_refs() -> st.SearchStrategy[compiler.HelperRefs]:
         paused_until_entity=st.sampled_from(
             [compiler.UNUSED_DATETIME, "datetime.living_room_fan_paused_until"]
         ),
+    )
+
+
+_NAMED_SETS = {Days.EVERY_DAY: ALL_DAYS, Days.WEEKDAYS: WEEKDAYS, Days.WEEKENDS: WEEKEND}
+
+
+def _loosened(draw: st.DrawFn, moment: time, zones: bool) -> time:
+    """Return the time as it is, or with microseconds and, with `zones`, maybe a zone."""
+    if not draw(st.booleans()):
+        return moment
+    zone = draw(st.sampled_from([None, UTC])) if zones else None
+    return moment.replace(microsecond=draw(st.integers(1, 999_999)), tzinfo=zone)
+
+
+@st.composite
+def loose_settings(
+    draw: st.DrawFn, profile: DomainProfile, *, zones: bool = True
+) -> RoutineSettings:
+    """Draw valid settings in a form `compiler.canonical` maps to a `routine_settings` draw.
+
+    The manager keeps what a caller sent until the next start reads the automation back,
+    so a sentence must not depend on the form: Weekdays sent as Some days with Monday to
+    Friday, a day set or a schedule left over from an earlier choice, a time picked with
+    microseconds or (with `zones`) a zone.
+    """
+    settings = draw(routine_settings(profile))
+    if settings.days in _NAMED_SETS and draw(st.booleans()):
+        settings = replace(settings, days=Days.SOME_DAYS, day_set=_NAMED_SETS[settings.days])
+    elif settings.days is not Days.SOME_DAYS and draw(st.booleans()):
+        settings = replace(settings, day_set=draw(some_days))
+    if settings.days is not Days.WEEKLY_SCHEDULE and draw(st.booleans()):
+        settings = replace(settings, schedule_entity=f"schedule.{draw(OBJECT_IDS)}")
+    pulse = settings.pulse
+    return replace(
+        settings,
+        on_time=None if settings.on_time is None else _loosened(draw, settings.on_time, zones),
+        off_time=None if settings.off_time is None else _loosened(draw, settings.off_time, zones),
+        pulse=None if pulse is None else replace(pulse, at=_loosened(draw, pulse.at, zones)),
     )
