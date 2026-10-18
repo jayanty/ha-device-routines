@@ -336,7 +336,7 @@ The blueprint file is replaced whenever the integration ships a new one and auto
 
 ## 6. Storage and migration
 
-Store `.storage/device_routines`, version 1, keys: `owned` (automation id to device id, target entity, last hash, last valid inputs, previous inputs, schema, alias history), `opted_in` (device ids), `opted_out_at` and `removed_devices_at` (device id to timestamp), `blueprint_hash`, `blueprint_schema`, `ai_cache` (config hash to text and created). Everything except `opted_out_at` and `ai_cache` can be rebuilt from markers and registries by `rebuild_index`. Config entry options hold GlobalSettings only. No secrets anywhere.
+Store `.storage/device_routines`, version 1, keys: `owned` (automation id to device id, target entity, last hash, last valid inputs, previous inputs, schema, alias history), `opted_in` (device ids), `opted_out_at` and `removed_devices_at` (device id to timestamp), `blueprint_hash`, `blueprint_schema`, `ai_cache` (config hash to text and created). Everything except `opted_out_at`, `ai_cache` and each record's `previous_inputs` can be rebuilt from markers and registries by `rebuild_index` (decision L56: the inputs before a schema migration exist only in the Store). Config entry options hold GlobalSettings only. No secrets anywhere.
 
 ## 7. Self healing and reconcile
 
