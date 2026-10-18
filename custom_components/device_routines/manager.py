@@ -140,29 +140,9 @@ REASON_ACTION_SKIPPED: Final = compiler.EVENT_ACTION_SKIPPED
 _RUNNING: Final = frozenset({Status.ACTIVE, Status.PAUSED, Status.SKIPPING})
 
 # Every device page entity key (TECH_SPEC 4.5), longest first, so a unique id
-# `device_routines_<device id>_<key>` names its device unambiguously.
-ENTITY_KEYS: Final[tuple[str, ...]] = tuple(
-    sorted(
-        (
-            "schedule",
-            "routine",
-            "on_time",
-            "off_time",
-            "days",
-            "turn_off_after",
-            "turn_back_on_after",
-            "catch_up",
-            "respect_manual",
-            "skip_next",
-            "resume",
-            KEY_PAUSED_UNTIL,
-            KEY_MANUAL_OVERRIDE,
-            "target",
-        ),
-        key=len,
-        reverse=True,
-    )
-)
+# `device_routines_<device id>_<key>` names its device unambiguously. The keys are those
+# of `const.ENTITY_PLATFORMS`, their one source.
+ENTITY_KEYS: Final[tuple[str, ...]] = tuple(sorted(ENTITY_PLATFORMS, key=len, reverse=True))
 _SCHEDULE_KEY: Final = "schedule"
 _UNIQUE_PREFIX: Final = f"{DOMAIN}_"
 

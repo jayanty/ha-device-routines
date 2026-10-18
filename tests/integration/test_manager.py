@@ -32,12 +32,14 @@ from custom_components.device_routines import compiler, ha_adapter, markers, mig
 from custom_components.device_routines.config_flow import DeviceRoutinesConfigFlow
 from custom_components.device_routines.const import (
     DOMAIN,
+    ENTITY_PLATFORMS,
     EVENT_PAUSED,
     EVENT_RESUMED,
     INTEGRATION_TITLE,
 )
 from custom_components.device_routines.domains import profile_for
 from custom_components.device_routines.manager import (
+    ENTITY_KEYS,
     REASON_ACTION_SKIPPED,
     REASON_OPTED_IN,
     REASON_OPTED_OUT,
@@ -1369,3 +1371,10 @@ async def test_skip_next_over_a_target_ignores_a_routine_with_nothing_to_skip(
     hub = manager.resolve_targets({"entity_id": "sensor.device_routines_health"})
     assert hub.device_ids == ()
     assert hub.ignored[0].reason == "no_routine"
+
+
+def test_the_entity_keys_are_the_platform_keys_longest_first() -> None:
+    """Plan A4.0 item 11: one source for the device page keys (`const.ENTITY_PLATFORMS`)."""
+    assert set(ENTITY_KEYS) == set(ENTITY_PLATFORMS)
+    assert len(ENTITY_KEYS) == len(ENTITY_PLATFORMS)
+    assert [len(key) for key in ENTITY_KEYS] == sorted(map(len, ENTITY_KEYS), reverse=True)
