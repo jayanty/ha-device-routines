@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A routine written at the same time as other routines could lose its Turn off after
+  timer: a sync of `automations.yaml` that read the file just before the routine's first
+  write treated the routine as deleted by hand and deleted its timer, so Turn off after
+  did nothing until the next start of Home Assistant.
+
 ## [1.0.0] - 2026-10-18
 
 Sun times, Only when, conversion offers and the console (Phase 4), first published as the

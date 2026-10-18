@@ -9,6 +9,7 @@ synthetic.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import time, timedelta
 from typing import Any
 
@@ -33,6 +34,7 @@ from tests.integration.conftest import (
     automations_path,
     file_entries,
     file_entry,
+    flush,
     give_routine,
     inputs_of,
     issue_of,
@@ -378,6 +380,61 @@ async def test_a_sync_during_the_managers_own_delete_leaves_the_routine_to_it(
     assert manager.get(home.fan) is None
     assert file_entry(hass, automation_id) is None
     assert state_of(hass, TIMER) is None
+
+
+async def test_a_sync_that_read_the_file_before_a_routines_first_write_leaves_it_alone(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    freezer: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A sync back reading the file while a new routine is written does not delete it.
+
+    Routines written together reload one id each, so a sync can read the file before
+    the last entry lands and reach its check for deleted entries after that routine
+    recorded its write. The routine is not deleted by hand: its timer and its record
+    stay, and the reload of its write syncs again. Found under parallel load: the thirty
+    days simulation lost the fan's timer on day 0 (2026-10-18).
+    """
+    await give_routine(hass, manager, home.lamp, freezer, on_time=time(17))
+    read_all = ha_adapter.async_read_automations
+    read_once = asyncio.Event()
+    recorded = asyncio.Event()
+    stale: list[Any] = []
+
+    async def read_before_the_write(hass: HomeAssistant) -> list[Any]:
+        entries = await read_all(hass)
+        if not read_once.is_set():
+            stale.extend(entries)
+            read_once.set()
+            await recorded.wait()
+        return entries
+
+    record_write = manager._record_write
+
+    def record_then_release(routine: Any, config: Any, inputs: Any) -> None:
+        record_write(routine, config, inputs)
+        recorded.set()
+
+    monkeypatch.setattr(ha_adapter, "async_read_automations", read_before_the_write)
+    monkeypatch.setattr(manager, "_record_write", record_then_release)
+    manager._request_sync()  # the reload of another automation
+    await read_once.wait()
+    await manager.async_opt_in(home.fan)
+    result = await manager.async_update(home.fan, {"turn_off_after_min": 45})
+    assert result.problem is None
+    await flush(hass, freezer)
+
+    view = manager.get(home.fan)
+    assert view is not None
+    assert all(item.get("id") != view.automation_id for item in stale)
+    assert file_entry(hass, view.automation_id) is not None
+    assert view.status is Status.ACTIVE
+    assert view.settings.turn_off_after_min == 45
+    record = manager.store.data.owned[view.automation_id]
+    assert record.last_hash == markers.config_hash(file_entry(hass, view.automation_id) or {})
+    assert state_of(hass, TIMER) == "idle"
 
 
 async def test_a_restore_of_automations_yaml_from_git_rebuilds_the_index_and_the_entities_follow(

@@ -2184,6 +2184,11 @@ class RoutineManager:
 
     async def _async_sync_all(self) -> bool:
         """Read the file once and bring every routine in line with it; False on a bad file."""
+        # The records as they stand before the read. A write that lands meanwhile records
+        # its routine after the read (a routine's first write, while others are written,
+        # 2026-10-18), and the reload of that write syncs again: only a record this read
+        # can speak for counts as deleted by hand.
+        before = dict(self._store.data.owned)
         try:
             entries = await ha_adapter.async_read_automations(self.hass)
         except ha_adapter.AdapterError, HomeAssistantError:
@@ -2199,7 +2204,11 @@ class RoutineManager:
             elif self._device_of_automation(automation_id) is not None:
                 await self.async_handle_detached(automation_id)
         gone = by_id.keys() | self._deleting
-        for automation_id in [key for key in self._store.data.owned if key not in gone]:
+        for automation_id in [
+            key
+            for key, record in self._store.data.owned.items()
+            if key not in gone and before.get(key) is record
+        ]:
             await self.async_handle_removed(automation_id)
         for routine in list(self._routines.values()):
             if routine.detached and routine.automation_id not in by_id:
