@@ -41,6 +41,11 @@ routine blueprint input schema 2 with the same behavior.
 
 ### Changed
 
+- The routine's automation form shows only what a person chooses: the inputs Device
+  Routines sets itself (the helpers it keeps and the values it derives) move into a last
+  section, "Set by Device Routines (do not edit)", which starts collapsed; the four it sets
+  that have no default stay under Target, marked "Set by Device Routines". The stored
+  inputs and their meaning are unchanged.
 - Final icon and logo, in light and dark, with the `home-assistant/brands` layout under
   `brand/brands/`.
 - A routine change answers the conflicts of its new settings at once, and the Today view
