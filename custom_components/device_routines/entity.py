@@ -8,6 +8,21 @@ from homeassistant.helpers.entity import Entity
 from .const import DOMAIN, HUB_IDENTIFIER, HUB_MODEL, INTEGRATION_TITLE
 
 
+def linked_device_info(
+    identifiers: frozenset[tuple[str, str]],
+    connections: frozenset[tuple[str, str]],
+    name: str | None,
+) -> DeviceInfo:
+    """Return device info that places an entity on a user's device (decision L25).
+
+    The identifiers and the name are copied verbatim from the device registry entry; a
+    device known only by its connections is matched through those instead.
+    """
+    if identifiers:
+        return DeviceInfo(identifiers=set(identifiers), name=name)
+    return DeviceInfo(connections=set(connections), name=name)
+
+
 class DeviceRoutinesHubEntity(Entity):
     """An entity on the hub device, the one service device the integration creates."""
 

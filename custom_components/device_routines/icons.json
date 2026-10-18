@@ -1,6 +1,9 @@
 {
   "entity": {
     "sensor": {
+      "schedule": {
+        "default": "mdi:calendar-clock"
+      },
       "health": {
         "default": "mdi:heart-pulse",
         "state": {

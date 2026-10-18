@@ -294,3 +294,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Consequence | Every rule has a unit test in `tests/unit/test_parser.py` or `test_sentence.py`; the golden corpus review of task 1.6 may refine wording, never by special case. |
 | PRD register entry | no |
 
+## 2026-10-17 L30: discovery walks the automations; one index, one timer
+
+| Field | Content |
+| --- | --- |
+| Context | TECH_SPEC 4.2 and 4.4 describe discovery per device (ask `automations_with_area`, `_floor` and `_label` with the ids the device resolves to), a per device coalescing queue and one point in time listener per device. |
+| Options | (a) As written: for every device, call each helper, each of which loops over every automation; (b) walk each loaded automation once, ask the reverse helpers (`entities_in_automation`, `devices_in_automation`, `areas_in_automation`, `floors_in_automation`, `labels_in_automation`) which ids it names, resolve each to the devices it reaches, and let the parser keep only actions on each device. |
+| Choice | (b). It reads the same helper data (the A3 probe proves the reverse helpers name ids as written), costs one pass instead of devices times automations, and finds the same pairs. The parsed index is rebuilt as a whole, debounced two seconds; the views (next runs, sentences, conflicts) are recomputed from it without parsing, and one point in time listener at the earliest next run of any device replaces the per device ones, since a view recompute is cheap. Registry events caused by this integration's own entities and linked records are filtered out, so adding a Schedule sensor does not rebuild the index. |
+| Consequence | TECH_SPEC 4.4 reads as above. `DeviceEntry.config_entries` is deprecated in core 2026.10; the code uses `config_entry_id`. |
+| PRD register entry | no |
+

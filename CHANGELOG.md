@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- A Schedule sensor on every device an automation acts on, directly or through its area,
+  floor or a label: the next action as a sentence ("Off at 9:00 AM") and one line per
+  automation action in its attributes, recomputed on every change without polling. The
+  Schedule sensor scope option (all, routines, none) decides where it appears.
 - The schedule summary's pure core (Phase 1 task 1.1): domain profiles with the refused
   actions, a deterministic automation parser whose grammar is data, next runs that follow
   the core time trigger on daylight saving nights, the sentence writer with its English

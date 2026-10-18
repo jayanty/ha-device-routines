@@ -13,6 +13,9 @@
   },
   "entity": {
     "sensor": {
+      "schedule": {
+        "name": "Schedule"
+      },
       "health": {
         "name": "Health",
         "state": {

@@ -171,7 +171,7 @@ The only module allowed to touch internals. Each capability is one small functio
 ### 4.4 summary.py (SummaryCoordinator)
 
 - Discovery per PRD FR-S1 into a registry of device id to summary items.
-- Recompute triggers: `automation_reloaded`, entity, device and label registry updates, the automation component loaded event, each item's next run (one point in time listener per device, replaced on every recompute) and manager events. Debounce two seconds with a per device coalescing queue. No interval or `time_pattern` listener exists anywhere; a test asserts it.
+- Recompute triggers: `automation_reloaded`, automation entities added or removed, entity, device, area, floor and label registry updates (except this integration's own entries), the Home Assistant started event, manager events, and for the views only: an automation turned on or off, a change of an entity a time trigger or window reads, the core config, and the earliest next run (one point in time listener, replaced on every recompute). The index rebuild is debounced two seconds (decision L30). No interval or `time_pattern` listener exists anywhere; a test asserts it.
 - Creates and removes Schedule sensors per `schedule_scope` through the sensor platform's add entities callback and removes stale registry entries.
 - AI path (Phase 3): a queue with a token bucket (`ai_calls_per_hour`), never during the first five minutes after start, a cache keyed by config hash in the Store, the prompt in `ai_prompt.py`, responses trimmed to twelve words and marked `source: ai`.
 
