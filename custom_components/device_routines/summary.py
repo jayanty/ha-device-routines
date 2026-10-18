@@ -399,6 +399,9 @@ class SummaryCoordinator:
                 enabled=enabled,
                 custom_logic=entry.line.custom_logic,
             )
+            # One automation acting several times on a device the same way reads once.
+            if any(row[0] == item for row in rows):
+                continue
             rows.append((item, occurrences, entry.line.entity_ids))
         rows.sort(key=_row_order)
         items = tuple(row[0] for row in rows)

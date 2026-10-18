@@ -14,6 +14,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- A read only live suite in `tests/live/` for the development instance (skipped without
+  `local/live.env`).
+
 - `docs/user-guide.md` with the section Reading the Schedule sensor.
 - The golden corpus now pins the exact summary lines for the 39 captured automations and 12
   synthetic ones covering the grammar.
@@ -70,3 +73,9 @@ All notable changes to this project are documented here. The format follows
   pytest with the Home Assistant test harness pinned to the validated core, coverage gate at
   95 percent), the MIT license, HACS metadata, issue and pull request templates,
   Dependabot, placeholder brand images and the decisions log.
+
+### Fixed
+
+- An automation acting on a device several times the same way no longer repeats the same
+  Schedule line.
+

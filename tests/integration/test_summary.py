@@ -632,3 +632,25 @@ async def test_adapter_reports_missing_helpers_and_skips_configless_automations(
 def test_linked_device_info_by_connections() -> None:
     info = linked_device_info(frozenset(), frozenset({("mac", "aa:bb")}), "Plug")
     assert info == {"connections": {("mac", "aa:bb")}, "name": "Plug"}
+
+
+async def test_identical_items_of_one_automation_read_once(
+    hass: HomeAssistant, home: dict[str, Any]
+) -> None:
+    entry = await start(
+        hass,
+        [
+            automation(
+                "scripted_twice",
+                [{"trigger": "event", "event_type": "a"}],
+                [
+                    action("fan.turn_on", {"entity_id": FAN}),
+                    {"delay": "{{ 5 }}"},
+                    action("fan.turn_on", {"entity_id": FAN}),
+                ],
+            )
+        ],
+    )
+
+    items = coordinator(entry).summaries[home["fan"].id].items
+    assert [item.summary for item in items] == ["Automation: Scripted Twice (custom logic)"]
