@@ -12,6 +12,14 @@ All notable changes to this project are documented here. The format follows
   in a routine's automation form (routine blueprint input schema 2). A window from sunset
   to sunrise runs across midnight and belongs to the day it starts on, like any other
   window. The device page controls for it follow in a later build.
+- Conversion offers: a hand written automation that does exactly what a routine does (two
+  times that turn one device on and off, or Turn off after) is offered in Repairs as "can
+  become a routine", showing both sentences. Confirming creates the routine, turns the
+  automation off and labels it `Replaced by routine`; turning it back on is the undo. The
+  offers follow the Offer to convert matching automations setting, and the WebSocket API
+  gains `conversions/list` and `conversions/convert`.
+- The `schedule/today` WebSocket items carry the device name, the automation's alias and
+  how many conditions gate each action.
 
 ### Changed
 
