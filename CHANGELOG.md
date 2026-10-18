@@ -28,6 +28,8 @@ Build A (Phases 2 and 3) is in progress; the entries below grow with it.
   routine taken over in the editor, an empty weekly schedule, a lost save race, a routine
   that does not load and (with Raise conflict repairs on) a routine colliding with another
   automation; every fixable one has a one step fix.
+- A WebSocket API for the coming console (routines, actions, opting devices in, the day's
+  schedule, settings, maintenance and a subscription), documented in `docs/api.md`.
 
 ## [0.1.0] - 2026-10-18
 
