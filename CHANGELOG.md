@@ -46,6 +46,13 @@ Build A (Phases 2 and 3) is in progress; the entries below grow with it.
   options are a menu of Settings (every global setting), Devices with routines and
   Suggested devices; removing the integration keeps every routine running as a normal
   automation (On removal: keep) or deletes them with their helpers (delete).
+- Weekly schedules: Days set to Weekly schedule creates a labeled schedule helper named
+  after the device, whose blocks drive the routine; Skip next skips the next block.
+- The hub Routines sensor counts the active routines and lists every routine with its
+  device, area, summary, next action, status and automation.
+- An optional AI summary for automation lines the parser cannot read, sent only to an AI
+  Task entity you choose, as the automation's blocks with entity ids and no names; off by
+  default.
 
 ## [0.1.0] - 2026-10-18
 

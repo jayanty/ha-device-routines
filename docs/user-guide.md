@@ -220,7 +220,6 @@ late start window, 15 minutes by default: down from 9:40 AM to 9:50 AM, the vacu
 at 9:50 AM; back at 10:05 AM, it waits for tomorrow. The window is in the routine's
 automation form (Behavior, Late start window; 0 turns it off).
 
-<!-- A3: lane 14 -->
 New routines take the late start window from the **Late start window** setting.
 
 Every on and off checks the device first, so catch up running twice changes nothing.
@@ -294,7 +293,6 @@ see [Actions](#actions).
 
 ## Weekly schedules
 
-<!-- A3: lane 14 -->
 Set **Days** to **Weekly schedule** when the times differ by day. The integration creates
 a schedule helper named after the device ("Living room fan routine",
 `schedule.routine_living_room_fan`), labels it `Routines` and links it to the routine.
@@ -553,10 +551,9 @@ itself, so it keeps firing with the integration disabled:
 
 ### A card listing every routine
 
-<!-- A3: lane 14 -->
 The hub's **Routines** sensor counts the active routines and lists every routine in its
 `routines` attribute, each with `device`, `area`, `summary`, `next_action`, `status`
-(`active`, `paused`, `skipping`, `off`, `detached` or `missing_target`) and `automation`.
+(`active`, `paused`, `skipping`, `off`, `invalid`, `detached` or `missing_target`) and `automation`.
 A markdown card over it:
 
 ```yaml
@@ -613,11 +610,11 @@ created afterwards; changing one never rewrites existing routines.
 | Offer to convert matching automations | On, off (conversions arrive in a later version) | On |
 | Raise Repairs issues for conflicts | On, off | On |
 
-<!-- A3: lane 14 -->
 **AI summary.** Off by default. When you pick one of your own AI Task entities, only the
-automations the parser could not fully read are sent to it, one at a time, as their
-trigger, condition and action blocks with entity ids only (no states, no attributes, no
-names). The answer, at most twelve words, is cached until the automation changes, marked
+hand written automations the parser could not fully read are sent to it, one at a time,
+as their trigger, condition and action blocks as written, templates included, with
+entities named by entity id and devices, areas, floors and labels replaced by numbered
+placeholders (no states, no attributes, no names, no aliases or descriptions). The answer, at most twelve words, is cached until the automation changes, marked
 `source: ai` and shown with "(AI)". Nothing is sent during the first five minutes after a
 start, and never more than the calls per hour you allow.
 

@@ -84,11 +84,12 @@ rules:
       the minimum Home Assistant version and how to try a pre release.
 
   docs-removal-instructions:
-    status: todo
+    status: done
     comment: >-
       The user guide section Removing the integration explains the On removal setting
-      (keep or delete, PRD 10.4); it flips to done when Build A lane 10 lands the removal
-      it describes (`async_remove_entry`).
+      (keep or delete, PRD 10.4) and what removal cleans up, as `async_remove_entry` does it:
+      `tests/integration/test_config_flow.py::test_removing_with_keep_leaves_standalone_automations_that_still_run`,
+      `tests/integration/test_config_flow.py::test_removing_with_delete_removes_every_routine_and_its_helpers`.
 
   entity-event-setup:
     status: done
@@ -160,10 +161,11 @@ rules:
       `tests/integration/test_health.py::test_health_stops_following_when_the_entry_unloads`.
 
   docs-configuration-parameters:
-    status: todo
+    status: done
     comment: >-
       The user guide section Settings documents every PRD 10.4 setting with its values and
-      default; it flips to done when Build A lane 10 puts every setting on the options page.
+      default, the same catalog the options page offers:
+      `tests/integration/test_config_flow.py::test_the_settings_page_offers_every_setting_with_its_default`.
 
   docs-installation-parameters:
     status: exempt
@@ -171,12 +173,15 @@ rules:
       Setup has no parameters by design (PRD D33); README.md says so.
 
   entity-unavailable:
-    status: todo
+    status: done
     comment: >-
-      Build A lane 8: device page entities turn unavailable with a `reason` attribute
-      from `manager.unavailable_reason` (adapter incompatible, detached, missing target,
-      weekly schedule), which `tests/integration/test_manager.py::test_health_inputs_and_unavailable_reasons`
-      already proves on the manager side.
+      Device page entities turn unavailable with a `reason` attribute from
+      `manager.unavailable_reason` (adapter incompatible, detached, missing target, weekly
+      schedule):
+      `tests/integration/test_platforms.py::test_the_config_controls_are_unavailable_while_the_adapter_cannot_write`,
+      `tests/integration/test_platforms.py::test_a_detached_routine_makes_every_control_unavailable_with_reason_detached`,
+      `tests/integration/test_platforms.py::test_a_missing_target_makes_every_control_unavailable_with_reason_missing_target`,
+      `tests/integration/test_weekly_schedule.py::test_days_set_to_weekly_schedule_creates_links_and_labels_the_helper`.
 
   integration-owner:
     status: done
@@ -244,12 +249,13 @@ rules:
       every change.
 
   docs-examples:
-    status: todo
+    status: done
     comment: >-
       The user guide carries worked examples (a window, a run timer, skip and pause, a
       weekly schedule, a dashboard button, a script, a trigger, a condition, a markdown
-      card); it flips to done when Build A lanes 8 and 14 land the controls and the hub
-      attributes the remaining examples use.
+      card over the hub Routines sensor), each a routine the harness runs
+      (`tests/blueprint/`, `tests/integration/test_services.py`,
+      `tests/integration/test_triggers_conditions.py`, `tests/integration/test_hub_routines.py`).
 
   docs-known-limitations:
     status: done
@@ -266,11 +272,12 @@ rules:
       (`tests/unit/test_domains_settings_conflicts.py::test_every_supported_domain_has_a_profile`).
 
   docs-supported-functions:
-    status: todo
+    status: done
     comment: >-
-      The user guide documents the routine catalog, skip and pause and the Schedule
-      sensor; it flips to done when Build A lanes 8 and 14 land the device page controls
-      and the weekly schedule helper it describes.
+      The user guide documents the device page controls, skip and pause, weekly schedules,
+      the Schedule sensor and the hub sensors as built:
+      `tests/integration/test_platforms.py::test_each_domain_profile_gets_exactly_its_controls_with_its_own_words`,
+      `tests/integration/test_weekly_schedule.py::test_days_set_to_weekly_schedule_creates_links_and_labels_the_helper`.
 
   docs-troubleshooting:
     status: done
@@ -308,10 +315,11 @@ rules:
       `tests/integration/test_phase1_entities.py::test_hub_routines_and_problem_sensors`).
 
   entity-disabled-by-default:
-    status: todo
+    status: done
     comment: >-
-      Build A lane 8 creates the advanced routine controls of PRD 4.2 (Turn back on
-      after, Catch up after restart, Respect manual changes) disabled by default.
+      The advanced routine controls of PRD 4.2 (Turn back on after, Catch up after restart,
+      Respect manual changes) are created disabled by default:
+      `tests/integration/test_platforms.py::test_categories_and_enabled_defaults_follow_the_table`.
 
   entity-translations:
     status: done
