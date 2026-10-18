@@ -12,11 +12,12 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
+from PIL import Image
 import pytest
 import yaml
 
 from custom_components.device_routines.const import HEALTH_STATES
-from tools import style_check
+from tools import make_brand, style_check
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COMPONENT = REPO_ROOT / "custom_components" / "device_routines"
@@ -404,3 +405,100 @@ def test_a_beta_tag_is_compared_with_the_version_it_previews() -> None:
     for tag, release in (("0.3.0-beta.1", "0.3.0"), ("0.3.0", "0.3.0"), ("1.0.0-beta.12", "1.0.0")):
         result = subprocess.run([*shell, tag], capture_output=True, text=True, check=True)
         assert result.stdout.strip() == release
+
+
+# --------------------------------------------------------------------------------------
+# Brand images: what the home-assistant/brands repository asks for (Build B lane 23)
+# --------------------------------------------------------------------------------------
+
+BRAND = REPO_ROOT / make_brand.BRAND_DIR
+BRANDS_LAYOUT = REPO_ROOT / make_brand.BRANDS_LAYOUT_DIR
+LOGOS = ("logo", "dark_logo")
+
+
+@pytest.fixture(scope="module")
+def drawn_brand() -> dict[str, Image.Image]:
+    return make_brand.render_all()
+
+
+def brand_image(name: str) -> Image.Image:
+    with Image.open(BRAND / name) as image:
+        image.load()
+        return image
+
+
+def test_the_brand_files_are_exactly_the_drawn_set() -> None:
+    """`brand/` and the brands layout hold the drawn images and nothing else."""
+    names = set(make_brand.ASSET_NAMES)
+
+    assert {path.name for path in BRAND.glob("*.png")} == names
+    assert {path.name for path in BRANDS_LAYOUT.iterdir()} == names
+    assert {"icon.png", "icon@2x.png", "logo.png", "logo@2x.png"} <= names
+
+
+@pytest.mark.parametrize("name", make_brand.ASSET_NAMES)
+def test_every_brand_image_is_an_rgba_png_with_transparent_corners(name: str) -> None:
+    image = brand_image(name)
+    width, height = image.size
+    corners = ((0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1))
+
+    assert image.format == "PNG"
+    assert image.mode == "RGBA"
+    assert not image.info.get("interlace"), "the brands repository wants no interlacing"
+    assert [image.getchannel("A").getpixel(corner) for corner in corners] == [0, 0, 0, 0]
+
+
+@pytest.mark.parametrize("name", make_brand.ASSET_NAMES)
+def test_every_brand_image_is_trimmed(name: str) -> None:
+    """Something is drawn on every edge row and column: no transparent padding."""
+    image = brand_image(name)
+
+    assert image.getbbox(alpha_only=True) == (0, 0, *image.size)
+
+
+def test_the_icons_are_square_at_256_and_512() -> None:
+    assert brand_image("icon.png").size == (256, 256)
+    assert brand_image("icon@2x.png").size == (512, 512)
+
+
+@pytest.mark.parametrize("stem", LOGOS)
+def test_the_logos_are_landscape_within_the_brands_limits(stem: str) -> None:
+    """Shortest side 128 to 256, and 256 to 512 for @2x, which is exactly twice the size."""
+    width, height = brand_image(f"{stem}.png").size
+    double = brand_image(f"{stem}@2x.png").size
+
+    assert width > height
+    assert 128 <= height <= 256
+    assert double == (2 * width, 2 * height)
+    assert brand_image(f"{stem}.png").size == brand_image("logo.png").size
+
+
+@pytest.mark.parametrize("name", make_brand.ASSET_NAMES)
+def test_the_brands_layout_mirrors_brand(name: str) -> None:
+    assert (BRANDS_LAYOUT / name).read_bytes() == (BRAND / name).read_bytes()
+
+
+@pytest.mark.parametrize("name", make_brand.ASSET_NAMES)
+def test_make_brand_draws_the_committed_image_data(
+    name: str, drawn_brand: dict[str, Image.Image]
+) -> None:
+    """The committed image is the drawing, pixel for pixel, on any platform."""
+    committed = brand_image(name)
+
+    assert (committed.mode, committed.size) == (drawn_brand[name].mode, drawn_brand[name].size)
+    assert committed.tobytes() == drawn_brand[name].tobytes()
+
+
+def test_make_brand_reproduces_the_committed_files_byte_for_byte() -> None:
+    """`python -m tools.make_brand --check` passes: every file, both places, no strays.
+
+    The image data is pinned above everywhere. The bytes also depend on the zlib inside
+    Pillow, so where re-encoding a committed image's own data does not give its bytes
+    back, this platform's encoder differs from the one that wrote them and only the pixel
+    test applies.
+    """
+    for name in make_brand.ASSET_NAMES:
+        if make_brand.encode(brand_image(name)) != (BRAND / name).read_bytes():
+            pytest.skip("this platform's PNG encoder writes other bytes for the same image")
+
+    assert make_brand.check(REPO_ROOT) == []
