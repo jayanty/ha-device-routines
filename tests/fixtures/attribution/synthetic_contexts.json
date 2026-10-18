@@ -1,0 +1,47 @@
+{
+  "source": "Synthetic, not a recording: generic entity ids and made up context ids in the shape of the Stage 0 V3 recording (TECH_SPEC 4.3)",
+  "scenarios": {
+    "app_change": {
+      "description": "The companion app turns the fan on: the service call context carries the person's user id and no parent",
+      "events": [
+        {"event_type": "state_changed",
+         "data": {"entity_id": "switch.living_room_fan", "old_state": "off", "new_state": "on"},
+         "context": {"id": "01M56F1GV2S0P6S3P06RSDZPTZ", "parent_id": null, "user_id": "342adf6510417a383e6864e3fa9edb7d"}}
+      ],
+      "expected": ["user"]
+    },
+    "wall_switch": {
+      "description": "A press on the wall switch turns the fan off: the integration reports it with a fresh context, no parent and no user",
+      "events": [
+        {"event_type": "state_changed",
+         "data": {"entity_id": "switch.living_room_fan", "old_state": "on", "new_state": "off"},
+         "context": {"id": "01M56F1GV2CSN4HGQE8PHR56M0", "parent_id": null, "user_id": null}}
+      ],
+      "expected": ["device"]
+    },
+    "script_run": {
+      "description": "A script run turns the fan on: script_started carries the context its actions use, and the state change reuses it",
+      "events": [
+        {"event_type": "script_started",
+         "data": {"name": "Evening fan", "entity_id": "script.evening_fan"},
+         "context": {"id": "01M56F1GV29CP0TW29P2NVW0XX", "parent_id": null, "user_id": null}},
+        {"event_type": "state_changed",
+         "data": {"entity_id": "switch.living_room_fan", "old_state": "off", "new_state": "on"},
+         "context": {"id": "01M56F1GV29CP0TW29P2NVW0XX", "parent_id": null, "user_id": null}}
+      ],
+      "expected": ["automation"]
+    },
+    "child_context": {
+      "description": "An automation run reaches the fan through a group, which makes a child context of the run for its own call",
+      "events": [
+        {"event_type": "automation_triggered",
+         "data": {"name": "Evening fan", "entity_id": "automation.evening_fan", "source": "state of binary_sensor.living_room_motion"},
+         "context": {"id": "01M56F1GV2MQTXDZR0PVTSMYJ1", "parent_id": "01M56F1GV2QNXTGQKCQCP3PW1F", "user_id": null}},
+        {"event_type": "state_changed",
+         "data": {"entity_id": "switch.living_room_fan", "old_state": "off", "new_state": "on"},
+         "context": {"id": "01M56F1GV2DM89VEP8MDANMZ36", "parent_id": "01M56F1GV2MQTXDZR0PVTSMYJ1", "user_id": null}}
+      ],
+      "expected": ["automation"]
+    }
+  }
+}
