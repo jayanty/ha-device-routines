@@ -298,6 +298,24 @@ def test_every_input_has_a_name_a_description_and_a_selector(blueprint: dict[str
         assert isinstance(definition.get("selector"), Mapping), key
 
 
+def test_every_input_is_read_so_a_change_of_any_reloads_the_routine(
+    blueprint: dict[str, Any],
+) -> None:
+    """A reload of one id replaces a loaded automation only when its rendered config changed.
+
+    An input the file declares and never reads would leave the automation loaded with its
+    previous inputs after a change of that input alone (decision L77).
+    """
+    read = {node.name for _, node in walk(blueprint) if isinstance(node, Input)}
+
+    assert read == set(INPUT_KEYS)
+    assert {key: blueprint["variables"][key] for key in ("on_kind", "off_kind")} == {
+        "on_kind": Input("on_kind"),
+        "off_kind": Input("off_kind"),
+    }
+    assert blueprint["variables"]["respect_manual"] == Input("respect_manual")
+
+
 def test_the_new_inputs_have_the_selectors_of_the_contract(blueprint: dict[str, Any]) -> None:
     selectors = {key: definition["selector"] for key, definition in flat_inputs(blueprint)}
     kinds = [{"value": "time", "label": "Time"}, {"value": "sunrise", "label": "Sunrise"}]

@@ -46,6 +46,11 @@ routine blueprint input schema 2 with the same behavior.
   section, "Set by Device Routines (do not edit)", which starts collapsed; the four it sets
   that have no default stay under Target, marked "Set by Device Routines". The stored
   inputs and their meaning are unchanged.
+- Changing only Respect manual changes now reloads the routine's automation like any
+  other setting change (ending a run in progress, such as a pulse waiting to turn the
+  device back on); before, the loaded automation kept the previous value until the next
+  start. The routine blueprint carries Respect manual changes, Turn on timing and Turn
+  off timing as variables, so it reads every one of its inputs.
 - Final icon and logo, in light and dark, with the `home-assistant/brands` layout under
   `brand/brands/`.
 - A routine change answers the conflicts of its new settings at once, and the Today view

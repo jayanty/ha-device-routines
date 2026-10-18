@@ -370,6 +370,12 @@ max: 10
 
 variables:
   paused_entity: !input paused_until_entity
+  # Read by nothing below: Device Routines enforces Respect manual changes and derives
+  # the sun flags from the kinds. Carried here so that a change of any input changes the
+  # automation Home Assistant renders, which is what makes a reload replace it.
+  on_kind: !input on_kind
+  off_kind: !input off_kind
+  respect_manual: !input respect_manual
 
 triggers:
   - alias: Turn on at
