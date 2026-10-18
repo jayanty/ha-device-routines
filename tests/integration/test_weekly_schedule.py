@@ -305,7 +305,7 @@ async def test_a_reconcile_clears_schedule_blocks_needed_once_the_schedule_has_b
     assert issue_of(hass, repairs.SCHEDULE_BLOCKS_NEEDED, automation_id) is None
 
 
-async def test_blocks_that_cannot_be_read_leave_the_issue_open(
+async def test_a_next_event_clears_the_issue_even_when_the_blocks_cannot_be_read(
     hass: HomeAssistant,
     home: Home,
     manager: RoutineManager,
@@ -323,9 +323,12 @@ async def test_blocks_that_cannot_be_read_leave_the_issue_open(
         raise ha_adapter.HelperError("timeout", "schedule/list did not answer")
 
     monkeypatch.setattr(ha_adapter, "async_schedule_blocks", unreadable)
+    assert issue_of(hass, repairs.SCHEDULE_BLOCKS_NEEDED, automation_id) is not None
     await add_blocks(hass, manager, monday=MONDAY_EVENING)
 
-    assert issue_of(hass, repairs.SCHEDULE_BLOCKS_NEEDED, automation_id) is not None
+    # The schedule entity names its next event only when it has blocks, so that alone
+    # clears the issue (lane 11), whatever `schedule/list` answers (decision L53).
+    assert issue_of(hass, repairs.SCHEDULE_BLOCKS_NEEDED, automation_id) is None
 
 
 async def test_the_cleanup_deletes_the_weekly_schedule_even_after_days_changed_back(
