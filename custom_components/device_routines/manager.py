@@ -63,7 +63,6 @@ from homeassistant.helpers import (
     area_registry as ar,
     device_registry as dr,
     entity_registry as er,
-    issue_registry as ir,
     label_registry as lr,
 )
 from homeassistant.helpers.event import (
@@ -505,8 +504,6 @@ class _Routine:
     write_handle: CALLBACK_TYPE | None = None
     resume_handle: CALLBACK_TYPE | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    # The weekly schedule watched while `schedule_blocks_needed` is open, and its handle.
-    blocks_watch: tuple[str, CALLBACK_TYPE] | None = None
     # The routine's timer helper and the handle of the listener that follows it.
     timer_watch: tuple[str, CALLBACK_TYPE] | None = None
 
@@ -607,7 +604,6 @@ class RoutineManager:
         self._unsubscribe.clear()
         for routine in self._routines.values():
             self._cancel_resume(routine)
-            self._unwatch_blocks(routine)
             self._unwatch_timer(routine)
         self._cancel_cleanup()
         self._attributor.async_stop()
@@ -1793,7 +1789,6 @@ class RoutineManager:
     def _clear_runtime(self, routine: _Routine) -> None:
         self._cancel_write(routine)
         self._cancel_resume(routine)
-        self._unwatch_blocks(routine)
         routine.paused_until = None
         routine.skipped_action = None
         routine.override = routine.override_by_skip = False
@@ -2434,7 +2429,6 @@ class RoutineManager:
             return
         await self._async_check_target(routine)
         await self._async_check_helpers(routine)
-        await self._async_check_schedule_blocks(routine)
         await self._async_check_loaded(routine)
         await self._async_follow_name(routine)
         self._follow_area(routine)
@@ -2688,54 +2682,6 @@ class RoutineManager:
         if item is None:
             return None
         return nextrun.block_bounds(nextrun.weekly_blocks(item), dt_util.as_local(start))
-
-    def _blocks_needed(self, routine: _Routine) -> bool:
-        registry_id = repairs.issue_registry_id(
-            repairs.SCHEDULE_BLOCKS_NEEDED, routine.automation_id
-        )
-        return ir.async_get(self.hass).async_get_issue(DOMAIN, registry_id) is not None
-
-    async def _async_check_schedule_blocks(self, routine: _Routine) -> None:
-        """Clear `schedule_blocks_needed` once the routine's schedule has blocks again.
-
-        While the issue is open the schedule is watched, and every change of it (a block
-        added in the weekly editor) reads the blocks again through `schedule/list`.
-        """
-        record = self._store.data.owned.get(routine.automation_id)
-        refs = _refs(record.last_valid_inputs if record else None)
-        schedule = refs.schedule_entity if refs else compiler.UNUSED_SCHEDULE
-        if schedule == compiler.UNUSED_SCHEDULE or not self._blocks_needed(routine):
-            self._unwatch_blocks(routine)
-            return
-        item = await self._async_schedule_items(schedule)
-        if item is not None and any(item.values()):
-            self._sync_issue(repairs.SCHEDULE_BLOCKS_NEEDED, routine, present=False)
-            self._unwatch_blocks(routine)
-            return
-        self._watch_blocks(routine, schedule)
-
-    def _watch_blocks(self, routine: _Routine, schedule: str) -> None:
-        if routine.blocks_watch is not None and routine.blocks_watch[0] == schedule:
-            return
-        self._unwatch_blocks(routine)
-
-        @callback
-        def changed(_event: Event[Any]) -> None:
-            self.entry.async_create_task(
-                self.hass,
-                self._async_check_schedule_blocks(routine),
-                f"{DOMAIN} schedule blocks {routine.device_id}",
-            )
-
-        routine.blocks_watch = (
-            schedule,
-            async_track_state_change_event(self.hass, [schedule], changed),
-        )
-
-    def _unwatch_blocks(self, routine: _Routine) -> None:
-        if routine.blocks_watch is not None:
-            routine.blocks_watch[1]()
-            routine.blocks_watch = None
 
     async def _async_delete_own_helpers(self, device_id: str) -> None:
         """Delete the routine's own helpers when they go with the routine (D28).

@@ -381,6 +381,42 @@ async def test_a_next_event_clears_the_issue_even_when_the_blocks_cannot_be_read
     assert issue_of(hass, repairs.SCHEDULE_BLOCKS_NEEDED, automation_id) is None
 
 
+async def test_only_the_next_event_clears_the_issue_and_no_block_list_is_read(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    freezer: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan A4.0 item 12 (L53): one mechanism clears `schedule_blocks_needed`.
+
+    The core sets a schedule's `next_event` only when it has blocks, so that attribute
+    (at a state change, or at reconcile) is the one signal; nothing reads the blocks
+    through `schedule/list` for the issue, and nothing watches the schedule per routine.
+    """
+    automation_id = await weekly_routine(hass, manager, home, freezer)
+    user = await system_user(hass, manager)
+    await ha_adapter.async_delete_helper(hass, user, SCHEDULE)
+    await hass.async_block_till_done()
+    listed: list[str] = []
+    real = ha_adapter.async_schedule_blocks
+
+    async def spy(hass: HomeAssistant, user_id: str, entity_id: str) -> Any:
+        listed.append(entity_id)
+        return await real(hass, user_id, entity_id)
+
+    monkeypatch.setattr(ha_adapter, "async_schedule_blocks", spy)
+
+    await manager.async_reconcile()
+    await manager.async_reconcile()
+    await hass.async_block_till_done()
+    assert issue_of(hass, repairs.SCHEDULE_BLOCKS_NEEDED, automation_id) is not None
+    await add_blocks(hass, manager, friday=MONDAY_EVENING)
+
+    assert issue_of(hass, repairs.SCHEDULE_BLOCKS_NEEDED, automation_id) is None
+    assert listed == []
+
+
 async def test_the_cleanup_deletes_the_weekly_schedule_even_after_days_changed_back(
     hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any
 ) -> None:
