@@ -861,16 +861,10 @@ def removed_entity_wrote_its_state(exception: BaseException | None) -> bool:
     )
 
 
-# The ERROR records of the pinned defects; anything else logged at ERROR fails the run.
-KNOWN_ERROR_LOGS: Final = (
-    # `test_unloading_the_entry_after_a_cold_start_logs_no_error`
-    "Unable to remove unknown job listener",
-    # `test_removing_a_device_with_a_routine_logs_no_error`
-    (
-        "Error running job: <Job listen state_changed HassJobType.Callback <bound method "
-        "RoutineManager._automation_changed"
-    ),
-)
+# The ERROR records of pinned defects; anything else logged at ERROR fails the run. The
+# two found by the simulation (an unload after a cold start, a removed device's controls
+# writing their state) were fixed by the carry over lane (plan A4.0 items 24 and 26).
+KNOWN_ERROR_LOGS: Final[tuple[str, ...]] = ()
 
 
 def unexpected_errors(records: list[logging.LogRecord]) -> list[str]:
@@ -1287,8 +1281,9 @@ async def test_thirty_days_of_upkeep_need_no_person_and_raise_no_issue(  # noqa:
     assert sim.now.entry.data[CONF_SYSTEM_USER_ID] == system_user_id
     assert sim.skipped == [(5, "17:00:00", LIGHT, "scheduled_on")]
     assert sim.caught_up == [(5, "17:20:00", FAN)]
-    assert {day for day, _ in sim.known_loop_errors} <= {22}
-    assert {day for day, _ in sim.stale_health} <= {27, 28}
+    # The pinned defects are fixed (plan A4.0 items 24, 26 and 28): none may show.
+    assert sim.known_loop_errors == []
+    assert sim.stale_health == []
     assert unexpected_errors(caplog.records) == []
 
     # The Store rebuilt from the markers equals the Store kept (TECH_SPEC 6), apart from
@@ -1321,15 +1316,6 @@ async def test_thirty_days_of_upkeep_need_no_person_and_raise_no_issue(  # noqa:
 # --------------------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "summary.py: the Schedule is recomputed only at each item's next run (FR-S7), "
-        "never at local midnight, so a sentence written the evening before names today's "
-        "action by its weekday ('Off Tue 9:00 AM' on a Tuesday) instead of the FR-S4 "
-        "today form 'Off at 9:00 AM' until the next action refreshes it"
-    ),
-)
 async def test_a_day_relative_sentence_is_reworded_at_midnight(simulation: Simulation) -> None:
     sim = simulation
     await set_up_routines(sim)
@@ -1341,15 +1327,6 @@ async def test_a_day_relative_sentence_is_reworded_at_midnight(simulation: Simul
     assert sim.sentence(LIGHT) == "Off at 9:00 AM"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "manager.py (async_start) and summary.py (async_start): the unsubscriber of the "
-        "one time started listener is kept and called on unload after the listener "
-        "fired, so Home Assistant logs 'Unable to remove unknown job listener' twice at "
-        "every unload or reload that follows a start"
-    ),
-)
 async def test_unloading_the_entry_after_a_cold_start_logs_no_error(
     simulation: Simulation, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -1364,16 +1341,6 @@ async def test_unloading_the_entry_after_a_cold_start_logs_no_error(
     assert [r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR] == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "manager.py (_async_sync_all, async_sync_back): a sync pass reads the file once, "
-        "then waits for each routine's lock; when a write (here the schema migration's) "
-        "lands meanwhile, the pass judges its stale copy of the entry against the new "
-        "`last_hash` as a foreign edit: schema 0 inputs raise `invalid_inputs` and turn "
-        "the routine off until the next pass (valid stale inputs are adopted instead)"
-    ),
-)
 async def test_a_schema_update_raises_no_issue_on_the_way(
     simulation: Simulation, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1444,15 +1411,6 @@ async def test_a_store_rebuilt_from_nothing_equals_the_store_kept(
     assert rebuilt == kept
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "manager.py (async_cleanup) with maintenance.py (async_clean_up): the D28 cleanup "
-        "deletes the routine's automation first (Health then counts it as owned but not "
-        "loaded) and drops its Store records afterwards with no manager event, so Health "
-        "reads `degraded` until the next routine change (19 hours in the 30 day run)"
-    ),
-)
 async def test_health_reads_ok_right_after_a_cleanup(simulation: Simulation) -> None:
     sim = simulation
     await set_up_routines(sim)
@@ -1468,16 +1426,6 @@ async def test_health_reads_ok_right_after_a_cleanup(simulation: Simulation) -> 
     assert health.state == "ok"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "manager.py (_async_follow_device) with entity.py (linked_device_info): the "
-        "device page controls and the Schedule sensor sit on this integration's linked "
-        "record of the device (L25), named once from the device's `name`; a rename "
-        "(`name_by_user`) never reaches it, so they keep reading 'Garden pump Schedule' "
-        "after the device became 'Backyard pump' (PRD 3.1, device renamed)"
-    ),
-)
 async def test_the_schedule_sensor_follows_a_device_rename(simulation: Simulation) -> None:
     sim = simulation
     await set_up_routines(sim)

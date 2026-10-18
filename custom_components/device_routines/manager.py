@@ -45,7 +45,6 @@ from typing import Any, Final, Literal
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ENTITY_ID,
-    EVENT_HOMEASSISTANT_STARTED,
     EVENT_STATE_CHANGED,
     STATE_ON,
     STATE_UNAVAILABLE,
@@ -71,6 +70,7 @@ from homeassistant.helpers.event import (
     async_track_point_in_utc_time,
     async_track_state_change_event,
 )
+from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.typing import UNDEFINED
 from homeassistant.util import dt as dt_util
 
@@ -546,7 +546,8 @@ class RoutineManager:
         }
         for timer in ha_adapter.missed_timer_finishes(self.hass, timers):
             self._missed_timers[timer] = timers[timer]
-        self._unsubscribe.append(bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, self._started))
+        # A handle that stays safe to call after the listener fired (plan A4.0 item 24).
+        self._unsubscribe.append(async_at_started(self.hass, self._started))
 
     async def async_stop(self) -> None:
         """Write what is pending, the Store included, then drop every listener and timer.
@@ -620,7 +621,7 @@ class RoutineManager:
         self._notify(ManagerEvent("routine_changed", device_id, reason))
         self.summary.async_refresh_device(device_id)
 
-    async def _started(self, _event: Event[Any]) -> None:
+    async def _started(self, _hass: HomeAssistant) -> None:
         for timer, device_id in self._missed_timers.items():
             _LOGGER.debug("%s ran out during the restart; catching it up", timer)
             self.hass.bus.async_fire(compiler.EVENT_TIMER_CAUGHT_UP, {"device_id": device_id})
@@ -2091,7 +2092,9 @@ class RoutineManager:
         A hash the manager wrote is skipped. A valid foreign edit becomes the settings
         (and stale derived inputs are written back, so the blueprint never runs on them);
         an invalid one turns the routine off, overwrites nothing and raises
-        `invalid_inputs`.
+        `invalid_inputs`. A copy that is no longer what the file holds (a write landed
+        while this waited for the routine's lock, plan A4.0 item 25) is left alone: the
+        reload of that write syncs again.
         """
         inputs = config["use_blueprint"].get("input")
         record = self._store.data.owned.get(automation_id)
@@ -2100,13 +2103,15 @@ class RoutineManager:
             _LOGGER.warning("%s names no device; it is left alone", automation_id)
             return
         routine = self._routine(device_id, automation_id)
-        if routine.detached:
-            routine.detached = False
-            self._sync_issue(repairs.DETACHED_ROUTINE, routine, present=False)
         digest = markers.config_hash(config)
         async with routine.lock:
             record = self._store.data.owned.get(automation_id)
             own = record is not None and record.last_hash == digest
+            if not own and not await self._async_holds(automation_id, digest):
+                return
+            if routine.detached:
+                routine.detached = False
+                self._sync_issue(repairs.DETACHED_ROUTINE, routine, present=False)
             reason = None if own else self._input_problem(inputs)
             if not own and reason is None:
                 routine.settings = compiler.decompile(inputs)
@@ -2146,6 +2151,11 @@ class RoutineManager:
         }:
             await self._async_write(routine)
         self._changed(device_id)
+
+    async def _async_holds(self, automation_id: str, digest: str) -> bool:
+        """Tell whether the file still holds this version of the entry (its hash)."""
+        current = await ha_adapter.async_read_automation(self.hass, automation_id)
+        return current is not None and markers.config_hash(current) == digest
 
     async def _async_valid_again(self, routine: _Routine) -> None:
         """End an invalid state: known in memory, or kept in the Store over a restart."""
@@ -2308,7 +2318,12 @@ class RoutineManager:
         self._changed(device_id)
 
     async def _async_follow_device(self, device_id: str) -> None:
-        """Follow a device rename or move: the alias, the helper names and the area."""
+        """Follow a device rename or move: the alias, the helper names and the area.
+
+        The linked record of this entry (L25) takes the name the device shows, so the
+        page controls and the Schedule sensor read the new name (plan A4.0 item 29).
+        """
+        self._follow_linked_record(device_id)
         routine = self._routines[device_id]
         if routine.automation_id in self._store.data.owned and not routine.invalid:
             await self._async_follow_name(routine)
@@ -2337,6 +2352,24 @@ class RoutineManager:
             await ha_adapter.async_update_helper(
                 self.hass, await self._async_system_user(), entity_id, name=name
             )
+
+    def _follow_linked_record(self, device_id: str) -> None:
+        """Name this entry's linked record of a device as the device shows itself."""
+        device = self._device(device_id)
+        if device is None:
+            return
+        name = device.name_by_user or device.name
+        registry = dr.async_get(self.hass)
+        linked = [
+            registry.async_get_device_by_identifier(identifier, self.entry.entry_id)
+            for identifier in device.identifiers
+        ] + [
+            registry.async_get_device_by_connection(connection, self.entry.entry_id)
+            for connection in device.connections
+        ]
+        for record in {item.id: item for item in linked if item is not None}.values():
+            if record.name != name:
+                registry.async_update_device(record.id, name=name)
 
     def _follow_area(self, routine: _Routine) -> None:
         """M9: the automation sits in the device's area while `assign_area` is on."""
@@ -2584,8 +2617,14 @@ class RoutineManager:
             self._cleanup_handle = None
 
     async def async_delete_routine(self, device_id: str) -> None:
-        """Delete the device's automation, helpers and entities; the caller drops the Store."""
-        for automation_id, record in list(self._store.data.owned.items()):
+        """Delete the device's automation, helpers and entities.
+
+        Each owned record goes with its deleted automation, before listeners hear of it,
+        so Health never counts a deleted automation as owned but not loaded (plan A4.0
+        item 28); the caller drops the device's other Store entries.
+        """
+        data = self._store.data
+        for automation_id, record in list(data.owned.items()):
             if record.device_id != device_id:
                 continue
             await ha_adapter.async_delete_automation(self.hass, automation_id)
@@ -2594,6 +2633,9 @@ class RoutineManager:
             await self._async_delete_helpers(
                 _refs(record.last_valid_inputs) or compiler.HelperRefs(device_id)
             )
+            del data.owned[automation_id]
+            data.suspended.pop(automation_id, None)
+            self._store.async_delay_save()
         await self._async_delete_own_helpers(device_id)
         self._remove_entities(device_id)
         if (routine := self._routines.pop(device_id, None)) is not None:

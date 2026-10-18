@@ -65,6 +65,7 @@ from homeassistant.helpers import (
 )
 from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.event import async_track_point_in_time, async_track_point_in_utc_time
+from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.sun import get_astral_event_date
 from homeassistant.util import dt as dt_util
 import probatio as vol
@@ -311,9 +312,8 @@ class SummaryCoordinator:
         )
         self._unsubscribe.append(bus.async_listen(EVENT_CORE_CONFIG_UPDATE, self._refresh_soon))
         if not self.hass.is_running:
-            self._unsubscribe.append(
-                bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, self._rebuild_soon)
-            )
+            # A handle that stays safe to call after it fired (plan A4.0 item 24).
+            self._unsubscribe.append(async_at_started(self.hass, self._rebuild_at_start))
         self._started = True
         self.ai.async_start()
         await self._async_rebuild()
@@ -383,6 +383,10 @@ class SummaryCoordinator:
     @callback
     def _rebuild_soon(self, _event: Event[Any] | None = None) -> None:
         self._debouncer.async_schedule_call()
+
+    @callback
+    def _rebuild_at_start(self, _hass: HomeAssistant) -> None:
+        self._rebuild_soon()
 
     @callback
     def _refresh_soon(self, _event: Event[Any] | None = None) -> None:
@@ -659,7 +663,7 @@ class SummaryCoordinator:
         changes = [m for m in (upcoming.at if upcoming else None, pause_end) if m is not None]
         return DeviceSummary(
             device_id=device.id,
-            device_name=device.name,
+            device_name=device.name_by_user or device.name,
             identifiers=frozenset(device.identifiers),
             connections=(
                 frozenset(device.connections) if isinstance(device, dr.DeviceEntry) else frozenset()
@@ -773,11 +777,18 @@ class SummaryCoordinator:
         return held
 
     def _schedule_next(self, now: datetime) -> None:
+        """Wake at the earliest next change, or at local midnight if that comes first.
+
+        One point in time listener. At midnight a sentence written the day before is
+        reworded ("Off Tue 9:00 AM" becomes "Off at 9:00 AM" on Tuesday, FR-S4; plan
+        A4.0 item 23).
+        """
         self._cancel_timer()
         upcoming = [s.next_change for s in self.summaries.values() if s.next_change is not None]
         if not upcoming:
             return
-        when = max(min(upcoming), now) + timedelta(seconds=1)
+        midnight = dt_util.start_of_local_day(now.date() + timedelta(days=1))
+        when = max(min(*upcoming, midnight), now) + timedelta(seconds=1)
         self._timer = async_track_point_in_time(self.hass, self._timer_fired, when)
 
     @callback

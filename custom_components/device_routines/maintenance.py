@@ -101,10 +101,11 @@ class MaintenanceTarget(Protocol):
         """Delete what Home Assistant holds for the device's routine.
 
         Its owned automation (through the adapter), its timer and schedule helpers and
-        its entities, and stop tracking it in memory. Leave the Store to the caller,
-        which drops the device's records once this returns. Idempotent: a device with
-        nothing left is no error. Raise when something could not be deleted; the caller
-        keeps the device's records, so the next cleanup retries.
+        its entities, and stop tracking it in memory. An owned record may go with its
+        deleted automation; the caller drops the device's records and other entries once
+        this returns. Idempotent: a device with nothing left is no error. Raise when
+        something could not be deleted; the records not yet dropped stay, so the next
+        cleanup retries.
         """
         ...
 

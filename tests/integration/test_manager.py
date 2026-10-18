@@ -1414,3 +1414,26 @@ async def test_settings_are_held_in_the_form_the_inputs_read_back(
     assert result.view is not None
     assert result.view.settings.off_time == time(8, 30)
     assert result.view.settings.off_time.tzinfo is None
+
+
+async def test_a_rename_names_the_linked_record_and_a_gone_device_is_no_error(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    routines: MockConfigEntry,
+    freezer: Any,
+) -> None:
+    """Plan A4.0 item 29 (L25): the page controls read the name the device shows."""
+    await give_routine(hass, manager, home.fan, freezer, on_time=time(17))
+    devices = dr.async_get(hass)
+
+    devices.async_update_device(home.fan, name_by_user="Bedroom fan")
+    await hass.async_block_till_done()
+
+    linked = devices.async_get_device_by_identifier(("sandbox", "fan"), routines.entry_id)
+    assert linked is not None
+    assert linked.name == "Bedroom fan"
+    override = hass.states.get(OVERRIDE)
+    assert override is not None
+    assert override.name == "Bedroom fan Manual override"
+    manager._follow_linked_record("no-such-device")  # gone meanwhile: nothing to name

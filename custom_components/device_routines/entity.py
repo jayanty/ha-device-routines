@@ -36,8 +36,10 @@ def linked_device_info(
 ) -> DeviceInfo:
     """Return device info that places an entity on a user's device (decision L25).
 
-    The identifiers and the name are copied verbatim from the device registry entry; a
-    device known only by its connections is matched through those instead.
+    The identifiers are copied verbatim from the device registry entry, and the name is
+    the one the device shows (`name_by_user or name`, so a rename reaches the linked
+    record, plan A4.0 item 29); a device known only by its connections is matched
+    through those instead.
     """
     if identifiers:
         return DeviceInfo(identifiers=set(identifiers), name=name)
@@ -88,7 +90,9 @@ class DeviceRoutinesDeviceEntity(Entity):
         device = dr.async_get(manager.hass).async_get(device_id, include_child_devices=False)
         if device is not None:
             self._attr_device_info = linked_device_info(
-                frozenset(device.identifiers), frozenset(device.connections), device.name
+                frozenset(device.identifiers),
+                frozenset(device.connections),
+                device.name_by_user or device.name,
             )
 
     async def async_added_to_hass(self) -> None:
