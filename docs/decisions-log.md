@@ -414,3 +414,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | (b): `async_sync_issue(hass, issue_id, present, placeholders=None, *, subject=None)` raises or clears a catalog issue idempotently; per routine issues carry the automation id as `subject`, so the registry id is `<issue>_<subject>` and the translation key stays the catalog id; fixable per `FIXABLE`; `adapter_incompatible` and `automation_load_failed` are errors, the rest warnings. A title and description per catalog issue are in `strings.json`. |
 | Consequence | Plan Section 4.2 repairs row amended. Lane 11 adds `async_create_fix_flow` and the fix flow strings (hassfest takes either a description or a fix flow per issue). The hub Problem sensor lists registry ids, so it shows one entry per affected routine. |
 | PRD register entry | no |
+
+## 2026-10-18 L42: Store, settings and maintenance edges
+
+| Field | Content |
+| --- | --- |
+| Context | Lane 6 built the Store, the migrations and the maintenance actions. Open points: what Store version 0 is; whether a newer stored minor version loads (the core convention) or is refused; how the entry's minor version relates to the options version; when the blueprint schema migration runs; and how cleanup splits between maintenance and the manager. |
+| Options | For a newer minor version: load it as the core does (and drop keys this code does not know at the next save), or refuse it and keep the file. The others: as chosen below or the obvious alternatives. |
+| Choice | Store version 0 is the PRD 10.2 layout; migrating it adds the TECH_SPEC 6 fields at their first values. A newer stored version, minor included, is refused with a translated `StoreVersionError` and the file is left on disk: after a downgrade the integration does not set up (routines keep running in Home Assistant) instead of silently losing what the newer version stored; upgrading again recovers. The entry's `MINOR_VERSION` equals `OPTIONS_VERSION` (2), a test pins it; a newer minor loads leniently, another major is refused. Options version 2 adds every key at its default and keeps what was stored, which `from_options` judges. The schema migration runs while any record or `blueprint_schema` is older than the shipped schema, so failures retry at every start; a hand edited blueprint stops it and reports nothing as failed; old inputs are read from the file. D28 lives in maintenance behind one manager primitive (`async_delete_routine`); the index rebuild and the summary refresh are manager primitives. |
+| Consequence | Plan Section 4.2 store, migration and maintenance rows carry the landed names; lane 5 implements `MaintenanceTarget` and `SchemaMigrationTarget`. |
+| PRD register entry | no |
