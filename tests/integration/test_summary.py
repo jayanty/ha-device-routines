@@ -544,7 +544,8 @@ async def test_held_time(hass: HomeAssistant) -> None:
 
 
 async def test_adapter_check_and_config_reads(hass: HomeAssistant) -> None:
-    assert ha_adapter.check(hass).ok
+    # A bare core has no automation reload service and no helper commands; reads work.
+    assert ha_adapter.check(hass).works(ha_adapter.CAPABILITY_READ)
     assert ha_adapter.automation_config(hass, "automation.none") is None
     assert ha_adapter.automation_references(hass) == []
     report = ha_adapter.AdapterReport(failed=("read_automations",))
@@ -625,7 +626,7 @@ async def test_adapter_reports_missing_helpers_and_skips_configless_automations(
 
     monkeypatch.delattr(automation_component, "labels_in_automation")
     report = ha_adapter.check(hass)
-    assert report.failed == ("read_automations",)
+    assert ha_adapter.CAPABILITY_READ in report.failed
     assert "labels_in_automation" in report.details["read_automations"]
 
 
