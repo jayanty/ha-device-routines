@@ -51,6 +51,7 @@ counts are those of the commit that tags `v1.0.0-beta.1`.
 | Hand deploy of `v1.0.0-beta.2` | `shell_command.deploy_device_routines` with `ref: v1.0.0-beta.2`, on the owner's instruction so R2 loads the fix | `ok: true`, `changed: true`, commit `01ca0b3`, previous `db7fa10`, changed files `manager.py` only, `restart_required: true`, no warnings | Pass | 2026-10-18 | Jayant |
 | Read after the second deploy | `device_routines_deploy_status`, Health, the auto deploy switch | deployed `01ca0b3` at 19:36:49Z with a backup of `db7fa10`; Health `ok` still running `efbf757` (version 0.3.0); auto deploy `off` | Pass | 2026-10-18 | L26 |
 | R2 requested | Owner log O16 | the restart waits for the owner, after the live session stages the scenario of the hour | Pending | 2026-10-18 | Jayant |
+| The live suite after R2 (F5, F6 fixed, L76) | `.venv/bin/python -m pytest -m live` from the development clone, read only, with the Home Assistant test plugin loaded | 4 passed: `test_health_runs_the_deployed_commit` (Health on `01ca0b3`, the commit of `v1.0.0-beta.2`, version 1.0.0), `test_schedule_sensors_exist_with_valid_states`, `test_no_open_issue_from_this_integration`, `test_share_of_unparsed_lines_is_reported` | Pass | 2026-10-18 | L26 |
 
 ## Live rows
 

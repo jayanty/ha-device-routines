@@ -58,6 +58,10 @@ routine blueprint input schema 2 with the same behavior.
 
 ### Fixed
 
+- Health no longer reads `degraded` for a moment each time a routine is saved or Home
+  Assistant reloads automations: a routine whose automation is being reloaded counts as
+  loaded until the reload ends, and a routine that fails to load still turns Health
+  `degraded`.
 - A routine written at the same time as other routines no longer loses its Turn off after
   timer. Before, a sync of `automations.yaml` that read the file just before the routine's
   first write could treat the routine as deleted by hand and delete its timer, so Turn off
