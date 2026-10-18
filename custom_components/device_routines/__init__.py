@@ -24,7 +24,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
-from . import ha_adapter, health, repairs
+from . import ha_adapter, health, repairs, websocket_api
 from .attribution import Attributor
 from .const import DOMAIN, PLATFORMS
 from .ha_adapter import AdapterReport
@@ -96,6 +96,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DeviceRoutinesConfigEntr
         store=store,
         manager=manager,
     )
+    websocket_api.async_register(hass)
     await manager.async_start()
     entry.async_on_unload(manager.async_stop)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

@@ -69,6 +69,7 @@ from .models import (
     Status,
     SummaryItem,
     TimeTrigger,
+    Verb,
     Weekday,
 )
 from .sentence import Phrases, Writer
@@ -739,6 +740,115 @@ class SummaryCoordinator:
             self._sensor_devices.update(new)
             self._add_sensors(new)
 
+    # ----------------------------------------------------------------------------------
+    # A day's planned actions: the console's Today view (Build A lane 12, decision L45)
+    # ----------------------------------------------------------------------------------
+
+    def day_schedule(self, day: date) -> list[DayItem]:
+        """Return every action planned for a local day, routines and automations, by time.
+
+        The data of the `schedule/today` WebSocket command (TECH_SPEC 4.7). The day is read
+        from the index and the routines as they stand now, so an action earlier in the day
+        is listed as planned; a routine action its pause skips (after now and before
+        Paused until) and every action of an automation that is off are left out. Each
+        action is one item per device, its `conflict` set when it takes part in an FR-S6
+        conflict in its own minute.
+        """
+        start = dt_util.start_of_local_day(day)
+        end = dt_util.start_of_local_day(day + timedelta(days=1))
+        now = dt_util.now()
+        lookups = self._lookups()
+        devices = dr.async_get(self.hass)
+        found: list[DayItem] = []
+        for device_id in sorted(self.summaries):
+            device = devices.async_get(device_id)
+            if device is None:
+                continue
+            rows = self._day_rows(device_id, start, end, now, lookups)
+            found.extend(_day_items(device_id, device.area_id, rows, start, end))
+        return sorted(found, key=lambda item: (item.time, item.device_id, item.automation))
+
+    def _day_rows(
+        self,
+        device_id: str,
+        start: datetime,
+        end: datetime,
+        now: datetime,
+        lookups: nextrun.Lookups,
+    ) -> list[_DayRow]:
+        """Return a device's rows with their runs from the start of the day.
+
+        The rows the device's view is made of (`_summary`): the provider's items stand for
+        the owned routine automation, whose parsed lines are then left out.
+        """
+        routine = self._provider.routine_summary(device_id) if self._provider else None
+        provided = (
+            routine
+            if routine is not None and routine.status is not Status.DETACHED and routine.items
+            else None
+        )
+        rows = self._day_routine_rows(device_id, provided, start, now) if provided else []
+        owned = self._index.routines.get(device_id)
+        own_id = owned.automation_id if owned else markers.automation_id(device_id)
+        since = start - _INSTANT
+        for entry in self._index.lines.get(device_id, []):
+            if provided and entry.kind == KIND_ROUTINE and entry.line.automation_id == own_id:
+                continue
+            runs = (
+                nextrun.next_occurrences(
+                    entry.line, since, lookups, horizon=timedelta(days=1), limit=DAY_LIMIT
+                )
+                if _is_on(self.hass.states.get(entry.automation_entity))
+                else []
+            )
+            rows.append(
+                _DayRow(
+                    entry.kind,
+                    entry.automation_entity,
+                    entry.line.entity_ids,
+                    tuple(run for run in runs if run.at < end),
+                )
+            )
+        return rows
+
+    def _day_routine_rows(
+        self, device_id: str, routine: RoutineSummary, start: datetime, now: datetime
+    ) -> list[_DayRow]:
+        """Return the provider's items as rows, the way `_routine_rows` reads them.
+
+        The first item stands for the owned automation: while it runs, its actions come
+        from its inputs, less those its pause skips; while it does not, it has none. Every
+        other item, and every item before the owned automation is indexed, counts its next
+        run with its action unknown.
+        """
+        owned = self._index.routines.get(device_id)
+        pause_end = _pause_end(routine, now)
+        rows: list[_DayRow] = []
+        for index, item in enumerate(routine.items):
+            if index or owned is None:
+                runs: tuple[Occurrence, ...] = (
+                    (Occurrence(item.next_run, None),) if item.next_run else ()
+                )
+                rows.append(_DayRow(item.kind, item.automation_entity, (), runs))
+            elif routine.status in _RUNNING_STATUSES and _is_on(
+                self.hass.states.get(owned.automation_entity)
+            ):
+                planned = self._routine_occurrences(owned, None, start - _INSTANT)
+                runs = tuple(
+                    run
+                    for run in planned
+                    if pause_end is None or not now < run.at < pause_end  # skipped by the pause
+                )
+                settings = owned.settings
+                rows.append(
+                    _DayRow(
+                        item.kind, item.automation_entity, (settings.target_entity,), runs, settings
+                    )
+                )
+            else:
+                rows.append(_DayRow(item.kind, item.automation_entity, (), ()))
+        return rows
+
 
 @callback
 def async_sync_conflict_issues(
@@ -962,3 +1072,74 @@ def _held_time(state: State | None) -> time | datetime | None:
     if moment is None:
         return None
     return moment if moment.tzinfo else moment.replace(tzinfo=dt_util.get_default_time_zone())
+
+
+# --------------------------------------------------------------------------------------
+# A day's planned actions (Build A lane 12)
+# --------------------------------------------------------------------------------------
+
+# How many runs of one line a day may hold: a time pattern every minute, with a follow up.
+DAY_LIMIT: Final = 2 * 24 * 60
+# Just before midnight, so an action at 00:00 counts as the day's first.
+_INSTANT: Final = timedelta(microseconds=1)
+
+
+@dataclass(frozen=True, slots=True)
+class DayItem:
+    """One action planned for a local day: an item of the console's Today view.
+
+    `action` is None when it is not known (a routine whose automation is not indexed yet);
+    `kind` and `automation` are those of the Schedule item it belongs to.
+    """
+
+    time: datetime
+    device_id: str
+    area_id: str | None
+    action: Verb | None
+    kind: str
+    automation: str
+    conflict: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _DayRow:
+    """One Schedule item of a device with its runs; `routine` is set while a routine runs."""
+
+    kind: str
+    automation: str
+    entity_ids: tuple[str, ...]
+    runs: tuple[Occurrence, ...]
+    routine: RoutineSettings | None = None
+
+
+def _day_items(
+    device_id: str, area_id: str | None, rows: Sequence[_DayRow], start: datetime, end: datetime
+) -> list[DayItem]:
+    """Return a device's runs inside the day as items, each once, with its conflict flag.
+
+    `conflicts.find` reports one conflict per pair and reason in a window, so it is asked
+    minute by minute: every run in a conflicting minute of a conflicting row is marked.
+    """
+    inside = [tuple(run for run in row.runs if start <= run.at < end) for row in rows]
+    planned = [
+        conflicts.Planned(index, row.entity_ids, runs, row.routine)
+        for index, (row, runs) in enumerate(zip(rows, inside, strict=True))
+    ]
+    marked: set[tuple[int, datetime]] = set()
+    for minute in sorted({_minute_of(run.at) for runs in inside for run in runs}):
+        for found in conflicts.find(planned, minute, minute + timedelta(minutes=1)):
+            marked.update(((found.a, minute), (found.b, minute)))
+    items: dict[tuple[Any, ...], DayItem] = {}
+    for index, (row, runs) in enumerate(zip(rows, inside, strict=True)):
+        for run in runs:
+            key = (run.at, run.verb, row.kind, row.automation)
+            earlier = items.get(key)
+            conflict = (index, _minute_of(run.at)) in marked or bool(earlier and earlier.conflict)
+            items[key] = DayItem(
+                run.at, device_id, area_id, run.verb, row.kind, row.automation, conflict
+            )
+    return list(items.values())
+
+
+def _minute_of(moment: datetime) -> datetime:
+    return moment.replace(second=0, microsecond=0)

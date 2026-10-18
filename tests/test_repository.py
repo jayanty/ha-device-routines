@@ -59,6 +59,7 @@ ALLOWED_CORE_PREFIXES = (
     "homeassistant.components.datetime",
     "homeassistant.components.diagnostics",
     "homeassistant.components.repairs",
+    "homeassistant.components.websocket_api",
 )
 
 # The official rule names of the Integration Quality Scale, as shipped with core 2026.10.

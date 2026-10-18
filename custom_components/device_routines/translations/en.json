@@ -306,6 +306,21 @@
     },
     "unknown_routine": {
       "message": "{automation} is not a routine Device Routines manages."
+    },
+    "not_loaded": {
+      "message": "Device Routines is not loaded. Wait until it has started, or check its entry on the integrations page."
+    },
+    "target_all_reserved": {
+      "message": "A target of all is reserved for a later version. Choose devices, entities, areas, floors or labels."
+    },
+    "invalid_choice": {
+      "message": "{setting} must be one of: {allowed}."
+    },
+    "invalid_boolean": {
+      "message": "{setting} must be on or off."
+    },
+    "invalid_ai_task_entity": {
+      "message": "{setting} must be an AI Task entity, or empty."
     }
   },
   "triggers": {
