@@ -1304,9 +1304,15 @@ async def test_the_manager_writes_compile_and_the_schedule_shows_its_sentence(
     assert hass.states.get(view.automation_entity_id).state == "on"  # type: ignore[union-attr]
     # The core renders the entry the way `render` does: what the summary parses.
     assert ha_adapter.automation_config(hass, view.automation_entity_id) == render(entry)
-    # The summary read the written file back to the settings.
+    # The summary read the written file back to the settings, `respect_manual` aside: the
+    # blueprint never reads it, so a write that changes only that input leaves the loaded
+    # automation as it was (`test_a_write_of_respect_manual_alone_keeps_the_loaded_automation`).
+    # The manager's settings hold every input.
+    canonical = compiler.canonical(settings)
+    assert view.settings == canonical
     coordinator = routines.runtime_data.summary
-    assert coordinator._index.routines[device_id].settings == compiler.canonical(settings)
+    indexed = coordinator._index.routines[device_id].settings
+    assert replace(indexed, respect_manual=canonical.respect_manual) == canonical
     # The Schedule item is the sentence of the settings, before and after the entry reloads
     # (the manager then reads the routine from the file, as at a start).
     expected = sentence(settings, manager._writer(settings))
@@ -1324,6 +1330,51 @@ async def test_the_manager_writes_compile_and_the_schedule_shows_its_sentence(
     expected = sentence(settings, manager._writer(settings))
     item = routines.runtime_data.summary.summaries[device_id].items[0]
     assert (item.kind, item.summary) == (KIND_ROUTINE, expected)
+
+
+async def test_a_write_of_respect_manual_alone_keeps_the_loaded_automation(
+    hass: HomeAssistant, home: Home, routines: MockConfigEntry, freezer: Any
+) -> None:
+    """Respect manual changes alone renders the same automation, so core keeps it.
+
+    The blueprint declares `respect_manual` and never reads it (the integration enforces
+    it), and a reload of one id replaces the loaded automation only when its name or its
+    rendered config changed. The entity keeps its previous blueprint inputs, which the
+    summary's index decompiles, until the next start; the file, the manager and the
+    Schedule hold the written value. Two hypothesis examples in a row that differ in this
+    input alone tripped the round trip above (2026-10-18).
+    """
+    manager: RoutineManager = routines.runtime_data.manager
+    await give_routine(hass, manager, home.fan, freezer, on_time=time(17), respect_manual=True)
+    view = manager.get(home.fan)
+    assert view is not None
+    entity_id = view.automation_entity_id
+    assert entity_id is not None
+    loaded = hass.states.get(entity_id)
+
+    result = await manager.async_update(home.fan, {"respect_manual": False})
+    assert result.problem is None
+    await _settle(hass, freezer)
+
+    view = manager.get(home.fan)
+    assert view is not None
+    entry = file_entry(hass, view.automation_id)
+    assert entry is not None
+    assert entry["use_blueprint"]["input"]["respect_manual"] is False
+    assert view.settings.respect_manual is False
+    # The same automation entity, still built from the previous inputs.
+    assert hass.states.get(entity_id) is loaded
+    blueprint = ha_adapter.automation_blueprint(hass, entity_id)
+    assert blueprint is not None
+    assert blueprint["input"]["respect_manual"] is True
+    coordinator = routines.runtime_data.summary
+    assert coordinator._index.routines[home.fan].settings.respect_manual is True
+    # What the device page shows comes from the manager.
+    item = coordinator.summaries[home.fan].items[0]
+    assert (item.kind, item.summary) == (
+        KIND_ROUTINE,
+        sentence(view.settings, manager._writer(view.settings)),
+    )
 
 
 @harness(4)
