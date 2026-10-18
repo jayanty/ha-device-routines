@@ -99,13 +99,20 @@ def _duration_mapping(value: Mapping[str, Any]) -> timedelta | None:
 
 
 def parse_duration(value: Any) -> timedelta | None:
-    """Read a time period: seconds, `[-]H:MM[:SS]` or a mapping; None otherwise."""
-    if (seconds := _number(value)) is not None:
-        return timedelta(seconds=seconds)
-    if isinstance(value, str):
-        return _duration_text(value)
-    if isinstance(value, Mapping):
-        return _duration_mapping(value)
+    """Read a time period: seconds, `[-]H:MM[:SS]` or a mapping; None otherwise.
+
+    A period no `timedelta` holds (infinite, not a number, beyond a billion days) is not
+    understood either, so one odd automation never stops the summary.
+    """
+    try:
+        if (seconds := _number(value)) is not None:
+            return timedelta(seconds=seconds)
+        if isinstance(value, str):
+            return _duration_text(value)
+        if isinstance(value, Mapping):
+            return _duration_mapping(value)
+    except OverflowError, ValueError:
+        return None
     return None
 
 

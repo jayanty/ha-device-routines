@@ -116,6 +116,12 @@ def test_parse_time(value: Any, expected: time | None) -> None:
         ("{{ 5 }}", None),
         (True, None),
         (None, None),
+        (float("inf"), None),
+        (float("nan"), None),
+        (1e30, None),
+        ("99999999999:00", None),
+        ({"seconds": float("inf")}, None),
+        ({"days": 1e30}, None),
     ],
 )
 def test_parse_duration(value: Any, expected: timedelta | None) -> None:
@@ -311,6 +317,8 @@ def test_a_pair_that_can_never_fire_is_left_out_and_repeats_are_read_once() -> N
         {"trigger": "state", "entity_id": FAN, "not_to": ["off"]},
         {"trigger": "state", "entity_id": FAN, "for": "{{ 5 }}"},
         {"trigger": "state", "entity_id": FAN, "for": "later"},
+        {"trigger": "state", "entity_id": FAN, "to": "on", "for": {"seconds": float("inf")}},
+        {"trigger": "state", "entity_id": FAN, "to": "on", "for": "99999999999:00"},
         {"trigger": "state", "entity_id": UNKNOWN_REGISTRY_ID},
         {"trigger": "state"},
         {"trigger": "state", "entity_id": FAN, "to": []},

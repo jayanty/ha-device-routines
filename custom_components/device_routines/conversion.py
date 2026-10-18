@@ -268,10 +268,7 @@ def _turn_off_after(
 
 def _whole_minutes(value: Any) -> int | None:
     """Return a `for` period as whole minutes; None for seconds or anything unreadable."""
-    try:
-        period = parser.parse_duration(value)
-    except OverflowError, ValueError:  # an infinite or huge number of seconds
-        return None
+    period = parser.parse_duration(value)
     if period is None or period % timedelta(minutes=1):
         return None
     return period // timedelta(minutes=1)
