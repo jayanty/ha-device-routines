@@ -6,13 +6,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Fixed
-
-- A routine written at the same time as other routines could lose its Turn off after
-  timer: a sync of `automations.yaml` that read the file just before the routine's first
-  write treated the routine as deleted by hand and deleted its timer, so Turn off after
-  did nothing until the next start of Home Assistant.
-
 ## [1.0.0] - 2026-10-18
 
 Sun times, Only when, conversion offers and the console (Phase 4), first published as the
@@ -60,6 +53,10 @@ routine blueprint input schema 2 with the same behavior.
 
 ### Fixed
 
+- A routine written at the same time as other routines no longer loses its Turn off after
+  timer. Before, a sync of `automations.yaml` that read the file just before the routine's
+  first write could treat the routine as deleted by hand and delete its timer, so Turn off
+  after did nothing until the next start of Home Assistant (`v1.0.0-beta.1` and 0.3.0).
 - A routine whose Turn off at is midnight (12:00 AM) no longer counts as on for the whole
   next day: a restart, a reconnect or a cleared manual override on that day turned the
   device on. Version 0.3.0 has this fault.
