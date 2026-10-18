@@ -20,7 +20,11 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
 from custom_components.device_routines import ha_adapter, maintenance, markers, websocket_api
-from custom_components.device_routines.manager import ActionResults, RoutineManager
+from custom_components.device_routines.manager import (
+    SCHEDULE_DEBOUNCE_SECONDS as SCHEDULE_DEBOUNCE,
+    ActionResults,
+    RoutineManager,
+)
 from custom_components.device_routines.models import Weekday
 from custom_components.device_routines.settings import GlobalSettings, TimeFormat
 from custom_components.device_routines.summary import DEBOUNCE_SECONDS as SUMMARY_DEBOUNCE
@@ -815,6 +819,47 @@ async def test_subscribe_pushes_the_managers_events_and_stops_on_unsubscribe(
     assert [event["kind"] for event in after_set].count("settings_changed") == 1
     assert opted_out(home) in from_new_manager
     assert after_unsubscribe == []
+
+
+async def test_an_edit_of_a_hand_written_automation_pushes_schedule_changed(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    at_four: Clock,
+    freezer: Any,
+    hass_ws_client: Any,
+) -> None:
+    """Plan A4.0 item 8 (L49): the console's Today view hears hand written edits too.
+
+    The summary tells the manager once its views moved; the manager pushes one
+    `schedule_changed` a second later, however many automations the edit touched.
+    """
+    await window(hass, manager, home, freezer)
+    client = await hass_ws_client(hass)
+    await call(client, {"type": f"{PREFIX}/subscribe"})
+
+    await add_automations(
+        hass,
+        freezer,
+        timed("lamp_on", "07:00:00", "light.turn_on", LAMP),
+        timed("lamp_off", "21:00:00", "light.turn_off", LAMP),
+    )
+    early, _ = await events_before(client, LIST)
+    freezer.tick(timedelta(seconds=SCHEDULE_DEBOUNCE + 0.1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    pushed, _ = await events_before(client, LIST)
+
+    assert early == []
+    assert pushed == [{"kind": "schedule_changed", "device_id": None, "reason": None, "data": None}]
+
+    # An edit that moves no view pushes nothing.
+    await add_automations(hass, freezer)
+    freezer.tick(timedelta(seconds=SCHEDULE_DEBOUNCE + 0.1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    quiet, _ = await events_before(client, LIST)
+    assert quiet == []
 
 
 async def test_subscribe_carries_the_data_of_a_skipped_action(

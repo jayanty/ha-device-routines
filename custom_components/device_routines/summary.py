@@ -35,7 +35,8 @@ index rebuild it queues the hand written automations with a line the parser coul
 fully read, asks the chosen AI Task entity about them one at a time, and the views show
 a cached answer in place of the custom logic line, marked `(AI)` and `source: ai`. A
 change listener (`async_add_change_listener`) lets the hub Routines sensor follow every
-device's summary.
+device's summary, and tells the manager after each view refresh that moved one, which
+it pushes to its listeners as one debounced `schedule_changed` (L49).
 """
 
 from __future__ import annotations
@@ -547,7 +548,9 @@ class SummaryCoordinator:
         """Call `update` whenever any device's summary changes; return the unsubscriber.
 
         The hub Routines sensor follows the routines' next actions this way, so it moves
-        on at each action without a timer of its own.
+        on at each action without a timer of its own; the manager turns it into one
+        debounced `schedule_changed` for its listeners, so an edit of a hand written
+        automation reaches the console as a routine change does (L49).
         """
         self._change_listeners.append(update)
 

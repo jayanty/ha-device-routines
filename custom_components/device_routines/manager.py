@@ -54,6 +54,7 @@ from homeassistant.core import (
     CALLBACK_TYPE,
     Event,
     EventStateChangedData,
+    HassJob,
     HomeAssistant,
     State,
     callback,
@@ -123,6 +124,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # Settings changes inside this many seconds of each other are one write (PRD 7.2).
 DEBOUNCE_SECONDS: Final = 1.0
+# Schedule summary changes inside this many seconds are one `schedule_changed` (L49).
+SCHEDULE_DEBOUNCE_SECONDS: Final = 1.0
 
 # Who asked for a change; logged and carried in listener events.
 SOURCE_API: Final = "api"
@@ -539,6 +542,8 @@ class RoutineManager:
         self._blueprint_status: str | None = None
         self._last_reconcile: datetime | None = None
         self._stopping = False
+        self._schedule_handle: CALLBACK_TYPE | None = None
+        self._unsubscribe_schedule: CALLBACK_TYPE = _nothing
 
     # ----------------------------------------------------------------------------------
     # Lifecycle
@@ -574,6 +579,7 @@ class RoutineManager:
             ),
             bus.async_listen(EVENT_STATE_CHANGED, self._schedule_filled, event_filter=_has_blocks),
         ]
+        self._unsubscribe_schedule = self.summary.async_add_change_listener(self._schedule_moved)
         self.summary.set_routine_provider(self)
         self.summary.set_ai_store(self._store)
         await self._attributor.async_start()
@@ -602,6 +608,11 @@ class RoutineManager:
         for unsubscribe in self._unsubscribe:
             unsubscribe()
         self._unsubscribe.clear()
+        self._unsubscribe_schedule()
+        self._unsubscribe_schedule = _nothing
+        if self._schedule_handle is not None:
+            self._schedule_handle()
+            self._schedule_handle = None
         for routine in self._routines.values():
             self._cancel_resume(routine)
             self._unwatch_timer(routine)
@@ -629,6 +640,27 @@ class RoutineManager:
     def _notify(self, event: ManagerEvent) -> None:
         for update in list(self._listeners):
             update(event)
+
+    @callback
+    def _schedule_moved(self) -> None:
+        """Tell listeners, once a second later, that the Schedule summary moved (L49).
+
+        The summary calls this after a view refresh that changed a device's summary, for
+        an edit of a hand written automation as much as for a routine, so the console's
+        Today view follows both; a burst of changes is one `schedule_changed`.
+        """
+        if self._schedule_handle is not None or self._stopping:
+            return
+        self._schedule_handle = async_call_later(
+            self.hass,
+            SCHEDULE_DEBOUNCE_SECONDS,
+            HassJob(self._schedule_due, f"{DOMAIN} schedule changed", cancel_on_shutdown=True),
+        )
+
+    @callback
+    def _schedule_due(self, _now: datetime) -> None:
+        self._schedule_handle = None
+        self._notify(ManagerEvent("schedule_changed", None))
 
     @callback
     def _changed(self, device_id: str, reason: str | None = None) -> None:
@@ -2747,6 +2779,11 @@ class RoutineManager:
 # --------------------------------------------------------------------------------------
 # Small helpers
 # --------------------------------------------------------------------------------------
+
+
+@callback
+def _nothing() -> None:
+    """Unsubscribe from nothing: what a listener handle is before it listens."""
 
 
 def _filled(state: State | None) -> bool:
