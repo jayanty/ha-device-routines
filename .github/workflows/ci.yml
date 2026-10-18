@@ -124,12 +124,44 @@ jobs:
           fi
           echo "tools/ha_deploy.py is identical in both repositories."
 
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      # The same Node major as release.yml, so the bundle checked here is the one released;
+      # the build is byte identical across Node 22 and 26 (decision L62).
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: The committed bundle equals the fresh build
+        run: |
+          set -euo pipefail
+          bundle=custom_components/device_routines/frontend/dist
+          changes=$(git -C .. status --porcelain --untracked-files=all -- "$bundle")
+          if [ -n "$changes" ]; then
+            echo "$changes"
+            git -C .. diff --stat -- "$bundle"
+            echo "::error::The committed console bundle differs from a fresh build. Run npm run build in frontend/ and commit $bundle."
+            exit 1
+          fi
+          echo "The committed bundle equals the fresh build."
+
   promote:
     name: promote
     # Moves dev-stable to this commit when every other job is green, and only on a push
     # to dev. The tag is the only thing the instance ever reads (PRD 11.2, D29).
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
-    needs: [lint, typecheck, test, hassfest, hacs, privacy, style, deploy-tool-parity]
+    needs: [lint, typecheck, test, hassfest, hacs, privacy, style, deploy-tool-parity, frontend]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -1,27 +1,36 @@
 // The Routines view (PRD 4.5): every routine with its device, area, Schedule sentence,
-// status, next action and pause state; detached routines in their own section; Skip
-// next, pause until, resume, enable and disable per row and for a selection; links to the
-// device page and the automation; opting devices in and out; inline settings edits.
-// Every control is one command of docs/api.md, and the service layer decides.
+// status, next action and pause state; detached routines, routines of opted out devices
+// and conversion candidates in their own sections; Skip next, pause until, resume, enable
+// and disable per row and for a selection; links to the device page and the automation;
+// opting devices in and out; inline settings edits; converting a hand written automation
+// into a routine after both sentences were shown. Every control is one command of
+// docs/api.md, and the service layer decides. Fields a server before Build B does not
+// send (`opted_in`, the `ignored` placeholders) and its missing `conversions/list` fall
+// back to what the console showed before.
 
 import { css, html, LitElement, nothing } from "lit";
 import type { PropertyValues, TemplateResult } from "lit";
 
 import type {
   ActionResults,
+  ConversionOffer,
   DeviceChoice,
   Days,
   HomeAssistant,
+  IgnoredTarget,
   RoutineAction,
   RoutineSettings,
   RoutineView,
+  TimeFormat,
 } from "../api";
 import {
   automationPath,
+  convertAutomation,
   DAYS,
   devicePath,
   getRoutine,
   isApiError,
+  listConversions,
   listDevices,
   listRoutines,
   optDevices,
@@ -138,10 +147,19 @@ function byName(a: RoutineView, b: RoutineView): number {
   return a.device_name.localeCompare(b.device_name) || a.device_id.localeCompare(b.device_id);
 }
 
+/** A routine whose device was opted out and that waits for cleanup; absent means opted in. */
+function optedOut(routine: RoutineView): boolean {
+  return routine.opted_in === false;
+}
+
+/** The core's answer to a command it does not know: a server without conversion offers. */
+const UNKNOWN_COMMAND = "unknown_command";
+
 export class DrRoutinesView extends LitElement {
   static override properties = {
     hass: { attribute: false },
     narrow: { type: Boolean },
+    timeFormat: { attribute: false },
     _routines: { state: true },
     _error: { state: true },
     _notice: { state: true },
@@ -156,6 +174,9 @@ export class DrRoutinesView extends LitElement {
     _devices: { state: true },
     _suggested: { state: true },
     _devicesSelected: { state: true },
+    _offers: { state: true },
+    _offersError: { state: true },
+    _confirmConvert: { state: true },
   };
 
   static override styles = [
@@ -184,11 +205,24 @@ export class DrRoutinesView extends LitElement {
         border-radius: var(--ha-border-radius-sm, 4px);
         margin: 0 0 var(--ha-space-3, 12px);
       }
+
+      .sentences {
+        display: grid;
+        gap: var(--ha-space-2, 8px) var(--ha-space-4, 16px);
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        margin: 0 0 var(--ha-space-3, 12px);
+      }
+
+      .sentences strong {
+        display: block;
+        font-weight: var(--ha-font-weight-medium, 500);
+      }
     `,
   ];
 
   declare hass: HomeAssistant | undefined;
   declare narrow: boolean;
+  declare timeFormat: TimeFormat | undefined;
   declare _routines: RoutineView[] | undefined;
   declare _error: string | undefined;
   declare _notice: string[];
@@ -203,6 +237,10 @@ export class DrRoutinesView extends LitElement {
   declare _devices: DeviceChoice[] | undefined;
   declare _suggested: ReadonlySet<string>;
   declare _devicesSelected: ReadonlySet<string>;
+  /** The conversion offers; undefined while unknown or on a server that has none. */
+  declare _offers: ConversionOffer[] | undefined;
+  declare _offersError: string | undefined;
+  declare _confirmConvert: string | undefined;
 
   private _started = false;
 
@@ -224,19 +262,37 @@ export class DrRoutinesView extends LitElement {
     }
   }
 
-  /** Read every routine again (`routines/list`). */
+  /** Read every routine again (`routines/list`), and the conversion offers. */
   async refresh(): Promise<void> {
     const hass = this.hass;
     if (hass === undefined) {
       return;
     }
+    const offers = this.refreshConversions();
     try {
       this._routines = await listRoutines(hass);
       this._error = undefined;
-      const known = new Set(this._routines.map((routine) => routine.device_id));
+      const known = new Set(this._routines.filter((routine) => !optedOut(routine)).map((routine) => routine.device_id));
       this._selected = new Set([...this._selected].filter((id) => known.has(id)));
     } catch (error) {
       this._error = await errorText(hass, error);
+    }
+    await offers;
+  }
+
+  /** Read the conversion offers again (`conversions/list`); they change with the schedule. */
+  async refreshConversions(): Promise<void> {
+    const hass = this.hass;
+    if (hass === undefined) {
+      return;
+    }
+    try {
+      this._offers = await listConversions(hass);
+      this._offersError = undefined;
+    } catch (error) {
+      this._offers = undefined;
+      this._offersError =
+        isApiError(error) && error.code === UNKNOWN_COMMAND ? undefined : await errorText(hass, error);
     }
   }
 
@@ -271,6 +327,22 @@ export class DrRoutinesView extends LitElement {
     );
   }
 
+  /**
+   * The name of a target an action left out: the device the server names, else the name
+   * the console knows, else the server's `target`, else the target as sent.
+   */
+  private _ignoredName(ignored: IgnoredTarget): string {
+    const placeholders = ignored.placeholders ?? {};
+    let known: string | undefined;
+    if (ignored.kind === "area") {
+      known = this.hass?.areas?.[ignored.target]?.name;
+    } else if (ignored.kind === "device") {
+      const name = this._name(ignored.target);
+      known = name === ignored.target ? undefined : name;
+    }
+    return placeholders["device"] ?? known ?? placeholders["target"] ?? ignored.target;
+  }
+
   private async _act(action: RoutineAction, deviceIds: string | string[], until?: string): Promise<void> {
     const hass = this.hass;
     if (hass === undefined) {
@@ -287,11 +359,12 @@ export class DrRoutinesView extends LitElement {
     this._pauseSelection = false;
     const lines = [t(hass, "routines.result", { count: answer.results.length })];
     for (const ignored of answer.ignored) {
-      const name = this._name(ignored.target);
+      const placeholders = ignored.placeholders ?? {};
+      const name = this._ignoredName(ignored);
       const reason = await errorText(hass, {
         code: ignored.reason,
         message: ignored.reason,
-        translation_placeholders: { device: name },
+        translation_placeholders: { device: name, target: name, ...placeholders },
       });
       lines.push(t(hass, "routines.ignored", { target: name, reason }));
     }
@@ -368,6 +441,21 @@ export class DrRoutinesView extends LitElement {
     }
   }
 
+  private async _convert(offer: ConversionOffer): Promise<void> {
+    const hass = this.hass;
+    if (hass === undefined) {
+      return;
+    }
+    this._confirmConvert = undefined;
+    try {
+      const view = await convertAutomation(hass, offer.automation_entity_id);
+      this._notice = [t(hass, "routines.conversions.converted", { alias: offer.alias, device: view.device_name })];
+    } catch (error) {
+      this._notice = [await errorText(hass, error)];
+    }
+    await this.refresh();
+  }
+
   private _edit(routine: RoutineView): void {
     this._editing = routine.device_id;
     this._draft = draftOf(routine.settings);
@@ -419,8 +507,9 @@ export class DrRoutinesView extends LitElement {
               <button data-action="retry" @click=${() => void this.refresh()}>${t(hass, "common.retry")}</button>`}
       </section>`;
     }
-    const managed = this._routines.filter((routine) => routine.status !== "detached");
     const detached = this._routines.filter((routine) => routine.status === "detached");
+    const optedOutRoutines = this._routines.filter((routine) => routine.status !== "detached" && optedOut(routine));
+    const managed = this._routines.filter((routine) => routine.status !== "detached" && !optedOut(routine));
     return html`
       <section id="routines">
         <h2>${t(hass, "routines.title")}</h2>
@@ -459,6 +548,7 @@ export class DrRoutinesView extends LitElement {
               </table>
             </div>`}
       </section>
+      ${optedOutRoutines.length === 0 ? nothing : this._renderOptedOut(optedOutRoutines)}
       ${detached.length === 0 ? nothing : this._renderDetached(detached)}
       ${this.renderConversionCandidates()}
       ${this._renderDevices()}
@@ -466,12 +556,129 @@ export class DrRoutinesView extends LitElement {
   }
 
   /**
-   * The conversion candidates section of PRD 4.5. Its data comes with the conversion
-   * offers (FR-M1), whose command is not in docs/api.md yet; until it is, the section
-   * renders nothing.
+   * The conversion candidates section of PRD 4.5: every hand written automation that
+   * does exactly what a routine does (FR-M1, `conversions/list`). Converting shows the
+   * automation's sentence and the routine's side by side before anything changes. The
+   * section is absent while there is no offer, and on a server without the command.
    */
   protected renderConversionCandidates(): TemplateResult | typeof nothing {
-    return nothing;
+    const hass = this.hass;
+    const offers = this._offers ?? [];
+    if (offers.length === 0) {
+      return this._offersError === undefined
+        ? nothing
+        : html`<section id="conversions">
+            <h2>${t(hass, "routines.conversions.title")}</h2>
+            <p class="error" role="alert">${this._offersError}</p>
+          </section>`;
+    }
+    return html`<section id="conversions">
+      <h2>${t(hass, "routines.conversions.title")}</h2>
+      <p class="hint">${t(hass, "routines.conversions.description")}</p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>${t(hass, "routines.conversions.automation")}</th>
+              <th>${t(hass, "routines.columns.device")}</th>
+              <th>${t(hass, "routines.columns.schedule")}</th>
+              <th>${t(hass, "routines.columns.actions")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${offers.map((offer) => this._renderOffer(offer))}
+          </tbody>
+        </table>
+      </div>
+    </section>`;
+  }
+
+  private _renderOffer(offer: ConversionOffer): TemplateResult {
+    const hass = this.hass;
+    const id = offer.automation_entity_id;
+    const confirming = this._confirmConvert === id;
+    return html`<tr data-offer=${id}>
+        <td>
+          <a data-link="automation" href=${automationPath(offer.automation_id)} @click=${followLink}
+            >${offer.alias}</a
+          >
+        </td>
+        <td>
+          <a data-link="device" href=${devicePath(offer.device_id)} @click=${followLink}>${offer.device_name}</a>
+        </td>
+        <td data-cell="sentence">${offer.original_sentence}</td>
+        <td>
+          ${confirming
+            ? nothing
+            : html`<button data-action="convert" @click=${() => (this._confirmConvert = id)}>
+                ${t(hass, "routines.conversions.convert")}
+              </button>`}
+        </td>
+      </tr>
+      ${confirming
+        ? html`<tr data-confirm-offer=${id}>
+            <td colspan="4">
+              <p>${t(hass, "routines.conversions.confirm", { alias: offer.alias, device: offer.device_name })}</p>
+              <div class="sentences">
+                <div data-sentence="original">
+                  <strong>${t(hass, "routines.conversions.original")}</strong>
+                  ${offer.original_sentence}
+                </div>
+                <div data-sentence="routine">
+                  <strong>${t(hass, "routines.conversions.routine")}</strong>
+                  ${offer.routine_sentence}
+                </div>
+              </div>
+              <button class="primary" data-action="confirm_convert" @click=${() => void this._convert(offer)}>
+                ${t(hass, "routines.conversions.confirm_convert")}
+              </button>
+              <button data-action="cancel_convert" @click=${() => (this._confirmConvert = undefined)}>
+                ${t(hass, "common.cancel")}
+              </button>
+            </td>
+          </tr>`
+        : nothing}`;
+  }
+
+  private _renderOptedOut(routines: RoutineView[]): TemplateResult {
+    const hass = this.hass;
+    return html`<section id="opted-out">
+      <h2>${t(hass, "routines.opted_out_section.title")}</h2>
+      <p class="hint">${t(hass, "routines.opted_out_section.description")}</p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>${t(hass, "routines.columns.device")}</th>
+              <th>${t(hass, "routines.columns.area")}</th>
+              <th>${t(hass, "routines.columns.schedule")}</th>
+              <th>${t(hass, "routines.columns.actions")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${routines.map(
+              (routine) => html`<tr data-device=${routine.device_id}>
+                <td>
+                  <a data-link="device" href=${devicePath(routine.device_id)} @click=${followLink}
+                    >${routine.device_name}</a
+                  >
+                </td>
+                <td>${areaName(hass, routine.area_id)}</td>
+                <td data-cell="sentence">${routine.sentence ?? t(hass, "routines.no_sentence")}</td>
+                <td>
+                  <button data-action="opt_in_again" @click=${() => void this._optIn([routine.device_id])}>
+                    ${t(hass, "routines.opted_out_section.opt_in_again")}
+                  </button>
+                  <a data-link="automation" href=${automationPath(routine.automation_id)} @click=${followLink}>
+                    ${t(hass, "routines.open_automation")}
+                  </a>
+                </td>
+              </tr>`,
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>`;
   }
 
   private _selectAll(routines: RoutineView[], event: Event): void {
@@ -546,7 +753,10 @@ export class DrRoutinesView extends LitElement {
     if (next === null) {
       return t(hass, "routines.no_next_action");
     }
-    return t(hass, "routines.next_action", { verb: verbText(hass, next.verb), time: formatDateTime(hass, next.at) });
+    return t(hass, "routines.next_action", {
+      verb: verbText(hass, next.verb),
+      time: formatDateTime(hass, next.at, this.timeFormat),
+    });
   }
 
   private _renderRow(routine: RoutineView): TemplateResult {
@@ -571,7 +781,9 @@ export class DrRoutinesView extends LitElement {
         <td data-cell="next">${this._renderNextAction(routine)}</td>
         <td data-cell="pause">
           ${paused
-            ? t(hass, "routines.paused_until_time", { time: formatDateTime(hass, routine.paused_until ?? "") })
+            ? t(hass, "routines.paused_until_time", {
+                time: formatDateTime(hass, routine.paused_until ?? "", this.timeFormat),
+              })
             : t(hass, "routines.not_paused")}
         </td>
         <td>

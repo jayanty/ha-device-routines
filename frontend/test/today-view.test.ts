@@ -139,6 +139,57 @@ describe("schedule/today", () => {
   });
 });
 
+describe("Build B fields", () => {
+  test("names come with the items, and a server without them falls back to the registry and the id", async () => {
+    const hass = makeHass();
+    const day = response<DaySchedule>("schedule/today");
+    const [lamp, fan] = day.items as [DayItem, DayItem];
+    hass.connection.answer("schedule/today", () => ({
+      ...day,
+      items: [
+        { ...lamp, device_name: "Reading lamp", alias: "Morning lamp" },
+        { ...fan, device_name: null, alias: null },
+      ],
+    }));
+    const { root } = await view(hass);
+
+    const cells = rows(one(root, '[data-area="living_room"]'));
+    expect(cells.map((row) => [row[1], row[3]])).toEqual([
+      ["Reading lamp", "Automation Morning lamp"],
+      ["Living room fan", "Routine automation.routine_living_room_fan"],
+    ]);
+    const source = one(root, "tr[data-item] .muted");
+    expect(source.getAttribute("title")).toBe("automation.morning_lamp");
+  });
+
+  test("flags the actions Only when conditions gate, with their count", async () => {
+    const hass = makeHass();
+    const day = response<DaySchedule>("schedule/today");
+    const [lamp, fan, late] = day.items as [DayItem, DayItem, DayItem];
+    hass.connection.answer("schedule/today", () => ({
+      ...day,
+      items: [{ ...lamp, conditions: 0 }, { ...fan, conditions: 1 }, { ...late, conditions: 2 }],
+    }));
+    const { root } = await view(hass);
+
+    const flags = [...root.querySelectorAll("tr[data-item]")].map((row) => {
+      const flag = row.querySelector("[data-conditions]");
+      return flag === null ? null : [flag.getAttribute("data-conditions"), text(flag)];
+    });
+    expect(flags).toEqual([null, ["1", "If 1 condition passes"], ["2", "If 2 conditions pass"]]);
+  });
+
+  test("time cells follow the integration's time format", async () => {
+    const { element, root } = await view(makeHass({ locale: { language: "en", time_format: "12" } }));
+    const times = (): string[] => [...root.querySelectorAll("td.time")].map((cell) => text(cell));
+    expect(times()).toEqual(["7:00 AM", "5:00 PM", "11:00 PM", "11:00 PM"]);
+
+    element.timeFormat = "24h";
+    await settle(element);
+    expect(times()).toEqual(["07:00", "17:00", "23:00", "23:00"]);
+  });
+});
+
 describe("groupByArea", () => {
   test("orders areas by name with no area last and keeps an unknown area by its id", () => {
     const item = (area: string | null, time: string): DayItem => ({

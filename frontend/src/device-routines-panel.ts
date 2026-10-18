@@ -4,13 +4,15 @@
 // one of three views, chosen by the path after the panel's prefix (`/today`) or the tabs,
 // and holds the one `device_routines/subscribe` subscription of the console: each event
 // refreshes the view it concerns when that view is open (a view reads everything again
-// when it opens). The subscription ends when the panel leaves the page.
+// when it opens). The subscription ends when the panel leaves the page. The panel also
+// reads the integration's Time format setting, at the start and after every
+// `settings_changed`, and hands it to the views, so their times read as the sentences do.
 
 import { css, html, LitElement, nothing } from "lit";
 import type { PropertyValues, TemplateResult } from "lit";
 
-import type { HomeAssistant, ManagerEvent, PanelInfo, PanelRoute } from "./api";
-import { subscribe } from "./api";
+import type { HomeAssistant, ManagerEvent, PanelInfo, PanelRoute, TimeFormat } from "./api";
+import { getSettings, subscribe } from "./api";
 import type { Key } from "./localize";
 import { t } from "./localize";
 import { navigate } from "./navigate";
@@ -45,6 +47,7 @@ export class DeviceRoutinesPanel extends LitElement {
     route: { attribute: false },
     panel: { attribute: false },
     _view: { state: true },
+    _timeFormat: { state: true },
   };
 
   static override styles = [
@@ -124,8 +127,10 @@ export class DeviceRoutinesPanel extends LitElement {
   declare route: PanelRoute | undefined;
   declare panel: PanelInfo | undefined;
   declare _view: ViewName;
+  declare _timeFormat: TimeFormat | undefined;
 
   private _unsubscribe: Promise<Unsubscribe | undefined> | undefined;
+  private _timeFormatRead = false;
 
   constructor() {
     super();
@@ -151,6 +156,23 @@ export class DeviceRoutinesPanel extends LitElement {
     }
     if (changed.has("hass")) {
       this._subscribe();
+      if (this.hass !== undefined && !this._timeFormatRead) {
+        this._timeFormatRead = true;
+        void this._readTimeFormat();
+      }
+    }
+  }
+
+  /** Read the integration's Time format; without it the views follow the user's profile. */
+  private async _readTimeFormat(): Promise<void> {
+    const hass = this.hass;
+    if (hass === undefined) {
+      return;
+    }
+    try {
+      this._timeFormat = (await getSettings(hass)).time_format;
+    } catch {
+      this._timeFormat = undefined;
     }
   }
 
@@ -173,8 +195,11 @@ export class DeviceRoutinesPanel extends LitElement {
         break;
       case "schedule_changed":
         void root.querySelector("dr-today-view")?.refresh();
+        // Conversion offers change with the schedule (an automation edited or added).
+        void root.querySelector("dr-routines-view")?.refreshConversions();
         break;
       case "settings_changed":
+        void this._readTimeFormat();
         void root.querySelector("dr-settings-view")?.refreshSettings();
         break;
       case "health_changed":
@@ -228,11 +253,23 @@ export class DeviceRoutinesPanel extends LitElement {
   private _renderView(): TemplateResult {
     switch (this._view) {
       case "today":
-        return html`<dr-today-view .hass=${this.hass} ?narrow=${this.narrow}></dr-today-view>`;
+        return html`<dr-today-view
+          .hass=${this.hass}
+          .timeFormat=${this._timeFormat}
+          ?narrow=${this.narrow}
+        ></dr-today-view>`;
       case "settings":
-        return html`<dr-settings-view .hass=${this.hass} ?narrow=${this.narrow}></dr-settings-view>`;
+        return html`<dr-settings-view
+          .hass=${this.hass}
+          .timeFormat=${this._timeFormat}
+          ?narrow=${this.narrow}
+        ></dr-settings-view>`;
       default:
-        return html`<dr-routines-view .hass=${this.hass} ?narrow=${this.narrow}></dr-routines-view>`;
+        return html`<dr-routines-view
+          .hass=${this.hass}
+          .timeFormat=${this._timeFormat}
+          ?narrow=${this.narrow}
+        ></dr-routines-view>`;
     }
   }
 }

@@ -120,6 +120,22 @@
       "title": "Detached routines",
       "description": "These routines were taken over in the automation editor and are normal automations now. Open the automation to change one."
     },
+    "opted_out_section": {
+      "title": "Opted out devices",
+      "description": "These devices were opted out. Their routines are off and keep their settings until the clean up period ends. Opt a device in again to keep its routine.",
+      "opt_in_again": "Opt in again"
+    },
+    "conversions": {
+      "title": "Automations that can become routines",
+      "description": "These hand written automations do exactly what a routine does. Converting one creates the routine, turns the automation off and labels it Replaced by routine. Turning the automation back on undoes it.",
+      "automation": "Automation",
+      "convert": "Convert",
+      "confirm": "{alias} can become a routine on {device}.",
+      "original": "Now, as the automation",
+      "routine": "As a routine",
+      "confirm_convert": "Convert to a routine",
+      "converted": "{alias} is now a routine on {device}. The automation is off and labelled Replaced by routine."
+    },
     "devices": {
       "title": "Add devices",
       "description": "Devices with an entity a routine can drive. Suggested devices are already switched at set times by an automation.",
@@ -138,6 +154,8 @@
     "date": "Day",
     "empty": "Nothing is scheduled on this day.",
     "conflict": "Conflict",
+    "condition_one": "If 1 condition passes",
+    "condition_many": "If {count} conditions pass",
     "columns": {
       "time": "Time",
       "device": "Device",

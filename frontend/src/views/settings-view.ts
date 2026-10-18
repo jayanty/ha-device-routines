@@ -6,7 +6,7 @@
 import { css, html, LitElement, nothing } from "lit";
 import type { PropertyValues, TemplateResult } from "lit";
 
-import type { GlobalSettings, HomeAssistant, MaintenanceAction, MaintenanceReport } from "../api";
+import type { GlobalSettings, HomeAssistant, MaintenanceAction, MaintenanceReport, TimeFormat } from "../api";
 import { getSettings, HEALTH_ENTITY, MAINTENANCE_ACTIONS, runMaintenance, setSettings } from "../api";
 import { formatDateTime } from "../format";
 import type { Key } from "../localize";
@@ -169,6 +169,7 @@ export class DrSettingsView extends LitElement {
   static override properties = {
     hass: { attribute: false },
     narrow: { type: Boolean },
+    timeFormat: { attribute: false },
     _settings: { state: true },
     _draft: { state: true },
     _error: { state: true },
@@ -228,6 +229,7 @@ export class DrSettingsView extends LitElement {
 
   declare hass: HomeAssistant | undefined;
   declare narrow: boolean;
+  declare timeFormat: TimeFormat | undefined;
   declare _settings: Values | undefined;
   declare _draft: Values;
   declare _error: string | undefined;
@@ -511,7 +513,7 @@ export class DrSettingsView extends LitElement {
       return value.map(String).join(", ");
     }
     if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
-      return formatDateTime(this.hass, value);
+      return formatDateTime(this.hass, value, this.timeFormat);
     }
     return String(value);
   }

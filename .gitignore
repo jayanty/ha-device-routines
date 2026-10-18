@@ -23,9 +23,11 @@ venv/
 coverage.xml
 htmlcov/
 
-# Frontend (Phase 4)
+# Frontend (Phase 4). The console bundle inside the integration is committed (decision
+# L62): the dev channel deploys the commit archive and the host has no node.
 node_modules/
 dist/
+!custom_components/device_routines/frontend/dist/
 
 # Editors and operating systems
 .DS_Store

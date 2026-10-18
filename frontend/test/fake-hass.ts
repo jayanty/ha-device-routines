@@ -82,6 +82,9 @@ export function routines(): RoutineView[] {
 
 const PREFIX = "device_routines/";
 
+/** The index of each `devices/opt` example in docs/api.md, in the document's order. */
+export const DEVICES_OPT = { list: 0, suggest: 1, in: 2, out: 3 } as const;
+
 type Handler = (message: MessageBase) => unknown;
 
 function withSeconds(value: unknown): unknown {
@@ -115,11 +118,14 @@ function recordedAnswer(message: MessageBase, list: () => RoutineView[]): unknow
       return response("routines/action");
     case "devices/opt": {
       const op = message["op"];
-      if (op === "list" || op === "suggest") {
-        return response("devices/opt", 0);
+      if (op === "list") {
+        return response("devices/opt", DEVICES_OPT.list);
+      }
+      if (op === "suggest") {
+        return response("devices/opt", DEVICES_OPT.suggest);
       }
       if (op === "in") {
-        return response("devices/opt", 1);
+        return response("devices/opt", DEVICES_OPT.in);
       }
       const ids = message["device_id"] as string[];
       return { results: ids.map((id) => ({ device_id: id, opted_in: false, changed: true, view: null })) };

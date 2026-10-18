@@ -4,7 +4,7 @@
   "after_dependencies": ["ai_task"],
   "codeowners": ["@jayanty"],
   "config_flow": true,
-  "dependencies": ["automation", "blueprint", "timer", "schedule"],
+  "dependencies": ["automation", "blueprint", "timer", "schedule", "http"],
   "documentation": "https://github.com/jayanty/ha-device-routines",
   "integration_type": "service",
   "iot_class": "local_push",

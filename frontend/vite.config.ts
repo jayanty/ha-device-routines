@@ -1,8 +1,8 @@
 // One ES module bundle for the panel (decision L62), and the vitest setup.
 //
-// The bundle lands inside the integration, where the core serves it once `panel.py`
-// registers the panel; that path is ignored by git until the panel and its CI check
-// exist. Tests run in a DOM environment against a fake `hass` (test/fake-hass.ts).
+// The bundle lands inside the integration, where `panel.py` serves it; it is committed,
+// and the CI job `frontend` fails when it differs from a fresh build. Tests run in a DOM
+// environment against a fake `hass` (test/fake-hass.ts).
 
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

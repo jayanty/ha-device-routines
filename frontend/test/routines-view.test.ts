@@ -2,16 +2,20 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import type { RoutineView } from "../src/api";
+import type { ConversionOffer, RoutineView } from "../src/api";
+import { errorText } from "../src/localize";
 import { DrRoutinesView } from "../src/views/routines-view";
 import type { FakeHass } from "./fake-hass";
 import {
   change,
+  DEVICES_OPT,
   documented,
+  fixture,
   makeHass,
   mount,
   one,
   recordedError,
+  response,
   routines,
   settle,
   shadow,
@@ -303,7 +307,7 @@ describe("devices/opt", () => {
     button(lamp, "opt_in").click();
     await settle(element);
 
-    expect(hass.connection.sentOf("devices/opt").at(-1)).toEqual(documented("devices/opt", 1));
+    expect(hass.connection.sentOf("devices/opt").at(-1)).toEqual(documented("devices/opt", DEVICES_OPT.in));
     expect(text(one(root, '[role="status"]'))).toBe("Devices opted in: 1.");
   });
 
@@ -544,8 +548,260 @@ describe("refreshRoutine", () => {
   });
 });
 
-describe("the conversion candidates extension point", () => {
-  test("renders nothing until its API exists, and a subclass can fill it", async () => {
+describe("routines of opted out devices", () => {
+  test("wait in their own section, apart from the routines opted in, and can be opted in again", async () => {
+    const hass = makeHass();
+    const [lamp, fan] = twoRoutines() as [RoutineView, RoutineView];
+    hass.connection.routines = [{ ...lamp, status: "off", opted_in: false }, { ...fan, opted_in: true }];
+    const { element, root } = await view(hass);
+
+    expect(root.querySelector(`#routines tr[data-device="${LAMP}"]`)).toBeNull();
+    expect(row(root, FAN)).toBeTruthy();
+    const waiting = row(root, LAMP, "#opted-out");
+    expect(text(one(root, "#opted-out h2"))).toBe("Opted out devices");
+    expect(text(one(waiting, '[data-cell="sentence"]'))).toBe("On at 7:00 AM");
+    expect(one<HTMLAnchorElement>(waiting, 'a[data-link="automation"]').getAttribute("href")).toBe(
+      "/config/automation/edit/device_routines_9a40d27e18c5",
+    );
+    change(one<HTMLInputElement>(root, 'input[data-select="all"]'), true);
+    await settle(element);
+    expect(text(one(root, "[data-selection] span"))).toBe("1 selected");
+
+    button(waiting, "opt_in_again").click();
+    await settle(element);
+
+    expect(hass.connection.sentOf("devices/opt")).toEqual([
+      { type: "device_routines/devices/opt", op: "in", device_id: [LAMP] },
+    ]);
+  });
+
+  test("a server that sends no opted_in shows every routine as opted in", async () => {
+    const { root } = await view();
+
+    expect(root.querySelector("#opted-out")).toBeNull();
+    expect(row(root, FAN)).toBeTruthy();
+  });
+
+  test("a refresh drops an opted out routine from the selection", async () => {
+    const hass = makeHass();
+    hass.connection.routines = twoRoutines();
+    const { element, root } = await view(hass);
+    change(one<HTMLInputElement>(root, 'input[data-select="all"]'), true);
+    await settle(element);
+    expect(text(one(root, "[data-selection] span"))).toBe("2 selected");
+
+    const [lamp, fan] = twoRoutines() as [RoutineView, RoutineView];
+    hass.connection.routines = [{ ...lamp, opted_in: false }, fan];
+    await element.refresh();
+    await settle(element);
+
+    expect(text(one(root, "[data-selection] span"))).toBe("1 selected");
+  });
+});
+
+describe("the ignored placeholders", () => {
+  test("name a left out target with the placeholders the server sends", async () => {
+    const hass = makeHass();
+    hass.connection.answer("routines/action", () => ({
+      results: [],
+      ignored: [
+        {
+          target: "dev_hall_lamp",
+          kind: "device",
+          reason: "no_routine",
+          placeholders: { target: "dev_hall_lamp", device: "Hall lamp" },
+        },
+        { target: "living_room", kind: "area", reason: "no_routine", placeholders: { target: "living_room" } },
+        { target: "label_1", kind: "label", reason: "no_routine", placeholders: { target: "Night" } },
+        { target: LAMP, kind: "device", reason: "no_routine" },
+        { target: "dev_unknown", kind: "device", reason: "no_routine" },
+      ],
+    }));
+    const { element, root } = await view(hass);
+
+    button(row(root, FAN), "skip_next").click();
+    await settle(element);
+
+    const lines = [...one(root, '[role="status"]').querySelectorAll("div")].map((line) => text(line));
+    expect(lines).toEqual([
+      "Routines changed: 0.",
+      "Hall lamp was left out: Hall lamp has no routine yet. Set a start or stop time first.",
+      "Living room was left out: Living room has no routine yet. Set a start or stop time first.",
+      "Night was left out: Night has no routine yet. Set a start or stop time first.",
+      "Desk lamp was left out: Desk lamp has no routine yet. Set a start or stop time first.",
+      "dev_unknown was left out: dev_unknown has no routine yet. Set a start or stop time first.",
+    ]);
+  });
+});
+
+describe("the time format", () => {
+  test("times follow the integration's setting, Automatic following the user's profile", async () => {
+    const { element, root } = await view(makeHass({ locale: { language: "en", time_format: "12" } }));
+    expect(text(one(row(root, FAN), '[data-cell="next"]'))).toBe("On Mon 5:00 PM");
+
+    element.timeFormat = "24h";
+    await settle(element);
+    expect(text(one(row(root, FAN), '[data-cell="next"]'))).toBe("On Mon 17:00");
+
+    element.timeFormat = "auto";
+    await settle(element);
+    expect(text(one(row(root, FAN), '[data-cell="next"]'))).toBe("On Mon 5:00 PM");
+  });
+});
+
+// --------------------------------------------------------------------------------------
+// Conversion candidates (FR-M1). The payloads follow plan 6.2.5 until docs/api.md
+// records `conversions/list` and `conversions/convert`; then the recorded ones are used.
+// --------------------------------------------------------------------------------------
+
+function contractOffers(): { offers: ConversionOffer[] } {
+  const [fan] = routines() as [RoutineView];
+  return {
+    offers: [
+      {
+        automation_id: "1760000000001",
+        automation_entity_id: "automation.desk_lamp_schedule",
+        alias: "Desk lamp schedule",
+        device_id: LAMP,
+        device_name: "Desk lamp",
+        settings: { ...fan.settings, target_entity: "light.desk_lamp", on_time: "07:00:00", off_time: "09:00:00" },
+        original_sentence: "On at 7:00 AM, off at 9:00 AM",
+        routine_sentence: "On from 7:00 AM to 9:00 AM",
+      },
+    ],
+  };
+}
+
+function recordedOr<T>(command: string, fallback: () => T): T {
+  return fixture[command]?.examples.find((example) => example.response !== null) === undefined
+    ? fallback()
+    : response<T>(command);
+}
+
+function offersAnswer(): { offers: ConversionOffer[] } {
+  return recordedOr("conversions/list", contractOffers);
+}
+
+function withOffers(hass: FakeHass = makeHass()): { hass: FakeHass; offers: ConversionOffer[] } {
+  const answer = offersAnswer();
+  hass.connection.answer("conversions/list", () => answer);
+  hass.connection.answer("conversions/convert", (message) => {
+    const offer = answer.offers.find((item) => item.automation_entity_id === message["automation_entity_id"]);
+    if (offer === undefined) {
+      throw { code: "conversion_not_offered", message: "This automation is no longer offered." };
+    }
+    return recordedOr("conversions/convert", () => ({
+      ...(routines()[0] as RoutineView),
+      device_id: offer.device_id,
+      device_name: offer.device_name,
+      settings: offer.settings,
+    }));
+  });
+  return { hass, offers: answer.offers };
+}
+
+describe("conversion candidates", () => {
+  test("lists every offer with its automation, device and sentence", async () => {
+    const { hass, offers } = withOffers();
+    const { root } = await view(hass);
+
+    expect(hass.connection.sentOf("conversions/list")).toEqual([{ type: "device_routines/conversions/list" }]);
+    expect(text(one(root, "#conversions h2"))).toBe("Automations that can become routines");
+    for (const offer of offers) {
+      const entry = one(root, `tr[data-offer="${offer.automation_entity_id}"]`);
+      expect(text(one(entry, 'a[data-link="automation"]'))).toBe(offer.alias);
+      expect(one(entry, 'a[data-link="automation"]').getAttribute("href")).toBe(
+        `/config/automation/edit/${encodeURIComponent(offer.automation_id)}`,
+      );
+      expect(text(one(entry, 'a[data-link="device"]'))).toBe(offer.device_name);
+      expect(text(one(entry, '[data-cell="sentence"]'))).toBe(offer.original_sentence);
+    }
+  });
+
+  test("Convert shows both sentences, and only the confirm sends conversions/convert", async () => {
+    const { hass, offers } = withOffers();
+    const [offer] = offers as [ConversionOffer];
+    const { element, root } = await view(hass);
+    const listed = hass.connection.sentOf("routines/list").length;
+
+    button(one(root, `tr[data-offer="${offer.automation_entity_id}"]`), "convert").click();
+    await settle(element);
+    const confirm = one(root, `tr[data-confirm-offer="${offer.automation_entity_id}"]`);
+    expect(text(confirm)).toContain(`${offer.alias} can become a routine on ${offer.device_name}.`);
+    expect(text(one(confirm, '[data-sentence="original"]'))).toBe(`Now, as the automation ${offer.original_sentence}`);
+    expect(text(one(confirm, '[data-sentence="routine"]'))).toBe(`As a routine ${offer.routine_sentence}`);
+    expect(hass.connection.sentOf("conversions/convert")).toEqual([]);
+
+    button(confirm, "confirm_convert").click();
+    await settle(element);
+
+    expect(hass.connection.sentOf("conversions/convert")).toEqual([
+      { type: "device_routines/conversions/convert", automation_entity_id: offer.automation_entity_id },
+    ]);
+    expect(text(one(root, '[role="status"]'))).toContain(`${offer.alias} is now a routine on`);
+    expect(hass.connection.sentOf("routines/list")).toHaveLength(listed + 1);
+    expect(hass.connection.sentOf("conversions/list")).toHaveLength(2);
+    expect(root.querySelector("tr[data-confirm-offer]")).toBeNull();
+  });
+
+  test("cancelling sends nothing, and a refused conversion shows its message", async () => {
+    const { hass, offers } = withOffers();
+    const [offer] = offers as [ConversionOffer];
+    const { element, root } = await view(hass);
+    const entry = (): HTMLElement => one(root, `tr[data-offer="${offer.automation_entity_id}"]`);
+
+    button(entry(), "convert").click();
+    await settle(element);
+    button(root, "cancel_convert").click();
+    await settle(element);
+    expect(root.querySelector("tr[data-confirm-offer]")).toBeNull();
+    expect(hass.connection.sentOf("conversions/convert")).toEqual([]);
+
+    const refusal = {
+      code: "device_has_routine",
+      message: "Desk lamp already has a routine",
+      translation_placeholders: { device: "Desk lamp" },
+    };
+    hass.connection.answer("conversions/convert", () => {
+      throw refusal;
+    });
+    button(entry(), "convert").click();
+    await settle(element);
+    button(root, "confirm_convert").click();
+    await settle(element);
+
+    // The integration's translation once it has one, the error's own message before.
+    expect(text(one(root, '[role="status"]'))).toBe(await errorText(hass, refusal));
+    expect(text(one(root, '[role="status"]'))).toContain("Desk lamp");
+    expect(hass.connection.sentOf("conversions/convert")).toHaveLength(1);
+  });
+
+  test("no section without offers, nor on a server without the command", async () => {
+    const hass = makeHass();
+    hass.connection.answer("conversions/list", () => ({ offers: [] }));
+    const { root } = await view(hass);
+    expect(root.querySelector("#conversions")).toBeNull();
+
+    const { root: older } = await view(makeHass());
+    expect(older.querySelector("#conversions")).toBeNull();
+    expect(older.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  test("a refused list shows its message in the section", async () => {
+    const hass = makeHass();
+    hass.connection.answer("conversions/list", () => {
+      throw { code: "not_loaded", message: "x" };
+    });
+    const { element, root } = await view(hass);
+
+    expect(text(one(root, '#conversions [role="alert"]'))).toContain("Device Routines is not loaded.");
+    withOffers(hass);
+    await element.refreshConversions();
+    await settle(element);
+    expect(root.querySelector('#conversions [role="alert"]')).toBeNull();
+  });
+
+  test("a subclass can still replace the section", async () => {
     class WithCandidates extends DrRoutinesView {
       protected override renderConversionCandidates() {
         const section = document.createElement("section");
@@ -554,9 +810,6 @@ describe("the conversion candidates extension point", () => {
       }
     }
     customElements.define("dr-routines-view-with-candidates", WithCandidates);
-
-    const { root } = await view();
-    expect(root.querySelector("#candidates")).toBeNull();
 
     const extended = await mount<WithCandidates>("dr-routines-view-with-candidates", makeHass());
     expect(shadow(extended).querySelector("#candidates")).not.toBeNull();

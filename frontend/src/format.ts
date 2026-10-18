@@ -2,9 +2,11 @@
 //
 // Instants arrive as ISO 8601 strings in the instance's local time (docs/api.md,
 // Conventions). The console shows that wall clock time, whatever the browser's own time
-// zone, in the user's language and Home Assistant time format.
+// zone, in the user's language. The clock follows the integration's Time format setting,
+// so the console's times read as its sentences do; Automatic follows the user's own
+// Home Assistant profile (`hass.locale.time_format`), as the rest of the frontend does.
 
-import type { HomeAssistant } from "./api";
+import type { HomeAssistant, TimeFormat } from "./api";
 import { t } from "./localize";
 
 const WALL_CLOCK = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/;
@@ -18,14 +20,30 @@ function wallClock(iso: string): Date | undefined {
   return new Date(Date.UTC(year, month - 1, day, hour, minute));
 }
 
-function hour12(hass: HomeAssistant | undefined): boolean | undefined {
-  const format = hass?.locale?.time_format;
-  return format === "12" ? true : format === "24" ? false : undefined;
+/** Whether the clock reads 12 hour; undefined leaves it to the language. */
+export function hour12(hass: HomeAssistant | undefined, timeFormat: TimeFormat = "auto"): boolean | undefined {
+  if (timeFormat !== "auto") {
+    return timeFormat === "12h";
+  }
+  switch (hass?.locale?.time_format) {
+    case "12":
+      return true;
+    case "24":
+      return false;
+    case "system":
+      return new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hour12;
+    default:
+      return undefined;
+  }
 }
 
-function formatter(hass: HomeAssistant | undefined, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+function formatter(
+  hass: HomeAssistant | undefined,
+  timeFormat: TimeFormat | undefined,
+  options: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormat {
   const language = hass?.locale?.language ?? hass?.language ?? "en";
-  const twelve = hour12(hass);
+  const twelve = hour12(hass, timeFormat);
   return new Intl.DateTimeFormat(language, {
     ...options,
     ...(twelve === undefined ? {} : { hour12: twelve }),
@@ -34,17 +52,19 @@ function formatter(hass: HomeAssistant | undefined, options: Intl.DateTimeFormat
 }
 
 /** `17:00` of an instant, as `5:00 PM` or `17:00`. */
-export function formatTime(hass: HomeAssistant | undefined, iso: string): string {
-  const date = wallClock(iso);
-  return date === undefined ? iso : formatter(hass, { hour: "numeric", minute: "2-digit" }).format(date);
-}
-
-/** An instant with its weekday, as `Mon 5:00 PM`. */
-export function formatDateTime(hass: HomeAssistant | undefined, iso: string): string {
+export function formatTime(hass: HomeAssistant | undefined, iso: string, timeFormat?: TimeFormat): string {
   const date = wallClock(iso);
   return date === undefined
     ? iso
-    : formatter(hass, { weekday: "short", hour: "numeric", minute: "2-digit" }).format(date);
+    : formatter(hass, timeFormat, { hour: "numeric", minute: "2-digit" }).format(date);
+}
+
+/** An instant with its weekday, as `Mon 5:00 PM`. */
+export function formatDateTime(hass: HomeAssistant | undefined, iso: string, timeFormat?: TimeFormat): string {
+  const date = wallClock(iso);
+  return date === undefined
+    ? iso
+    : formatter(hass, timeFormat, { weekday: "short", hour: "numeric", minute: "2-digit" }).format(date);
 }
 
 /** An area's name from `hass.areas` when present, else its id. */

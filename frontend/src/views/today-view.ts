@@ -1,12 +1,14 @@
 // The Today view (PRD 4.5): every action planned for one local day, routines and hand
 // written automations alike, grouped by area and ordered by time, with the actions that
-// take part in a conflict highlighted. Each row links to its device page. The day is
-// today unless the date picker names another one.
+// take part in a conflict highlighted and the ones Only when conditions gate flagged
+// (FR-R9). Each row links to its device page. The day is today unless the date picker
+// names another one. Names come with the items; a server without them (before Build B)
+// falls back to `hass.devices` and the automation's entity id.
 
 import { css, html, LitElement, nothing } from "lit";
 import type { PropertyValues, TemplateResult } from "lit";
 
-import type { DayItem, DaySchedule, HomeAssistant } from "../api";
+import type { DayItem, DaySchedule, HomeAssistant, TimeFormat } from "../api";
 import { devicePath, scheduleToday } from "../api";
 import { areaName, deviceName, formatTime } from "../format";
 import { kindText, verbText } from "../labels";
@@ -46,6 +48,7 @@ export class DrTodayView extends LitElement {
   static override properties = {
     hass: { attribute: false },
     narrow: { type: Boolean },
+    timeFormat: { attribute: false },
     _schedule: { state: true },
     _date: { state: true },
     _error: { state: true },
@@ -83,6 +86,7 @@ export class DrTodayView extends LitElement {
 
   declare hass: HomeAssistant | undefined;
   declare narrow: boolean;
+  declare timeFormat: TimeFormat | undefined;
   declare _schedule: DaySchedule | undefined;
   declare _date: string | undefined;
   declare _error: string | undefined;
@@ -166,22 +170,33 @@ export class DrTodayView extends LitElement {
     </div>`;
   }
 
+  private _renderConditions(count: number): TemplateResult | typeof nothing {
+    const hass = this.hass;
+    if (count <= 0) {
+      return nothing;
+    }
+    return html`<span class="badge" data-conditions=${count}>
+      ${count === 1 ? t(hass, "today.condition_one") : t(hass, "today.condition_many", { count })}
+    </span>`;
+  }
+
   private _renderItem(item: DayItem): TemplateResult {
     const hass = this.hass;
     return html`<tr class=${item.conflict ? "conflict" : ""} data-item ?data-conflict=${item.conflict}>
-      <td class="time">${formatTime(hass, item.time)}</td>
+      <td class="time">${formatTime(hass, item.time, this.timeFormat)}</td>
       <td>
         <a data-link="device" href=${devicePath(item.device_id)} @click=${followLink}
-          >${deviceName(hass, item.device_id)}</a
+          >${item.device_name ?? deviceName(hass, item.device_id)}</a
         >
       </td>
       <td>
         ${verbText(hass, item.action)}
         ${item.conflict ? html`<span class="badge conflict">${t(hass, "today.conflict")}</span>` : nothing}
+        ${this._renderConditions(item.conditions ?? 0)}
       </td>
       <td>
         ${kindText(hass, item.kind)}
-        <span class="muted">${item.automation}</span>
+        <span class="muted" title=${item.automation}>${item.alias ?? item.automation}</span>
       </td>
     </tr>`;
   }

@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 
 import { DEFAULT_SOURCE, DEFAULT_TARGET, extract, render } from "../scripts/extract-api-fixture.mjs";
+import { DEVICES_OPT } from "./fake-hass";
 
 const COMMANDS = [
   "routines/list",
@@ -25,6 +26,16 @@ describe("fixtures/api.json", () => {
     const fresh = render(extract(readFileSync(DEFAULT_SOURCE, "utf8")));
 
     expect(readFileSync(DEFAULT_TARGET, "utf8")).toBe(fresh);
+  });
+
+  test("the devices/opt examples are where the fake looks for them", () => {
+    const fixture = extract(readFileSync(DEFAULT_SOURCE, "utf8"));
+    const examples = fixture["devices/opt"]?.examples ?? [];
+
+    for (const [op, index] of Object.entries(DEVICES_OPT)) {
+      expect(examples[index]?.request?.["op"], op).toBe(op);
+      expect(examples[index]?.response, op).not.toBeNull();
+    }
   });
 
   test("every command of docs/api.md has its request example", () => {

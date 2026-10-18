@@ -7,7 +7,8 @@ import { HEALTH_ENTITY } from "../src/api";
 import "../src/device-routines-panel";
 import type { DeviceRoutinesPanel } from "../src/device-routines-panel";
 import type { FakeHass } from "./fake-hass";
-import { documented, makeHass, mount, one, section, settle, shadow, text } from "./fake-hass";
+import type { Json } from "./fake-hass";
+import { documented, makeHass, mount, one, response, section, settle, shadow, text } from "./fake-hass";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -103,6 +104,39 @@ describe("the views", () => {
   });
 });
 
+describe("the time format", () => {
+  test("the views get the integration's Time format, read again after settings_changed", async () => {
+    const hass = makeHass({ locale: { language: "en", time_format: "12" } });
+    hass.connection.answer("settings/get", () => ({ ...response<Json>("settings/get"), time_format: "24h" }));
+    const { element, root } = await panel(hass);
+    const next = (): string => text(one(shadow(one(root, "dr-routines-view")), '[data-cell="next"]'));
+
+    expect((one(root, "dr-routines-view") as HTMLElement & { timeFormat: unknown }).timeFormat).toBe("24h");
+    expect(next()).toBe("On Mon 17:00");
+    await show(element, "today");
+    expect((one(root, "dr-today-view") as HTMLElement & { timeFormat: unknown }).timeFormat).toBe("24h");
+    await show(element, "settings");
+    expect((one(root, "dr-settings-view") as HTMLElement & { timeFormat: unknown }).timeFormat).toBe("24h");
+    await show(element, "routines");
+
+    hass.connection.answer("settings/get", () => response<Json>("settings/get"));
+    hass.connection.emit(event("settings_changed"));
+    await settle(element);
+    expect(next()).toBe("On Mon 5:00 PM");
+  });
+
+  test("a refused settings read leaves the views on the user's profile", async () => {
+    const hass = makeHass({ locale: { language: "en", time_format: "24" } });
+    hass.connection.answer("settings/get", () => {
+      throw { code: "not_loaded", message: "x" };
+    });
+    const { root } = await panel(hass);
+
+    expect((one(root, "dr-routines-view") as HTMLElement & { timeFormat: unknown }).timeFormat).toBeUndefined();
+    expect(text(one(shadow(one(root, "dr-routines-view")), '[data-cell="next"]'))).toBe("On Mon 17:00");
+  });
+});
+
 describe("subscribe", () => {
   test("subscribes once per panel, whatever hass updates arrive", async () => {
     const { hass, element } = await panel();
@@ -147,11 +181,12 @@ describe("subscribe", () => {
     });
     const { element } = await panel(hass);
     await show(element, "settings");
-    expect(hass.connection.sentOf("settings/get")).toHaveLength(1);
+    // One read for the panel's time format, one for the view.
+    expect(hass.connection.sentOf("settings/get")).toHaveLength(2);
 
     hass.connection.emit(event("settings_changed"));
     await settle(element);
-    expect(hass.connection.sentOf("settings/get")).toHaveLength(2);
+    expect(hass.connection.sentOf("settings/get")).toHaveLength(4);
 
     const view = shadow(one(shadow(element), "dr-settings-view"));
     expect(text(one(view, '[data-health="state"]'))).toBe("OK");
@@ -165,13 +200,31 @@ describe("subscribe", () => {
     const { hass, element } = await panel();
     const before = hass.connection.sent.length;
 
-    hass.connection.emit(event("schedule_changed"));
-    hass.connection.emit(event("settings_changed"));
     hass.connection.emit(event("health_changed"));
     hass.connection.emit(event("routine_changed"));
     await settle(element);
 
     expect(hass.connection.sent).toHaveLength(before);
+  });
+
+  test("schedule_changed reads the conversion offers again while the Routines view is open", async () => {
+    const { hass, element } = await panel();
+    const before = hass.connection.sent.length;
+
+    hass.connection.emit(event("schedule_changed"));
+    await settle(element);
+
+    expect(hass.connection.sent.slice(before)).toEqual([{ type: "device_routines/conversions/list" }]);
+  });
+
+  test("settings_changed reads the time format again, whichever view is open", async () => {
+    const { hass, element } = await panel();
+    const before = hass.connection.sent.length;
+
+    hass.connection.emit(event("settings_changed"));
+    await settle(element);
+
+    expect(hass.connection.sent.slice(before)).toEqual([{ type: "device_routines/settings/get" }]);
   });
 
   test("the subscription ends when the panel is removed, and a panel put back subscribes again", async () => {

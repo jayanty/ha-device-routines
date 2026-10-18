@@ -8,8 +8,8 @@ is kept in `hass.data`.
 
 Setup order: the Store loads, the manager starts (it reconciles at once in a running
 instance, or after the started event while Home Assistant boots), the platforms come up
-on the reconciled state, and the summary starts last, so its first index already sees
-the routines.
+on the reconciled state, the summary starts, so its first index already sees the
+routines, and the console panel is registered last, once everything it calls exists.
 
 Removing the entry applies On removal (PRD 8.2, TECH_SPEC 4.12, Build A lane 10) in
 `async_remove_entry`, after the entry unloaded: one call into
@@ -27,7 +27,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
-from . import ha_adapter, health, maintenance, repairs, websocket_api
+from . import ha_adapter, health, maintenance, panel, repairs, websocket_api
 from .attribution import Attributor
 from .const import DOMAIN, PLATFORMS
 from .ha_adapter import AdapterReport
@@ -108,12 +108,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: DeviceRoutinesConfigEntr
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await summary.async_start()
     entry.async_on_unload(summary.async_stop)
+    await panel.async_register_panel(hass)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: DeviceRoutinesConfigEntry) -> bool:
-    """Take the platforms down; the manager and the summary stop on unload."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    """Take the platforms down and the panel; the manager and the summary stop on unload."""
+    if unloaded := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        panel.async_unregister_panel(hass)
+    return unloaded
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: DeviceRoutinesConfigEntry) -> None:

@@ -30,6 +30,7 @@ version 0.1.0 has the Schedule sensor only.
 - [When the integration is off](#when-the-integration-is-off)
 - [Daylight saving nights](#daylight-saving-nights)
 - [Dashboards and scripts](#dashboards-and-scripts)
+- [Console](#console)
 - [Supported devices](#supported-devices)
 - [Settings](#settings)
 - [Removing the integration](#removing-the-integration)
@@ -625,6 +626,50 @@ content: >-
 
 Everything the device page can do is also available over Home Assistant's WebSocket API
 for custom cards and tools; see [docs/api.md](api.md).
+
+## Console
+
+The **Device Routines** entry in the sidebar opens the console: every routine of the
+house on one page. Only administrators see it, because almost everything on it changes
+something. It adds no behavior of its own: each button does exactly what the same
+control on the device page or the matching action does, and the integration checks it
+the same way.
+
+The console has three views, chosen by the tabs at the top (or by the address, such as
+`/device-routines/today`):
+
+- **Routines** lists every routine with its device, area, Schedule sentence, status, next
+  action and pause. Per row, or for every selected row at once: Skip next, Pause until,
+  Resume, Enable and Disable. **Edit settings** opens the routine's times, days, the three
+  durations and its switches under the row; Pulse and Only when stay in the automation
+  form. A setting that is refused shows why and marks the field. Links open the device
+  page and the automation. Below the table:
+  - **Opted out devices**: routines whose device was opted out. They are off and keep their
+    settings until the cleanup period ends; **Opt in again** keeps the routine.
+  - **Detached routines**: routines taken over in the automation editor, now normal
+    automations.
+  - **Automations that can become routines**: hand written automations that do exactly
+    what a routine does. **Convert** shows the automation's sentence and the routine's
+    side by side; only **Convert to a routine** changes anything: it creates the routine,
+    turns the automation off and labels it `Replaced by routine`. Turning the automation
+    back on undoes it.
+  - **Add devices**: every device a routine can drive, the ones automations already switch
+    at set times marked Suggested, to opt in one at a time or several at once.
+- **Today** shows every action planned for one day, the routines' and the hand written
+  automations' alike, grouped by area and ordered by time. Actions that conflict are
+  highlighted, and an action an Only when condition can hold back says so ("If 1
+  condition passes"). Pick another day with the date field. Each row links to its device.
+- **Settings** holds every setting of [Settings](#settings), the four maintenance actions
+  and Health. A maintenance action always shows first what it would change; **Run now**
+  then runs it. Saving settings reloads Device Routines; the console stays open and reads
+  the settings again.
+
+Times in the console follow the **Time format** setting, like the sentences; with
+Automatic they follow the time format of your own Home Assistant profile.
+
+The console updates by itself while it is open: a routine that changes anywhere (on its
+device page, from an automation, from another browser) is read again at once. After
+Device Routines is updated, reload the browser page to load the new console.
 
 ## Supported devices
 

@@ -62,6 +62,10 @@ ALLOWED_CORE_PREFIXES = (
     "homeassistant.components.diagnostics",
     "homeassistant.components.repairs",
     "homeassistant.components.websocket_api",
+    # The console panel (Build B lane 21, F9): the core's public panel and static file APIs.
+    "homeassistant.components.panel_custom",
+    "homeassistant.components.http",
+    "homeassistant.components.frontend",
 )
 
 # The official rule names of the Integration Quality Scale, as shipped with core 2026.10.
@@ -116,7 +120,10 @@ def test_the_manifest_has_what_hacs_and_hassfest_require() -> None:
     assert manifest["iot_class"] == "local_push"
     assert manifest["single_config_entry"] is True
     assert manifest["requirements"] == [], "no Python requirement without a decision"
-    assert set(manifest["dependencies"]) == {"automation", "blueprint", "timer", "schedule"}
+    # `http` serves the console bundle. `frontend` and `panel_custom` are imported but not
+    # declared: the core always loads the frontend first, hassfest allows both, and as
+    # dependencies they would need the frontend package in the harness.
+    assert set(manifest["dependencies"]) == {"automation", "blueprint", "timer", "schedule", "http"}
     assert manifest["after_dependencies"] == ["ai_task"]
 
 
@@ -292,6 +299,9 @@ def test_no_em_dash_in_any_tracked_file() -> None:
 # CI: the job names are the required checks on main
 # --------------------------------------------------------------------------------------
 
+# The committed console bundle, relative to the repository root (decision L62).
+BUNDLE_DIR = "custom_components/device_routines/frontend/dist"
+
 REQUIRED_CHECKS = {
     "lint",
     "typecheck",
@@ -301,6 +311,7 @@ REQUIRED_CHECKS = {
     "privacy",
     "style",
     "deploy-tool-parity",
+    "frontend",
 }
 
 
@@ -312,6 +323,58 @@ def test_ci_job_names_are_the_required_checks_plus_the_promotion() -> None:
     assert names == REQUIRED_CHECKS | {"promote"}
     assert set(jobs["promote"]["needs"]) == set(jobs) - {"promote"}
     assert "refs/heads/dev" in jobs["promote"]["if"]
+
+
+def test_ci_requires_the_frontend_check() -> None:
+    """The console job builds from the lock and fails when the committed bundle is stale."""
+    jobs = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())["jobs"]
+    job = jobs["frontend"]
+    steps = job["steps"]
+    commands = [step.get("run", "") for step in steps]
+    node = next(step for step in steps if step.get("uses", "").startswith("actions/setup-node"))
+    release = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "release.yml").read_text())
+    release_node = next(
+        step
+        for step in release["jobs"]["release"]["steps"]
+        if step.get("uses", "").startswith("actions/setup-node")
+    )
+
+    assert "frontend" in REQUIRED_CHECKS
+    assert "frontend" in jobs["promote"]["needs"]
+    assert job["defaults"]["run"]["working-directory"] == "frontend"
+    for command in ("npm ci", "npm run typecheck", "npm test", "npm run build"):
+        assert command in commands, command
+    assert commands.index("npm run build") < len(commands) - 1, "the bundle check runs last"
+    check = commands[-1]
+    assert "status --porcelain --untracked-files=all" in check
+    assert BUNDLE_DIR in check
+    # The bundle CI checks is the bundle the release builds: one Node major for both.
+    assert str(node["with"]["node-version"]) == str(release_node["with"]["node-version"])
+
+
+def test_the_console_bundle_is_committed() -> None:
+    """The dev channel deploys the commit archive and the host has no node (L62)."""
+    listed = subprocess.run(
+        ["git", "ls-files", "--", BUNDLE_DIR],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    ignored = subprocess.run(
+        ["git", "check-ignore", "--quiet", "--no-index", f"{BUNDLE_DIR}/device-routines-panel.js"],
+        cwd=REPO_ROOT,
+        check=False,
+    )
+    stray = subprocess.run(
+        ["git", "check-ignore", "--quiet", "--no-index", "frontend/dist/device-routines-panel.js"],
+        cwd=REPO_ROOT,
+        check=False,
+    )
+
+    assert listed == [f"{BUNDLE_DIR}/device-routines-panel.js"]
+    assert ignored.returncode == 1, "the bundle must not be ignored"
+    assert stray.returncode == 0, "any other dist/ stays ignored"
 
 
 def test_the_release_workflow_builds_the_hacs_zip() -> None:

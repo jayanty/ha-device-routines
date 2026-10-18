@@ -163,6 +163,8 @@ export interface RoutineView {
   conflicts: Conflict[];
   override: boolean;
   last_change_source: "automation" | "user" | "device" | null;
+  /** False for a routine whose device was opted out and waits for cleanup (Build B); absent means true. */
+  opted_in?: boolean;
 }
 
 export type RoutineAction = "skip_next" | "pause" | "resume" | "enable" | "disable";
@@ -189,6 +191,8 @@ export interface IgnoredTarget {
   target: string;
   kind: "device" | "entity" | "area" | "label" | "floor";
   reason: string;
+  /** The reason's placeholders, `target` and, where known, `device` (Build B); absent before. */
+  placeholders?: Record<string, string>;
 }
 
 export interface ActionResults {
@@ -218,6 +222,10 @@ export interface DayItem {
   kind: SummaryItem["kind"];
   automation: string;
   conflict: boolean;
+  /** Build B: the device's name, the automation's alias, the conditions gating the action (FR-R9). */
+  device_name?: string | null;
+  alias?: string | null;
+  conditions?: number;
 }
 
 export interface DaySchedule {
@@ -238,6 +246,20 @@ export interface GlobalSettings {
   ai_calls_per_hour: number;
   offer_conversions: boolean;
   raise_conflict_repairs: boolean;
+}
+
+export type TimeFormat = GlobalSettings["time_format"];
+
+/** A hand written automation that does exactly what a routine does (FR-M1). */
+export interface ConversionOffer {
+  automation_id: string;
+  automation_entity_id: string;
+  alias: string;
+  device_id: string;
+  device_name: string;
+  settings: RoutineSettings;
+  original_sentence: string;
+  routine_sentence: string;
 }
 
 export type MaintenanceAction = "clean_up_now" | "rebuild_index" | "reinstall_blueprint" | "refresh_summaries";
@@ -340,6 +362,14 @@ export function runMaintenance(
   dryRun: boolean,
 ): Promise<MaintenanceReport> {
   return send(hass, "maintenance", { action, dry_run: dryRun });
+}
+
+export async function listConversions(hass: HomeAssistant): Promise<ConversionOffer[]> {
+  return (await send<{ offers: ConversionOffer[] }>(hass, "conversions/list")).offers;
+}
+
+export function convertAutomation(hass: HomeAssistant, automationEntityId: string): Promise<RoutineView> {
+  return send(hass, "conversions/convert", { automation_entity_id: automationEntityId });
 }
 
 /** Subscribe to the manager's events; the promise gives the function that ends it. */

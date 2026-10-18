@@ -268,8 +268,76 @@ One device's routine.
 {"id": 3, "type": "device_routines/routines/get", "device_id": "dev_living_room_fan"}
 ```
 
-The result is one RoutineView, as in [routines/list](#routineslist). Errors:
-`not_opted_in` (placeholder `device`) for a device without routine controls.
+The result is one RoutineView, the same as the device's entry in
+[routines/list](#routineslist):
+
+```json
+{
+  "device_id": "dev_living_room_fan",
+  "device_name": "Living room fan",
+  "area_id": "living_room",
+  "automation_id": "device_routines_5c1e0f3a9b72",
+  "automation_entity_id": "automation.routine_living_room_fan",
+  "settings": {
+    "target_entity": "switch.living_room_fan",
+    "on_time": "17:00:00",
+    "off_time": "23:00:00",
+    "days": "every_day",
+    "day_set": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+    "schedule_entity": null,
+    "turn_off_after_min": 0,
+    "turn_back_on_after_min": 0,
+    "catch_up": true,
+    "late_start_window_min": 15,
+    "respect_manual": true,
+    "pulse": null,
+    "extra_conditions": [],
+    "docked_guard": true,
+    "on_kind": "time",
+    "on_sun_offset_min": 0,
+    "off_kind": "time",
+    "off_sun_offset_min": 0
+  },
+  "status": "active",
+  "enabled": true,
+  "paused_until": null,
+  "skipped_action": null,
+  "next_action": {"at": "2026-10-19T17:00:00-07:00", "verb": "on"},
+  "sentence": "On at 5:00 PM",
+  "items": [
+    {
+      "kind": "routine",
+      "automation_entity": "automation.routine_living_room_fan",
+      "alias": "Routine: Living room fan",
+      "summary": "5:00 PM: on, 11:00 PM: off",
+      "next_run": "2026-10-19T17:00:00-07:00",
+      "source": "parser",
+      "enabled": true,
+      "custom_logic": false,
+      "parts": ["5:00 PM: on", "11:00 PM: off"]
+    },
+    {
+      "kind": "automation",
+      "automation_entity": "automation.late_fan_on",
+      "alias": "Late fan on",
+      "summary": "11:00 PM: on",
+      "next_run": "2026-10-19T23:00:00-07:00",
+      "source": "parser",
+      "enabled": true,
+      "custom_logic": false,
+      "parts": []
+    }
+  ],
+  "conflicts": [
+    {"a": 0, "b": 1, "reason_key": "on_in_off_window", "at": "2026-10-19T23:00:00-07:00"},
+    {"a": 0, "b": 1, "reason_key": "opposite_same_minute", "at": "2026-10-19T23:00:00-07:00"}
+  ],
+  "override": false,
+  "last_change_source": null
+}
+```
+
+Errors: `not_opted_in` (placeholder `device`) for a device without routine controls.
 
 ```json
 {
@@ -301,7 +369,78 @@ compiler, shown at once and written about a second later (the manager's debounce
 ```
 
 The result is the RoutineView with the new settings (`"off_time": "22:30:00"`,
-`"days": "weekdays"`). On a problem nothing changes and the error names the setting:
+`"days": "weekdays"`) and the Schedule items they give. Its `conflicts` are computed again
+when the change is written, about a second later, and `routine_changed` follows; until
+then they are the ones of the previous settings (here `opposite_same_minute` at 11:00 PM,
+though the routine now stops at 10:30 PM):
+
+```json
+{
+  "device_id": "dev_living_room_fan",
+  "device_name": "Living room fan",
+  "area_id": "living_room",
+  "automation_id": "device_routines_5c1e0f3a9b72",
+  "automation_entity_id": "automation.routine_living_room_fan",
+  "settings": {
+    "target_entity": "switch.living_room_fan",
+    "on_time": "17:00:00",
+    "off_time": "22:30:00",
+    "days": "weekdays",
+    "day_set": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+    "schedule_entity": null,
+    "turn_off_after_min": 0,
+    "turn_back_on_after_min": 0,
+    "catch_up": true,
+    "late_start_window_min": 15,
+    "respect_manual": true,
+    "pulse": null,
+    "extra_conditions": [],
+    "docked_guard": true,
+    "on_kind": "time",
+    "on_sun_offset_min": 0,
+    "off_kind": "time",
+    "off_sun_offset_min": 0
+  },
+  "status": "active",
+  "enabled": true,
+  "paused_until": null,
+  "skipped_action": null,
+  "next_action": {"at": "2026-10-19T17:00:00-07:00", "verb": "on"},
+  "sentence": "On at 5:00 PM",
+  "items": [
+    {
+      "kind": "routine",
+      "automation_entity": "automation.routine_living_room_fan",
+      "alias": "Routine: Living room fan",
+      "summary": "Weekdays 5:00 PM: on, Weekdays 10:30 PM: off",
+      "next_run": "2026-10-19T17:00:00-07:00",
+      "source": "parser",
+      "enabled": true,
+      "custom_logic": false,
+      "parts": ["Weekdays 5:00 PM: on", "Weekdays 10:30 PM: off"]
+    },
+    {
+      "kind": "automation",
+      "automation_entity": "automation.late_fan_on",
+      "alias": "Late fan on",
+      "summary": "11:00 PM: on",
+      "next_run": "2026-10-19T23:00:00-07:00",
+      "source": "parser",
+      "enabled": true,
+      "custom_logic": false,
+      "parts": []
+    }
+  ],
+  "conflicts": [
+    {"a": 0, "b": 1, "reason_key": "on_in_off_window", "at": "2026-10-19T23:00:00-07:00"},
+    {"a": 0, "b": 1, "reason_key": "opposite_same_minute", "at": "2026-10-19T23:00:00-07:00"}
+  ],
+  "override": false,
+  "last_change_source": null
+}
+```
+
+On a problem nothing changes and the error names the setting:
 
 | Code | Placeholders | When |
 | --- | --- | --- |
@@ -382,7 +521,40 @@ automations already drive, and opts devices in or out (PRD 4.1).
 | `device_id` | string or list of strings | for `in` and `out` |
 
 `list` and `suggest` return `devices`, each with `device_id`, `name`, `area_id` and
-`targets` (the entities a routine could drive):
+`targets` (the entities a routine could drive). `list` names every device a routine can
+drive, sorted by name:
+
+```json
+{"id": 12, "type": "device_routines/devices/opt", "op": "list"}
+```
+
+```json
+{
+  "devices": [
+    {
+      "device_id": "dev_desk_lamp",
+      "name": "Desk lamp",
+      "area_id": "living_room",
+      "targets": ["light.desk_lamp"]
+    },
+    {
+      "device_id": "dev_garage_door",
+      "name": "Garage door",
+      "area_id": null,
+      "targets": ["cover.garage_door"]
+    },
+    {
+      "device_id": "dev_living_room_fan",
+      "name": "Living room fan",
+      "area_id": "living_room",
+      "targets": ["switch.living_room_fan"]
+    }
+  ]
+}
+```
+
+`suggest` names the ones hand written time based automations already switch, which have
+no routine yet:
 
 ```json
 {"id": 13, "type": "device_routines/devices/opt", "op": "suggest"}
@@ -433,7 +605,43 @@ automations already drive, and opts devices in or out (PRD 4.1).
 }
 ```
 
-(The view is shortened here; it is a full RoutineView.) Devices are handled one after
+Opting out turns the routine off at once and keeps it, with its settings, until the
+cleanup period ends (`routines/list` still lists it meanwhile):
+
+```json
+{"id": 15, "type": "device_routines/devices/opt", "op": "out", "device_id": ["dev_living_room_fan"]}
+```
+
+```json
+{
+  "results": [
+    {
+      "device_id": "dev_living_room_fan",
+      "opted_in": false,
+      "changed": true,
+      "view": {
+        "device_id": "dev_living_room_fan",
+        "device_name": "Living room fan",
+        "area_id": "living_room",
+        "automation_id": "device_routines_5c1e0f3a9b72",
+        "automation_entity_id": "automation.routine_living_room_fan",
+        "settings": {
+          "target_entity": "switch.living_room_fan",
+          "on_time": "17:00:00",
+          "off_time": "23:00:00",
+          "days": "every_day"
+        },
+        "status": "off",
+        "enabled": false,
+        "next_action": null,
+        "sentence": "Routine off"
+      }
+    }
+  ]
+}
+```
+
+(The views are shortened here; each is a full RoutineView.) Devices are handled one after
 another: the first refusal ends the command with its error and the devices before it stay
 changed; opting in again is harmless. Errors: `unknown_device` and `not_eligible`
 (placeholder `device`).
@@ -561,7 +769,25 @@ reload nothing.
 {"id": 20, "type": "device_routines/settings/set", "settings": {"time_format": "24h"}}
 ```
 
-The result is the object of [settings/get](#settingsget) with `"time_format": "24h"`.
+The result is the object of [settings/get](#settingsget) with `"time_format": "24h"`:
+
+```json
+{
+  "schedule_scope": "all",
+  "time_format": "24h",
+  "default_catch_up": true,
+  "default_respect_manual": true,
+  "default_late_start_window_min": 15,
+  "cleanup_after_days": 30,
+  "assign_area": true,
+  "on_removal": "keep",
+  "ai_task_entity": null,
+  "ai_calls_per_hour": 20,
+  "offer_conversions": true,
+  "raise_conflict_repairs": true
+}
+```
+
 Errors, each with the `setting` placeholder:
 
 | Code | More placeholders | When |

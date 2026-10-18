@@ -18,8 +18,19 @@ npm run extract-fixture   # rewrite test/fixtures/api.json from docs/api.md
 ```
 
 `npm run build` writes `custom_components/device_routines/frontend/dist/device-routines-panel.js`,
-the one file the panel loads. Git ignores that path until the integration registers the
-panel and a CI check compares the committed bundle with a fresh build.
+the one file the panel loads. The bundle is committed, because the dev channel deploys
+the commit archive and the Home Assistant host has no node: commit it in the same commit
+as the source change that produced it. The CI job `frontend` runs `npm ci`, the
+typecheck, the tests and the build on Node 22 (the version `release.yml` builds with) and
+fails when the committed bundle differs from its fresh build; the build is byte identical
+on Node 22 and 26.
+
+`custom_components/device_routines/panel.py` registers the panel: URL path
+`device-routines`, admin only, the bundle served at
+`/device_routines/static/device-routines-panel.js?v=<integration version>`.
+`tests/integration/test_panel.py` sends every request example of `test/fixtures/api.json`
+to the real WebSocket API in the harness and compares each answer's shape with its
+example, so the recorded payloads these tests use are the ones the integration sends.
 
 ## What the console may use
 
@@ -38,6 +49,14 @@ panel and a CI check compares the committed bundle with a fresh build.
   `hass.localize("component.device_routines.exceptions.<code>.message", placeholders)`
   after `hass.loadBackendTranslation("exceptions", "device_routines")`, falling back to
   the error's `message`; a `setting` placeholder marks the field of an inline edit.
+- Times follow the integration's Time format setting, which the panel reads with
+  `settings/get` at the start and after each `settings_changed`; Automatic follows the
+  user's profile (`hass.locale.time_format`), as the rest of the frontend does.
+- Fields a server before Build B does not send are read when present and otherwise fall
+  back: `opted_in` of a routine (absent means opted in), the `device_name`, `alias` and
+  `conditions` of a Today item (else `hass.devices` and the automation's entity id), the
+  `placeholders` of an ignored target. A server without `conversions/list` answers
+  `unknown_command`, and the conversion candidates section stays away.
 - The console introduces no semantics of its own (PRD P16): every control is one command,
   and the service layer validates and decides.
 - Colors and spacing come only from Home Assistant theme variables, each with a fallback.
