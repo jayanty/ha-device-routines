@@ -891,6 +891,38 @@ async def async_delete_helper(hass: HomeAssistant, user_id: str, entity_id: str)
     await _async_command(hass, user_id, {"type": f"{domain}/delete", f"{domain}_id": item_id})
 
 
+# The weekday keys of a schedule helper item, Monday first.
+_SCHEDULE_DAYS: Final = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+
+
+async def async_schedule_blocks(
+    hass: HomeAssistant, user_id: str, entity_id: str
+) -> dict[str, list[dict[str, str]]] | None:
+    """Return a schedule helper's blocks per weekday name, as `schedule/list` holds them.
+
+    Each day maps to its `{from, to}` blocks (`HH:MM:SS`, a block ending at midnight as
+    `24:00:00`), every day present. None for a schedule the commands do not manage (one
+    from YAML); `HelperError` for an entity that is not a schedule helper or a command
+    that fails. Decision L38: the block end Skip next needs is not in the entity's state.
+    """
+    domain, item_id = _helper_item(hass, entity_id)
+    if domain != "schedule":
+        raise HelperError("not_a_schedule", f"{entity_id} is not a schedule")
+    items = await _async_command(hass, user_id, {"type": "schedule/list"})
+    item = next((item for item in items if item[CONF_ID] == item_id), None)
+    if item is None:
+        return None
+    return {day: [dict(span) for span in item.get(day) or ()] for day in _SCHEDULE_DAYS}
+
+
 @callback
 def async_update_registry_entity(  # noqa: PLR0913  # one keyword per registry field set
     hass: HomeAssistant,

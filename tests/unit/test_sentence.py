@@ -438,5 +438,8 @@ def test_every_phrase_is_used() -> None:
     w.routine_kind(detached=True)
     markers.presentation("Example", recording)
     markers.presentation("Example", recording, formerly=True)
+    # The weekly schedule helper's name and the AI line (Build A lane 14).
+    w.say("schedule_name", device="Example")
+    w.say("ai_line", text="Example")
 
     assert set(PHRASES) - recording.used == set()

@@ -56,9 +56,14 @@ from homeassistant.helpers import (
     area_registry as ar,
     device_registry as dr,
     entity_registry as er,
+    issue_registry as ir,
     label_registry as lr,
 )
-from homeassistant.helpers.event import async_call_later, async_track_point_in_utc_time
+from homeassistant.helpers.event import (
+    async_call_later,
+    async_track_point_in_utc_time,
+    async_track_state_change_event,
+)
 from homeassistant.helpers.typing import UNDEFINED
 from homeassistant.util import dt as dt_util
 
@@ -100,7 +105,13 @@ from .parser_grammar import ACTION_VERBS
 from .sentence import Writer
 from .settings import GlobalSettings, from_options
 from .store import OwnedRecord, RoutineStore
-from .summary import KIND_ROUTINE, SOURCE_PARSER, RoutineSummary, SummaryCoordinator
+from .summary import (
+    KIND_DETACHED,
+    KIND_ROUTINE,
+    SOURCE_PARSER,
+    RoutineSummary,
+    SummaryCoordinator,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -172,6 +183,9 @@ _TARGET_KEY: Final = "target"
 _CONFIG_KEYS: Final = frozenset(
     {"routine", "catch_up", "respect_manual", _TARGET_KEY, *(o.value for o in _PAGE_OPTIONS)}
 )
+# The device page entities a weekly schedule greys out, and why (PRD 4.2, FR-R2).
+_TIME_KEYS: Final = frozenset({"on_time", "off_time"})
+REASON_WEEKLY_SCHEDULE: Final = "weekly_schedule"
 
 # Why the manager turned an automation off, so it turns it back on when that ends.
 _OFF_INVALID: Final = "invalid"
@@ -302,6 +316,18 @@ class HealthInputs:
     blueprint_status: str | None
     blueprint_schema: int | None
     adapter_failed: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class HubRoutine:
+    """One managed routine as the hub Routines sensor lists it (PRD 4.4)."""
+
+    device: str
+    area: str | None
+    summary: str | None
+    next_action: str | None
+    status: Status
+    automation: str | None
 
 
 # --------------------------------------------------------------------------------------
@@ -493,6 +519,8 @@ class _Routine:
     write_handle: CALLBACK_TYPE | None = None
     resume_handle: CALLBACK_TYPE | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # The weekly schedule watched while `schedule_blocks_needed` is open, and its handle.
+    blocks_watch: tuple[str, CALLBACK_TYPE] | None = None
 
 
 type AttributorFactory = Callable[[HomeAssistant, RoutineLookup, OverrideSink], Attributor]
@@ -585,6 +613,7 @@ class RoutineManager:
         self._unsubscribe.clear()
         for routine in self._routines.values():
             self._cancel_resume(routine)
+            self._unwatch_blocks(routine)
         self._cancel_cleanup()
         self._attributor.async_stop()
 
@@ -832,7 +861,9 @@ class RoutineManager:
         `adapter_incompatible`, `detached` or `missing_target` (TECH_SPEC 4.5); the
         platforms show the entity unavailable with this `reason` attribute. With a `key`
         the answer is for that control: an adapter that cannot write takes away the
-        config controls only (TECH_SPEC 4.2); without one it is for the device.
+        config controls only (TECH_SPEC 4.2), and the two time entities read
+        `weekly_schedule` while Days is Weekly schedule (PRD 4.2: the schedule's blocks
+        give the times); without a key it is for the device.
         """
         editing = key is None or key in _CONFIG_KEYS
         if editing and not self._adapter.works(ha_adapter.CAPABILITY_WRITE):
@@ -842,6 +873,12 @@ class RoutineManager:
             return "detached"
         if routine is not None and routine.missing_target:
             return "missing_target"
+        if (
+            key in _TIME_KEYS
+            and routine is not None
+            and self._settings_of(routine).days is Days.WEEKLY_SCHEDULE
+        ):
+            return REASON_WEEKLY_SCHEDULE
         return None
 
     def page_keys(self, device_id: str) -> frozenset[str]:
@@ -1164,6 +1201,9 @@ class RoutineManager:
         """
         routine = self._require(device_id, editing=True)
         merged, problem = apply_patch(self._settings_of(routine), patch)
+        own_schedule: str | None = None
+        if problem is None:
+            merged, own_schedule = self._weekly_schedule_linked(routine, merged, patch)
         if problem is None and merged.target_entity not in self.candidates(device_id):
             problem = Problem("target_entity", "invalid_target", {"entity": merged.target_entity})
         if problem is None:
@@ -1171,6 +1211,8 @@ class RoutineManager:
             assert profile is not None  # noqa: S101  # candidates are supported domains
             problems = compiler.validate(merged, profile)
             problem = problems[0] if problems else None
+        if problem is None and own_schedule is not None:
+            problem = await self._async_own_schedule_ready(routine, own_schedule)
         if problem is not None:
             _LOGGER.debug("%s refused a patch from %s: %s", device_id, source, problem.key)
             self._changed(device_id)
@@ -1308,9 +1350,7 @@ class RoutineManager:
         fields: dict[str, Any] = (
             {"duration": "00:00:00", "restore": True} if domain == "timer" else {}
         )
-        name = self.summary.phrases["routine_alias"].format(
-            device=self._device_name(routine.device_id)
-        )
+        name = self._helper_name(routine.device_id, domain)
         await ha_adapter.async_create_helper(
             self.hass, user_id, domain, name, entity_id=entity_id, labels=[self._label()], **fields
         )
@@ -1597,6 +1637,7 @@ class RoutineManager:
             schedule_state,
             lookups,
             countdown_ends=countdown,
+            block=await self._async_next_block(settings, schedule_state, lookups),
         )
         if target is None:
             raise _invalid("nothing_to_skip", {"device": self._device_name(device_id)})
@@ -1687,6 +1728,7 @@ class RoutineManager:
     def _clear_runtime(self, routine: _Routine) -> None:
         self._cancel_write(routine)
         self._cancel_resume(routine)
+        self._unwatch_blocks(routine)
         routine.paused_until = None
         routine.skipped_action = None
         routine.override = routine.override_by_skip = False
@@ -1985,6 +2027,7 @@ class RoutineManager:
         self._store.async_delay_save()
         if device_id is None:
             return
+        await self._async_delete_own_schedule(device_id)
         routine = self._routine(device_id)
         self._clear_runtime(routine)
         routine.settings = None
@@ -2132,9 +2175,6 @@ class RoutineManager:
         if self._entry_config(routine, current, inputs).get("alias") == current.get("alias"):
             return
         await self._async_write(routine)
-        name = self.summary.phrases["routine_alias"].format(
-            device=self._device_name(routine.device_id)
-        )
         record = self._store.data.owned[routine.automation_id]
         refs = _refs(record.last_valid_inputs) or compiler.HelperRefs(routine.device_id)
         helpers = [
@@ -2143,6 +2183,7 @@ class RoutineManager:
             if er.async_get(self.hass).async_get(entity_id) is not None
         ]
         for entity_id in helpers:
+            name = self._helper_name(routine.device_id, entity_id.partition(".")[0])
             await ha_adapter.async_update_helper(
                 self.hass, await self._async_system_user(), entity_id, name=name
             )
@@ -2291,6 +2332,7 @@ class RoutineManager:
             return
         await self._async_check_target(routine)
         await self._async_check_helpers(routine)
+        await self._async_check_schedule_blocks(routine)
         await self._async_check_loaded(routine)
         await self._async_follow_name(routine)
         self._follow_area(routine)
@@ -2397,6 +2439,7 @@ class RoutineManager:
             await self._async_delete_helpers(
                 _refs(record.last_valid_inputs) or compiler.HelperRefs(device_id)
             )
+        await self._async_delete_own_schedule(device_id)
         self._remove_entities(device_id)
         if (routine := self._routines.pop(device_id, None)) is not None:
             self._clear_runtime(routine)
@@ -2453,6 +2496,194 @@ class RoutineManager:
                 self._changed(device_id)
             self._notify(ManagerEvent("schedule_changed", None))
         return devices
+
+    # ----------------------------------------------------------------------------------
+    # The weekly schedule helper (Build A lane 14: PRD FR-R2, decision L38)
+    # ----------------------------------------------------------------------------------
+
+    def _helper_name(self, device_id: str, domain: str) -> str:
+        """Return a helper's name: "<device> routine" for a schedule (FR-R2), else the alias."""
+        phrase = "schedule_name" if domain == "schedule" else "routine_alias"
+        return self.summary.phrases[phrase].format(device=self._device_name(device_id))
+
+    def _own_schedule(self, routine: _Routine) -> str:
+        """Return the entity id of the routine's own weekly schedule helper (M8)."""
+        return f"schedule.routine_{self._slug(routine)}"
+
+    def _weekly_schedule_linked(
+        self, routine: _Routine, settings: RoutineSettings, patch: Patch
+    ) -> tuple[RoutineSettings, str | None]:
+        """Apply Days set to Weekly schedule: link the routine's own helper, drop the times.
+
+        A patch that sets Days to Weekly schedule without naming a schedule links the
+        routine's own `schedule.routine_<slug>` when no schedule is linked yet (a schedule
+        the routine linked before, or one the patch names, stays). The times the patch
+        does not set are dropped: the schedule's blocks give the times now, and the time
+        entities are unavailable meanwhile. Returns the settings and the own helper's
+        entity id when it was linked here, else None.
+        """
+        if "days" not in patch or settings.days is not Days.WEEKLY_SCHEDULE:
+            return settings, None
+        values: dict[str, Any] = {key: None for key in _TIME_KEYS if key not in patch}
+        own = None
+        if "schedule_entity" not in patch and settings.schedule_entity is None:
+            own = values["schedule_entity"] = self._own_schedule(routine)
+        return replace(settings, **values), own
+
+    async def _async_own_schedule_ready(self, routine: _Routine, entity_id: str) -> Problem | None:
+        """Create the routine's own weekly schedule when it does not exist yet.
+
+        It is created empty, named after the device, with the `Routines` label and no
+        device (L36); the person fills its blocks in Home Assistant's weekly editor, so a
+        new helper raises nothing. An existing one (Days was Weekly schedule before) is
+        linked again with its blocks. A failure keeps the patch out with a problem.
+        """
+        if self._exists(entity_id):
+            return None
+        try:
+            await self._async_create_helper(routine, "schedule", entity_id)
+        except (ha_adapter.AdapterError, HomeAssistantError, ValueError) as err:
+            _LOGGER.warning("Could not create %s: %s", entity_id, err)
+            return Problem("days", "schedule_helper_failed", {"schedule": entity_id})
+        return None
+
+    async def _async_schedule_items(self, entity_id: str) -> dict[str, Any] | None:
+        """Read a schedule helper's blocks through the adapter; None when unreadable."""
+        try:
+            return await ha_adapter.async_schedule_blocks(
+                self.hass, await self._async_system_user(), entity_id
+            )
+        except ha_adapter.AdapterError as err:
+            _LOGGER.debug("Could not read the blocks of %s: %s", entity_id, err)
+            return None
+
+    async def _async_next_block(
+        self,
+        settings: RoutineSettings,
+        schedule_state: str | None,
+        lookups: nextrun.Lookups,
+    ) -> tuple[datetime, datetime] | None:
+        """Return the next block of a weekly schedule, start and end, while outside one.
+
+        The start is the schedule's `next_event`; the end is read from the helper's
+        blocks (`schedule/list`, decision L38), because the entity's state does not hold
+        it. None inside a block, for a schedule the commands do not manage, or when the
+        blocks cannot be read; Skip next then has nothing to skip at a block start.
+        """
+        schedule = settings.schedule_entity
+        start = lookups.entity_times.get(schedule) if schedule else None
+        if (
+            settings.days is not Days.WEEKLY_SCHEDULE
+            or schedule is None
+            or schedule_state != "off"
+            or not isinstance(start, datetime)
+        ):
+            return None
+        item = await self._async_schedule_items(schedule)
+        if item is None:
+            return None
+        return nextrun.block_bounds(nextrun.weekly_blocks(item), dt_util.as_local(start))
+
+    def _blocks_needed(self, routine: _Routine) -> bool:
+        registry_id = repairs.issue_registry_id(
+            repairs.SCHEDULE_BLOCKS_NEEDED, routine.automation_id
+        )
+        return ir.async_get(self.hass).async_get_issue(DOMAIN, registry_id) is not None
+
+    async def _async_check_schedule_blocks(self, routine: _Routine) -> None:
+        """Clear `schedule_blocks_needed` once the routine's schedule has blocks again.
+
+        While the issue is open the schedule is watched, and every change of it (a block
+        added in the weekly editor) reads the blocks again through `schedule/list`.
+        """
+        record = self._store.data.owned.get(routine.automation_id)
+        refs = _refs(record.last_valid_inputs if record else None)
+        schedule = refs.schedule_entity if refs else compiler.UNUSED_SCHEDULE
+        if schedule == compiler.UNUSED_SCHEDULE or not self._blocks_needed(routine):
+            self._unwatch_blocks(routine)
+            return
+        item = await self._async_schedule_items(schedule)
+        if item is not None and any(item.values()):
+            self._sync_issue(repairs.SCHEDULE_BLOCKS_NEEDED, routine, present=False)
+            self._unwatch_blocks(routine)
+            return
+        self._watch_blocks(routine, schedule)
+
+    def _watch_blocks(self, routine: _Routine, schedule: str) -> None:
+        if routine.blocks_watch is not None and routine.blocks_watch[0] == schedule:
+            return
+        self._unwatch_blocks(routine)
+
+        @callback
+        def changed(_event: Event[Any]) -> None:
+            self.entry.async_create_task(
+                self.hass,
+                self._async_check_schedule_blocks(routine),
+                f"{DOMAIN} schedule blocks {routine.device_id}",
+            )
+
+        routine.blocks_watch = (
+            schedule,
+            async_track_state_change_event(self.hass, [schedule], changed),
+        )
+
+    def _unwatch_blocks(self, routine: _Routine) -> None:
+        if routine.blocks_watch is not None:
+            routine.blocks_watch[1]()
+            routine.blocks_watch = None
+
+    async def _async_delete_own_schedule(self, device_id: str) -> None:
+        """Delete the routine's own weekly schedule when it goes with its routine (D28).
+
+        The schedule stays when Days changes back from Weekly schedule, so the routine
+        no longer names it; it is deleted here only while it is a schedule helper that
+        carries the `Routines` label, never a schedule someone else owns.
+        """
+        routine = self._routines.get(device_id)
+        if routine is None:
+            return
+        schedule = self._own_schedule(routine)
+        entry = er.async_get(self.hass).async_get(schedule)
+        if entry is None or entry.platform != "schedule" or self._label_id not in entry.labels:
+            return
+        await self._async_delete_helpers(compiler.HelperRefs(device_id, schedule_entity=schedule))
+
+    # ----------------------------------------------------------------------------------
+    # The hub Routines sensor (Build A lane 14: PRD 4.4)
+    # ----------------------------------------------------------------------------------
+
+    def hub_routines(self) -> tuple[HubRoutine, ...]:
+        """Return every managed routine for the hub Routines sensor, by device name.
+
+        Managed means an owned automation, or one that was detached; a device with
+        routine controls but no automation yet is not listed. `summary` is the routine's
+        own line of the Schedule summary and `next_action` the next action that really
+        runs, worded as the Schedule state words it ("On at 5:00 PM").
+        """
+        now = dt_util.now()
+        areas = ar.async_get(self.hass)
+        rows: builtins.list[HubRoutine] = []
+        for view in self.list():
+            routine = self._routines[view.device_id]
+            if not routine.detached and routine.automation_id not in self._store.data.owned:
+                continue
+            area = areas.async_get_area(view.area_id) if view.area_id else None
+            line = next(
+                (item for item in view.items if item.kind in {KIND_ROUTINE, KIND_DETACHED}),
+                None,
+            )
+            writer = self._writer(view.settings)
+            rows.append(
+                HubRoutine(
+                    device=view.device_name,
+                    area=area.name if area else None,
+                    summary=line.summary if line else None,
+                    next_action=writer.state(view.next_action, None, now),
+                    status=view.status,
+                    automation=view.automation_entity_id,
+                )
+            )
+        return tuple(rows)
 
 
 # --------------------------------------------------------------------------------------

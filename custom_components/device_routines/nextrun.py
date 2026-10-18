@@ -9,11 +9,11 @@ core behavior; the tests of this module use the same dates.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from enum import IntEnum
-from typing import Final
+from typing import Any, Final
 
 from .domains import PROFILES
 from .models import (
@@ -406,7 +406,7 @@ def routine_occurrences(  # noqa: PLR0913  # the routine's whole runtime picture
     ]
 
 
-def skip_target(  # noqa: PLR0913  # the contract's five values plus the running countdown
+def skip_target(  # noqa: PLR0913  # the contract's five values, the countdown and the block
     settings: RoutineSettings,
     now: datetime,
     paused_until: datetime | None = None,
@@ -414,6 +414,7 @@ def skip_target(  # noqa: PLR0913  # the contract's five values plus the running
     sun: Lookups | None = None,
     *,
     countdown_ends: datetime | None = None,
+    block: tuple[datetime, datetime] | None = None,
 ) -> SkipTarget | None:
     """Return what Skip next skips now, or None when nothing is scheduled.
 
@@ -421,19 +422,125 @@ def skip_target(  # noqa: PLR0913  # the contract's five values plus the running
     so pressing again extends the skip to the following action. A window start takes its
     paired end along (D18); a window end, a one shot run, a pulse or a running countdown is
     skipped alone (D19), and the manager cancels a skipped countdown's timer (FR-R11). A
-    weekly schedule's next block start cannot be skipped from here, because its block end is
-    not known, so the result is None then. `sun` carries the lookups (the schedule's
-    `next_event`; sunrise and sunset arrive with Build B).
+    weekly schedule's next block start takes its block end along, as a window start does
+    (decision L38): the schedule entity does not hold that end, so the manager reads the
+    helper's blocks and passes the block's start and end as `block` (`block_bounds`); a
+    block start without it, or with a block that does not start then, gives None. `sun`
+    carries the lookups (the schedule's `next_event`; sunrise and sunset arrive with
+    Build B).
     """
     upcoming = _upcoming(
         settings, now, schedule_state, sun, countdown_ends=countdown_ends, not_before=paused_until
     )
-    if not upcoming or upcoming[0].kind is _Kind.BLOCK_START:
+    if not upcoming:
         return None
     first = upcoming[0]
+    if first.kind is _Kind.BLOCK_START:
+        return _block_skip(first, block)
     paired_end = None
     if first.kind is _Kind.WINDOW_START:
         paired_end = next(
             (a.at for a in upcoming if a.kind is _Kind.WINDOW_END and a.at > first.at), None
         )
     return SkipTarget(first.verb, first.at, paired_end, (paired_end or first.at) + SKIP_MARGIN)
+
+
+# --------------------------------------------------------------------------------------
+# Weekly schedule blocks (Build A lane 14, decision L38)
+# --------------------------------------------------------------------------------------
+
+# A schedule helper's blocks per weekday: `from` and `to` wall clock times, `to` being
+# `time.max` for a block that ends at midnight (the helper's 24:00:00).
+type WeeklyBlocks = Mapping[Weekday, Sequence[tuple[time, time]]]
+
+# The weekday keys of a `schedule/list` item, Monday first.
+_SCHEDULE_DAYS: Final = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+_END_OF_DAY: Final = "24:00"
+
+
+def _block_time(value: Any) -> time | None:
+    """Return a block bound as a time of day: 24:00 is `time.max`; None when unreadable."""
+    if not isinstance(value, str):
+        return None
+    if value.startswith(_END_OF_DAY):
+        return time.max
+    try:
+        return time.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def weekly_blocks(item: Mapping[str, Any]) -> dict[Weekday, tuple[tuple[time, time], ...]]:
+    """Read a schedule helper's blocks from its `schedule/list` item.
+
+    Each weekday key holds a list of `{from, to}` mappings with `HH:MM:SS` times; the core
+    writes a block ending at midnight as `24:00:00`. A block that does not read is left
+    out, and a day without blocks is not in the result.
+    """
+    found: dict[Weekday, tuple[tuple[time, time], ...]] = {}
+    for weekday, key in zip(Weekday, _SCHEDULE_DAYS, strict=True):
+        spans = item.get(key)
+        if not isinstance(spans, list):
+            continue
+        read = []
+        for span in spans:
+            if not isinstance(span, Mapping):
+                continue
+            start, end = _block_time(span.get("from")), _block_time(span.get("to"))
+            if start is not None and end is not None:
+                read.append((start, end))
+        if read:
+            found[weekday] = tuple(read)
+    return found
+
+
+def block_bounds(blocks: WeeklyBlocks, start: datetime) -> tuple[datetime, datetime] | None:
+    """Return the block of a weekly schedule that starts at `start`, with its end.
+
+    `start` is the schedule's `next_event` as an aware datetime; the result is in its zone,
+    and the wall clock end is placed on its own day, so a block over a daylight saving
+    night ends at the end the helper shows. Blocks that meet, on one day or across
+    midnight, are one block: the schedule stays on between them (Stage 0 V10, A6). None
+    when no block starts then, or when the blocks never end (on all week).
+    """
+    tz = start.tzinfo
+    day = start.date()
+    weekday = Weekday.of(start)
+    at = start.time().replace(microsecond=0)
+
+    def starting(on: Weekday, moment: time) -> time | None:
+        return next((end for begin, end in blocks.get(on, ()) if begin == moment), None)
+
+    end = starting(weekday, at)
+    for _ in range(sum(len(spans) for spans in blocks.values())):
+        if end is None:
+            return None
+        if end == time.max:
+            day += timedelta(days=1)
+            weekday = weekday.following
+            following = starting(weekday, time(0))
+            moment = time(0)
+        else:
+            following = starting(weekday, end)
+            moment = end
+        if following is None:
+            return start, datetime.combine(day, moment).replace(tzinfo=tz)
+        end = following
+    return None
+
+
+def _block_skip(first: _Action, block: tuple[datetime, datetime] | None) -> SkipTarget | None:
+    """Skip a weekly schedule's next block start with its end, when `block` is that block."""
+    if block is None or block[0] != first.at:
+        return None
+    tz = first.at.tzinfo
+    end = block[1].astimezone(tz)
+    return SkipTarget(first.verb, first.at, end, end + SKIP_MARGIN)

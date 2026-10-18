@@ -101,5 +101,7 @@
   "formerly_managed": "Formerly managed by Device Routines.",
   "kind_routine": "Routine",
   "kind_detached": "Detached routine",
+  "schedule_name": "{device} routine",
+  "ai_line": "{text} (AI)",
   "ellipsis": "..."
 }

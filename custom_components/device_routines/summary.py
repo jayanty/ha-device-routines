@@ -254,6 +254,8 @@ class SummaryCoordinator:
             immediate=False,
             function=self._async_rebuild,
         )
+        # Listeners of every device's changes: the hub Routines sensor (Build A lane 14).
+        self._change_listeners: list[CALLBACK_TYPE] = []
 
     # ----------------------------------------------------------------------------------
     # Lifecycle
@@ -507,6 +509,23 @@ class SummaryCoordinator:
     def _notify(self, device_id: str) -> None:
         for update in list(self._listeners.get(device_id, [])):
             update()
+        for update in list(self._change_listeners):
+            update()
+
+    @callback
+    def async_add_change_listener(self, update: CALLBACK_TYPE) -> CALLBACK_TYPE:
+        """Call `update` whenever any device's summary changes; return the unsubscriber.
+
+        The hub Routines sensor follows the routines' next actions this way, so it moves
+        on at each action without a timer of its own.
+        """
+        self._change_listeners.append(update)
+
+        @callback
+        def remove() -> None:
+            self._change_listeners.remove(update)
+
+        return remove
 
     @callback
     def _refresh_views(self) -> None:

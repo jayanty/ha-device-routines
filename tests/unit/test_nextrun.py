@@ -541,3 +541,94 @@ def test_skip_target_equals_the_sentence_action(
         routine, now, target.paused_until, schedule_state, lookups, countdown_ends=countdown
     )
     assert again is None or again.at >= target.paused_until
+
+
+# --------------------------------------------------------------------------------------
+# Skip next outside a weekly schedule block (Build A lane 14, decision L38)
+# --------------------------------------------------------------------------------------
+
+WEEKLY = RoutineSettings(
+    target_entity=FAN, days=Days.WEEKLY_SCHEDULE, schedule_entity="schedule.fan"
+)
+
+
+def test_weekly_blocks_read_the_schedule_list_item() -> None:
+    item = {
+        "id": "abc",
+        "name": "Living room fan routine",
+        "monday": [{"from": "17:00:00", "to": "22:00:00"}, {"from": "22:00:00", "to": "24:00:00"}],
+        "tuesday": [{"from": "00:00", "to": "02:00:00"}],
+        "wednesday": [],
+        "friday": [{"from": "nonsense", "to": "02:00:00"}, {"to": "03:00:00"}, "nothing"],
+        "saturday": "not a list",
+    }
+
+    assert nextrun.weekly_blocks(item) == {
+        Weekday.MON: ((time(17), time(22)), (time(22), time.max)),
+        Weekday.TUE: ((time(0), time(2)),),
+    }
+    assert nextrun.weekly_blocks({}) == {}
+
+
+def test_block_bounds_find_the_block_starting_at_the_next_event() -> None:
+    blocks = {
+        Weekday.MON: ((time(8), time(9)), (time(17), time(22))),
+        Weekday.TUE: ((time(17), time(19)), (time(19), time(21, 30))),
+        Weekday.SAT: ((time(22), time.max),),
+        Weekday.SUN: ((time(0), time(2)),),
+        Weekday.WED: ((time(23), time.max),),
+    }
+    # Monday 2026-10-19.
+    assert nextrun.block_bounds(blocks, local(19, 17)) == (local(19, 17), local(19, 22))
+    # Blocks that meet are one block, as the schedule stays on between them (A6).
+    assert nextrun.block_bounds(blocks, local(20, 17)) == (local(20, 17), local(20, 21, 30))
+    assert nextrun.block_bounds(blocks, local(24, 22)) == (local(24, 22), local(25, 2))
+    # A block that ends at midnight with nothing after it ends at midnight.
+    assert nextrun.block_bounds(blocks, local(21, 23)) == (local(21, 23), local(22, 0))
+    # A start the blocks do not hold is unknown.
+    assert nextrun.block_bounds(blocks, local(19, 18)) is None
+    assert nextrun.block_bounds({}, local(19, 17)) is None
+    # The answer is in the zone of the start, whatever zone the start came in.
+    found = nextrun.block_bounds(blocks, local(19, 17))
+    assert found is not None
+    assert found[1].tzinfo is LA
+    # A schedule that never ends has no block end.
+    always = {day: ((time(0), time.max),) for day in Weekday}
+    assert nextrun.block_bounds(always, local(19, 0)) is None
+
+
+def test_block_bounds_follow_the_wall_clock_across_a_dst_night() -> None:
+    blocks = {Weekday.SAT: ((time(22), time.max),), Weekday.SUN: ((time(0), time(4)),)}
+    # Saturday 2026-10-31 22:00 to Sunday 04:00, the fall back night in Los Angeles.
+    start = datetime(2026, 10, 31, 22, tzinfo=LA)
+    assert nextrun.block_bounds(blocks, start) == (start, datetime(2026, 11, 1, 4, tzinfo=LA))
+    end = nextrun.block_bounds(blocks, start)
+    assert end is not None
+    assert end[1].utcoffset() == timedelta(hours=-8)
+
+
+def test_skip_target_skips_a_block_start_with_its_end() -> None:
+    """L38: outside a block, Skip next skips the next block's start and its end (D18)."""
+    block_starts = local(19, 17)
+    lookups = nextrun.Lookups(entity_times={"schedule.fan": block_starts.astimezone(UTC)})
+    block = (block_starts, local(19, 22))
+
+    target = nextrun.skip_target(WEEKLY, local(19, 12), None, "off", lookups, block=block)
+
+    assert target == nextrun.SkipTarget(Verb.ON, block_starts, local(19, 22), local(19, 22, 1))
+    assert target.at.tzinfo is LA
+    # The block given in another zone is the same block.
+    in_utc = (block_starts.astimezone(UTC), local(19, 22).astimezone(UTC))
+    utc_target = nextrun.skip_target(WEEKLY, local(19, 12), None, "off", lookups, block=in_utc)
+    assert utc_target == target
+    assert utc_target is not None
+    assert utc_target.paired_end is not None
+    assert utc_target.paired_end.tzinfo is LA
+    # A block that does not start at the next change is not that block.
+    stale = (local(20, 17), local(20, 22))
+    assert nextrun.skip_target(WEEKLY, local(19, 12), None, "off", lookups, block=stale) is None
+    # Inside a block the end is skipped alone, whatever block is given (D19).
+    ends = nextrun.skip_target(WEEKLY, local(19, 12), None, "on", lookups, block=block)
+    assert ends == nextrun.SkipTarget(Verb.OFF, block_starts, None, block_starts + MINUTE)
+    # Without the block, a block start still cannot be skipped.
+    assert nextrun.skip_target(WEEKLY, local(19, 12), None, "off", lookups) is None

@@ -432,6 +432,11 @@
         "data_description": {
           "devices": "Nothing is ticked: leave it that way to skip."
         }
+      },
+      "settings": {
+        "data_description": {
+          "ai_task_entity": "Optional, off when empty. Device Routines then sends this AI Task entity, through its generate data action, only the automations whose schedule it cannot read itself, one automation at a time and at most AI calls per hour times an hour, never in the first five minutes after a start: their trigger, condition and action blocks as written, templates included, with entities named by entity id. Aliases and descriptions are left out, devices, areas, floors and labels become numbered placeholders, and no states, attributes or names are sent. Nothing goes anywhere else; where the entity sends it next depends on its integration (a local model keeps it in your home, a cloud service does not). Answers are cached until the automation changes and are shown with (AI)."
+        }
       }
     },
     "error": {
@@ -602,6 +607,9 @@
     },
     "times_with_weekly_schedule": {
       "message": "A routine that follows a weekly schedule takes its times from the schedule. Clear the start and stop times, or choose other days."
+    },
+    "schedule_helper_failed": {
+      "message": "The weekly schedule {schedule} could not be created, so the days stay as they were. Check the Home Assistant log and try again."
     },
     "no_days_selected": {
       "message": "Choose at least one day."
