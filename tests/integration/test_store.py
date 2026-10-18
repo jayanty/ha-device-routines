@@ -321,3 +321,41 @@ async def test_a_delayed_save_lands_after_the_delay(
     assert hass_storage[store.STORAGE_KEY]["data"]["opted_in"] == sorted(
         [FAN_DEVICE, VACUUM_DEVICE]
     )
+
+
+async def test_a_flush_writes_a_pending_delayed_save_at_once(
+    hass: HomeAssistant, hass_storage: dict[str, Any], freezer: FrozenDateTimeFactory
+) -> None:
+    """Plan A4.0 item 14: the manager flushes on unload, so a pending save is not lost."""
+    routines = RoutineStore(hass)
+    routines.data.opted_in.add(FAN_DEVICE)
+
+    await routines.async_flush()
+    assert store.STORAGE_KEY not in hass_storage  # nothing pending, nothing written
+
+    routines.async_delay_save()
+    await routines.async_flush()
+
+    assert hass_storage[store.STORAGE_KEY]["data"]["opted_in"] == [FAN_DEVICE]
+    del hass_storage[store.STORAGE_KEY]
+    freezer.tick(timedelta(seconds=store.SAVE_DELAY + 1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert store.STORAGE_KEY not in hass_storage  # the delayed save was the flushed one
+    await routines.async_flush()
+    assert store.STORAGE_KEY not in hass_storage
+
+
+async def test_a_delayed_save_that_ran_leaves_nothing_to_flush(
+    hass: HomeAssistant, hass_storage: dict[str, Any], freezer: FrozenDateTimeFactory
+) -> None:
+    routines = RoutineStore(hass)
+    routines.async_delay_save()
+    freezer.tick(timedelta(seconds=store.SAVE_DELAY + 1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    del hass_storage[store.STORAGE_KEY]
+
+    await routines.async_flush()
+
+    assert store.STORAGE_KEY not in hass_storage

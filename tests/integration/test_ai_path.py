@@ -436,6 +436,30 @@ async def test_answers_are_cached_by_config_hash_in_the_store(
     assert ("Turns the fan on after dark (AI)", SOURCE_AI) in items(hass, home)
 
 
+async def test_an_answer_survives_a_reload_inside_the_save_delay(
+    hass: HomeAssistant,
+    home: dict[str, Any],
+    ai: FakeAiTask,
+    freezer: Any,
+    hass_storage: dict[str, Any],
+) -> None:
+    """Plan A4.0 item 14 (L53): the unload writes the Store's pending delayed save."""
+    entry = await start(hass, [templated()], AI_ON)
+    await past_startup(hass, freezer)
+    digest = digest_of(hass, "automation.fan_hot")
+    assert list(store_of(entry).data.ai_cache) == [digest]
+
+    # No wait for the one second delay: the reload comes at once.
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert list(hass_storage["device_routines"]["data"]["ai_cache"]) == [digest]
+    assert list(store_of(entry).data.ai_cache) == [digest]
+    assert (f"{ANSWER} (AI)", SOURCE_AI) in items(hass, home)
+    await past_startup(hass, freezer)
+    assert len(ai.calls) == 1
+
+
 @pytest.mark.parametrize(
     "reply",
     [HomeAssistantError("the model is offline"), "", None, {"line": "structured"}],

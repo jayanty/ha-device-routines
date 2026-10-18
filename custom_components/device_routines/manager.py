@@ -595,8 +595,13 @@ class RoutineManager:
         self._unsubscribe.append(bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, self._started))
 
     async def async_stop(self) -> None:
-        """Write what is pending, then drop every listener and timer."""
+        """Write what is pending, the Store included, then drop every listener and timer.
+
+        The Store's delayed save (one second) would be lost if the entry reloads inside
+        it, the AI cache's included; the summary stops first, so its last answer is in.
+        """
         await self.async_flush()
+        await self._store.async_flush()
         self._stopping = True
         for unsubscribe in self._unsubscribe:
             unsubscribe()

@@ -244,6 +244,8 @@ class RoutineStore:
     """The loaded Store: `data` is read and changed in place, then saved.
 
     `data` starts empty, so it is usable before `async_load`; `async_load` replaces it.
+    `async_flush` writes a delayed save that is still waiting, which the manager does on
+    unload: an entry reloaded inside the delay would otherwise lose it (L53).
     """
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -255,6 +257,7 @@ class RoutineStore:
             atomic_writes=True,
         )
         self.data = StoreData()
+        self._pending = False
 
     async def async_load(self) -> StoreData:
         """Load (and migrate) the stored data; raise `StoreVersionError` for a newer one."""
@@ -263,13 +266,21 @@ class RoutineStore:
         return self.data
 
     async def async_save(self) -> None:
-        """Write `data` now."""
+        """Write `data` now; a delayed save still waiting is replaced by this one."""
+        self._pending = False
         await self._store.async_save(self.data.to_dict())
 
     @callback
     def async_delay_save(self, delay: float = SAVE_DELAY) -> None:
         """Write `data` as it is after `delay` seconds, so a burst of changes is one write."""
+        self._pending = True
         self._store.async_delay_save(self._serialized, delay)
 
+    async def async_flush(self) -> None:
+        """Write now when a delayed save is still waiting; otherwise do nothing."""
+        if self._pending:
+            await self.async_save()
+
     def _serialized(self) -> dict[str, Any]:
+        self._pending = False
         return self.data.to_dict()
