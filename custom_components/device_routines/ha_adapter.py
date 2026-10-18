@@ -523,6 +523,22 @@ async def async_read_automation(
     return next((item for item in entries if _matches(item, automation_id)), None)
 
 
+async def async_read_automations(hass: HomeAssistant) -> list[Mapping[str, Any]]:
+    """Return every entry of `automations.yaml` that is a mapping, in file order.
+
+    One read for callers that look at every entry (sync back, the reconcile scan, the
+    index rebuild). Like `async_read_automation` it is remembered, so `file_hash` right
+    after it (no await in between) guards a write based on it.
+    """
+    adapter = _data(hass)
+    async with adapter.lock:
+        entries, digest = await hass.async_add_executor_job(
+            _read_file, hass.config.path(AUTOMATION_CONFIG_PATH)
+        )
+        adapter.remember(digest, entries)
+    return [item for item in entries if isinstance(item, Mapping)]
+
+
 async def async_write_automation(
     hass: HomeAssistant,
     automation_id: str,

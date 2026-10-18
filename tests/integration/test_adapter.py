@@ -479,6 +479,29 @@ async def test_a_missing_empty_or_malformed_file(hass: HomeAssistant, config_dir
     assert text_of(path) == "not_a: list\n"
 
 
+async def test_read_automations_returns_every_mapping_and_guards_a_write(
+    hass: HomeAssistant, config_dir: Path
+) -> None:
+    """One read of the whole file (Build A lane 5): every mapping in file order, guarded."""
+    path = config_dir / AUTOMATION_CONFIG_PATH
+    assert await async_setup_component(hass, "automation", {})
+    await ha_adapter.async_install_blueprint(hass, BLUEPRINT_TEXT)
+    put(path, dump([long_run(), "not an entry", owned()]))
+
+    read = await ha_adapter.async_read_automations(hass)
+    guard = ha_adapter.file_hash(hass)
+
+    assert [item["id"] for item in read] == ["long_run", ROUTINE_ID]
+    assert guard == sha256_of(path)
+    await ha_adapter.async_write_automation(hass, ROUTINE_ID, owned(2), guard)
+    stored = await ha_adapter.async_read_automation(hass, ROUTINE_ID)
+    assert stored is not None
+    assert stored["use_blueprint"]["input"]["minutes"] == 2
+
+    remove(path)
+    assert await ha_adapter.async_read_automations(hass) == []
+
+
 async def test_delete_removes_the_registry_entry(hass: HomeAssistant, automations: Path) -> None:
     registry = er.async_get(hass)
     await ha_adapter.async_write_automation(hass, ROUTINE_ID, owned(), None)
