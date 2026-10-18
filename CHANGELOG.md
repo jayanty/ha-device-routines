@@ -54,6 +54,13 @@ Build A (Phases 2 and 3) is in progress; the entries below grow with it.
   Task entity you choose, as the automation's blocks with entity ids and no names; off by
   default.
 
+### Changed
+
+- The Schedule summary reads more automations without guessing: state triggers that list
+  several states, `event.received` with its event types, and a timer's own started,
+  finished and cancelled events; purpose specific triggers with options that change their
+  meaning now read as custom logic instead of a plain line.
+
 ## [0.1.0] - 2026-10-18
 
 The read only Schedule summary (Phase 1).

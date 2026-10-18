@@ -35,7 +35,7 @@ chat by its id; a session then updates its status here.
 | O7 | Try the HACS custom repository install of a release on a second instance (Phase 1 exit criterion) | Needs a second instance | Deferred indefinitely; the release zip is built and checked by CI | none | open, deferred |
 | O8 | Optionally name one or two more low risk devices for live restart scenarios, so S3, S4, S5 and S12 can be staged on one restart instead of across several | Devices are the owner's | The sandbox plug alone; scenarios are staged by the clock on restarts that happen anyway (plan 5.2) and the rest stand on their harness rows | none | open |
 | O9 | Decide whether to turn `input_boolean.device_routines_auto_restart` on (the 03:00 to 04:00 window, PRD D30), which would make R1 and R2 unattended | PRD D30 leaves the switch to the owner | Off; restarts are asked for in this log and the Status line | none | open |
-| O14 | Veto right on the G5 decision of plan task A4.3: if the golden corpus still parses under 90 percent after the safe grammar additions, the session records a decision entry that counts the golden negatives (multi automation controllers) separately | PRD G5 is the owner's goal | The session's decision entry stands unless vetoed | none | open |
+| O14 | Veto right on the G5 decision of plan task A4.3 (decision L55): the corpus now parses 51 of 56 items (91.1 percent) with zero wrong lines after four zero guessing grammar additions, so the G5 measure stands unamended; the veto stays open on the additions themselves | PRD G5 is the owner's goal | L55 stands unless vetoed | none | open (measure met, nothing to veto unless an addition reads wrong) |
 
 ## Closed
 

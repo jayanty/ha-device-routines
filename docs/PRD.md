@@ -317,6 +317,8 @@ The Schedule sensor ships first (Phase 1) because it is read only, useful on day
 
 Output examples: "Weekdays 9:45 AM: start (if 7 conditions pass)", "8:00 AM: off for 3 min, then on", "Off 60 min after it turns on". Anything the parser cannot read (templates, `repeat`, scripts, events) is never guessed: the line ends with "plus custom logic" or, if nothing was understood, reads "Automation: \<alias> (custom logic)".
 
+Note (2026-10-18, decision L55): the grammar also reads `event.received` with its event types and an event trigger on a timer's own `timer.started`, `timer.finished` or `timer.cancelled` event for one timer, as the purpose specific triggers they equal; "events" in the list above means other events.
+
 **FR-S3 (P0) Next run.** Computed for timed lines from triggers plus weekday and time conditions, and from `sun.sun` for sun triggers. Event driven lines have no next run and read as "When ...".
 
 **FR-S4 (P0) Sensor state and attributes.** State is the earliest next timed action, 40 characters or less: "Off at 9:00 AM" today, "Start Wed 9:45 AM" on another day. With no timed action it shows the first event driven line; with nothing at all the sensor is not created. Attributes:
