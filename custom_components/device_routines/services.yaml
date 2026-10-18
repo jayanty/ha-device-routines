@@ -1,0 +1,60 @@
+# The actions of Device Routines (TECH_SPEC 4.6). Names and descriptions are in
+# strings.json. The routine actions take a native target, narrowed to the entities a
+# routine can drive and to automations; a target without a routine is ignored and listed
+# in the response.
+
+.routine_target: &routine_target
+  entity:
+    - domain:
+        - automation
+        - climate
+        - cover
+        - fan
+        - humidifier
+        - input_boolean
+        - lawn_mower
+        - light
+        - lock
+        - media_player
+        - switch
+        - vacuum
+        - valve
+
+skip_next:
+  target: *routine_target
+
+pause:
+  target: *routine_target
+  fields:
+    until:
+      selector:
+        datetime:
+    for:
+      selector:
+        duration:
+
+resume:
+  target: *routine_target
+
+enable:
+  target: *routine_target
+
+disable:
+  target: *routine_target
+
+maintenance:
+  fields:
+    action:
+      required: true
+      selector:
+        select:
+          translation_key: maintenance_action
+          options:
+            - clean_up_now
+            - rebuild_index
+            - reinstall_blueprint
+            - refresh_summaries
+    dry_run:
+      default: false
+      selector:
+        boolean:

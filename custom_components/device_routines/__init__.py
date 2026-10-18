@@ -32,6 +32,7 @@ from .health import HealthReport
 from .manager import RoutineManager
 from .migration import async_migrate_entry
 from .sentence import load_phrases
+from .services import async_setup_services
 from .settings import GlobalSettings, from_options
 from .store import RoutineStore
 from .summary import SummaryCoordinator
@@ -68,7 +69,8 @@ type DeviceRoutinesConfigEntry = ConfigEntry[DeviceRoutinesRuntimeData]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Nothing happens until a config entry exists."""
+    """Register the actions (quality rule `action-setup`); the rest waits for an entry."""
+    async_setup_services(hass)
     return True
 
 

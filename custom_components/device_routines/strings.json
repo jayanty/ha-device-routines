@@ -11,6 +11,52 @@
       "single_instance_allowed": "Device Routines is already set up. Only one instance is supported."
     }
   },
+  "services": {
+    "skip_next": {
+      "name": "Skip next",
+      "description": "Skips the next action of each targeted routine: a start skips the whole run up to its stop, while a stop or a running timer is skipped alone. Calling it again extends the skip to the following action. Targets without a routine are ignored and listed in the response."
+    },
+    "pause": {
+      "name": "Pause",
+      "description": "Pauses each targeted routine until a time or for a duration: no scheduled action runs and no timer fires until then. Manual changes still work. Targets without a routine are ignored and listed in the response.",
+      "fields": {
+        "until": {
+          "name": "Until",
+          "description": "When the pause ends. Give either this or a duration."
+        },
+        "for": {
+          "name": "For",
+          "description": "How long the pause lasts. Give either this or an end time."
+        }
+      }
+    },
+    "resume": {
+      "name": "Resume",
+      "description": "Ends the pause or skip of each targeted routine now. With Catch up on, the device is set to what its schedule expects at once. Targets without a routine are ignored and listed in the response."
+    },
+    "enable": {
+      "name": "Enable",
+      "description": "Turns each targeted routine on, like its Routine switch. Targets without a routine are ignored and listed in the response."
+    },
+    "disable": {
+      "name": "Disable",
+      "description": "Turns each targeted routine off until it is enabled again, like its Routine switch: nothing runs meanwhile. Targets without a routine are ignored and listed in the response."
+    },
+    "maintenance": {
+      "name": "Run maintenance",
+      "description": "Runs one Device Routines maintenance action. Every action is safe to run at any time. The response lists what changed, or with a dry run, what would change.",
+      "fields": {
+        "action": {
+          "name": "Action",
+          "description": "The maintenance action to run."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Only report what would change, without changing anything."
+        }
+      }
+    }
+  },
   "entity": {
     "binary_sensor": {
       "hub_problem": {
@@ -59,6 +105,14 @@
     }
   },
   "selector": {
+    "maintenance_action": {
+      "options": {
+        "clean_up_now": "Clean up now",
+        "rebuild_index": "Rebuild index",
+        "reinstall_blueprint": "Reinstall blueprint",
+        "refresh_summaries": "Refresh summaries"
+      }
+    },
     "schedule_scope": {
       "options": {
         "all": "All devices with automations",
@@ -183,6 +237,9 @@
     },
     "no_routine_targets": {
       "message": "None of the chosen targets has a routine."
+    },
+    "not_loaded": {
+      "message": "Device Routines is not loaded. Add it in Devices and services, or check the Home Assistant log for why it did not load."
     },
     "no_valid_settings": {
       "message": "There are no earlier valid settings for the routine of {device} to restore."
