@@ -1,0 +1,29 @@
+# Purpose specific conditions (PRD FR-R17). The target names routine devices: a device,
+# an area, a label, a floor or an entity of a device a routine can drive. The domains are
+# the domain profiles of domains.py; a test keeps the two lists equal.
+.condition_common: &condition_common
+  target:
+    entity:
+      - domain:
+          - climate
+          - cover
+          - fan
+          - humidifier
+          - input_boolean
+          - lawn_mower
+          - light
+          - lock
+          - media_player
+          - switch
+          - vacuum
+          - valve
+  fields:
+    behavior:
+      required: true
+      default: any
+      selector:
+        automation_behavior:
+          mode: condition
+
+is_paused: *condition_common
+is_active: *condition_common

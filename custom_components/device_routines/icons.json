@@ -20,5 +20,24 @@
         "default": "mdi:calendar-check"
       }
     }
+  },
+  "triggers": {
+    "action_skipped": {
+      "trigger": "mdi:calendar-remove"
+    },
+    "paused": {
+      "trigger": "mdi:pause-circle-outline"
+    },
+    "resumed": {
+      "trigger": "mdi:play-circle-outline"
+    }
+  },
+  "conditions": {
+    "is_paused": {
+      "condition": "mdi:pause-circle-outline"
+    },
+    "is_active": {
+      "condition": "mdi:calendar-check"
+    }
   }
 }

@@ -247,5 +247,54 @@
     "unknown_routine": {
       "message": "{automation} is not a routine Device Routines manages."
     }
+  },
+  "triggers": {
+    "action_skipped": {
+      "name": "Routine action skipped",
+      "description": "Triggers when a routine skips a scheduled action or a countdown because it is paused or skipping.",
+      "fields": {
+        "behavior": {
+          "name": "Trigger when"
+        }
+      }
+    },
+    "paused": {
+      "name": "Routine paused",
+      "description": "Triggers when one or more routines are paused or skip their next action.",
+      "fields": {
+        "behavior": {
+          "name": "Trigger when"
+        }
+      }
+    },
+    "resumed": {
+      "name": "Routine resumed",
+      "description": "Triggers when one or more routines run again after a pause or a skip ends.",
+      "fields": {
+        "behavior": {
+          "name": "Trigger when"
+        }
+      }
+    }
+  },
+  "conditions": {
+    "is_paused": {
+      "name": "Routine is paused",
+      "description": "Tests if one or more routines are paused or skipping.",
+      "fields": {
+        "behavior": {
+          "name": "Condition passes if"
+        }
+      }
+    },
+    "is_active": {
+      "name": "Routine is active",
+      "description": "Tests if one or more routines are on and not paused.",
+      "fields": {
+        "behavior": {
+          "name": "Condition passes if"
+        }
+      }
+    }
   }
 }
