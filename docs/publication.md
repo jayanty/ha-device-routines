@@ -25,7 +25,7 @@ examples.
 | 1 | Look at the [brand images](#the-brand-images) and approve them, or say what to change | Owner | O10 | Before `v1.0.0`, which ships them; a change is a redraw by `tools/make_brand.py` |
 | 2 | Set the [repository description and topics](#repository-description-and-topics), and check that issues are enabled | Owner, or a session on the owner's go ahead | O11 | Before step 4 |
 | 3 | Release `v1.0.0` with CI green. The `hacs` job ignores no check since L78, so this is the release the HACS submission asks for: made after the checks passed with nothing ignored. If `v1.0.0` is tagged before L78 is on `main`, release a patch (`v1.0.1`) after it instead | Session | O12 | After live validation B and O12 |
-| 4 | Open the [HACS default submission](#the-hacs-default-submission) | Owner, or a session on the owner's go ahead | O11 | After steps 2 and 3 |
+| 4 | Open the [HACS default submission](#the-hacs-default-submission) | Owner, or a session on the owner's go ahead | O11 | After steps 2 and 3, and only when the owner lifts the hold of 2026-10-18 (owner log O11) |
 | 5 | When the submission has merged: switch the README's HACS badge and install steps from custom repository to default (see [After the listing](#after-the-listing)) | Session | O11 | After the merge |
 
 The channel switch of the owner's own instance (O13) is separate and can happen before,
