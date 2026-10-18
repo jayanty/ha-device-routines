@@ -294,9 +294,8 @@ Turning the **Routine** switch off stops everything: no scheduled action, no cou
 no catch up. A Paused until value is kept, and applies again if you turn the routine
 back on before it ends. The sentence reads "Routine off".
 
-<!-- A3: lane 9 -->
-The same four things are actions you can call for a whole room or label at once; see
-[Actions](#actions).
+The same four things are actions you can call for a whole room, floor or label at once;
+see [Actions](#actions).
 
 ## Weekly schedules
 
@@ -457,24 +456,25 @@ trigger does:
 
 ### Actions
 
-<!-- A3: lane 9 -->
 | Action | Does | Fields |
 | --- | --- | --- |
 | `device_routines.skip_next` | Skip next | target |
-| `device_routines.pause` | Pause until a time, or for a duration | target, and exactly one of `until` or `for` |
+| `device_routines.pause` | Pause until a time, or for a duration | target, and exactly one of `until` (a date and time; one without an offset is local time) or `for` (a duration) |
 | `device_routines.resume` | Resume | target |
-| `device_routines.enable` | Turn the routine on | target |
-| `device_routines.disable` | Turn the routine off | target |
-| `device_routines.maintenance` | Run a maintenance action | `action`: `clean_up_now`, `rebuild_index`, `reinstall_blueprint` or `refresh_summaries` |
+| `device_routines.enable` | Turn the routine on, like its Routine switch | target |
+| `device_routines.disable` | Turn the routine off, like its Routine switch | target |
+| `device_routines.maintenance` | Run a maintenance action | `action`: `clean_up_now`, `rebuild_index`, `reinstall_blueprint` or `refresh_summaries`; `dry_run` (optional) only reports what would change |
 
-<!-- A3: lane 9 -->
-The target is a device, an area, a label or an entity. Devices without a routine are
-ignored and listed in the response, so a label that covers a fan with a routine and a
-lamp without one skips the fan and reports the lamp. A target with no routine at all is
-an error. The optional response lists, per device, what was skipped or how long it is
-paused, and the next action.
+The target is a device, an area, a floor, a label or an entity: an entity a routine can
+drive, or a routine's own automation. Devices without a routine are ignored and listed in the response, so a label that covers a fan with a
+routine and a lamp without one skips the fan and reports the lamp. A target with no
+routine at all is an error, and so is a call while Device Routines is not loaded.
 
-<!-- A3: lane 9 -->
+The response is optional. `results` has one entry per routine with `device_id`,
+`device_name`, `action`, `paused_until`, `skipped_action` and `next_action`; `ignored`
+names every target left out with its `kind` and a `reason`. The maintenance action answers
+with what it changed, or with a dry run, what it would change.
+
 A dashboard button that skips the next run of every routine labeled Evening:
 
 ```yaml
@@ -488,7 +488,6 @@ tap_action:
     label_id: evening
 ```
 
-<!-- A3: lane 9 -->
 A script that pauses the living room's routines for two hours:
 
 ```yaml
@@ -503,21 +502,24 @@ sequence:
 
 ### Triggers and conditions
 
-<!-- A3: lane 13 -->
-The automation editor's own trigger and condition pickers list these, with a device, area
-or label target:
+The automation editor's own trigger and condition pickers list these. Each takes a device,
+area, floor, label or entity target, which names the routines of the devices it covers:
 
-| Kind | Name | Fires or holds when |
-| --- | --- | --- |
-| Trigger | `device_routines.action_skipped` | A scheduled action or countdown did not run because the routine was skipped or paused |
-| Trigger | `device_routines.paused` | A routine becomes paused or skipping |
-| Trigger | `device_routines.resumed` | A pause or skip ends, at its time or by Resume |
-| Condition | `device_routines.is_paused` | The routine is paused or skipping |
-| Condition | `device_routines.is_active` | The routine is on and not paused |
+| Kind | In the editor | Key | Fires or holds when |
+| --- | --- | --- | --- |
+| Trigger | Routine action skipped | `device_routines.action_skipped` | A routine skips a scheduled action or a countdown because it is paused or skipping |
+| Trigger | Routine paused | `device_routines.paused` | A routine becomes paused or skipping, and again whenever its pause is replaced or extended |
+| Trigger | Routine resumed | `device_routines.resumed` | A pause or skip ends, at its time or by Resume |
+| Condition | Routine is paused | `device_routines.is_paused` | The routine is paused or skipping |
+| Condition | Routine is active | `device_routines.is_active` | The routine is on and not paused |
 
-<!-- A3: lane 13 -->
-Triggers take `behavior` `each`, `first` or `all`; conditions take `any` or `all`. A
-notification when a living room routine skips something:
+Triggers take `behavior` `each` (every routine), `first` (the first of the targeted
+routines to change) or `all` (the change that makes it true of every targeted routine).
+Conditions take `any` or `all`. `all` counts every targeted routine, including those that
+are off, and a target without any routine never fires and never holds. A routine that is
+off neither pauses nor resumes.
+
+A notification when a living room routine skips something:
 
 ```yaml
 triggers:
@@ -530,6 +532,17 @@ actions:
   - action: notify.notify
     data:
       message: A living room routine skipped an action.
+```
+
+A morning automation that runs only while the bedroom's routines are not paused:
+
+```yaml
+conditions:
+  - condition: device_routines.is_active
+    target:
+      area_id: bedroom
+    options:
+      behavior: all
 ```
 
 ### Events
@@ -670,17 +683,19 @@ between.
 Device Routines repairs what it can on its own and raises an issue only when a person has
 to decide. The hub's **Problem** sensor is on while any of these is open.
 
-<!-- A3: lane 11 -->
+Each fixable issue opens one confirmation step that does exactly one thing. If the fix
+does not take, the step says why and the issue stays open.
+
 | Issue | When | Fix |
 | --- | --- | --- |
-| Device Routines cannot read automations on this Home Assistant version | A capability the integration needs is missing on this core. | Nothing to do now: routines keep running; update Device Routines and the issue clears when a compatible version loads. |
-| The Device Routines blueprint was changed | The installed blueprint differs from the shipped one and from the last one installed. | One step: reinstall the shipped blueprint and reload automations. |
-| The routine of a device cannot run as edited | The automation form or file was saved with inputs a routine cannot use, or with a refused action. The routine was turned off. | One step: restore the last valid settings. Correcting the form also works. |
-| The routine of a device is now a normal automation | Someone took control of the routine's automation. | One step: create a new routine for the device. The old automation is never touched. |
-| The weekly schedule of a device is empty | The schedule helper was deleted and created again without blocks. | Open the helper and enter the blocks. |
-| A change to the routine of a device was not saved | Something else changed `automations.yaml` twice while the routine was being saved. | One step: retry. |
-| The routine of a device does not load | Its automation did not load even after one regeneration. | One step: regenerate it from the last valid settings, or read the Home Assistant log for the reason. |
-| Two automations drive a device in opposite directions | A routine and another automation act on the same device in opposite directions in the same minute. Only while Raise Repairs issues for conflicts is on. | Change one of them; the issue clears when they no longer collide. |
+| Device Routines cannot read automations on this Home Assistant version | A capability the integration needs is missing on this core. The issue names it and links here. | Nothing to do now: routines keep running and editing is off. Update Device Routines; the issue clears when a compatible version loads. |
+| The Device Routines blueprint was changed | The installed blueprint differs from the shipped one and from the last one installed. | Reinstall the shipped blueprint; the automations that use it reload. Your changes to the file are lost. |
+| The routine of a device cannot run as edited | The automation form or file was saved with inputs a routine cannot use, or with a refused action. The routine was turned off. | Restore the last valid settings, which turns the routine back on. Correcting the form clears the issue too. |
+| The routine of a device is now a normal automation | Someone took control of the routine's automation. | Create a new routine for the device with the settings it had. The old automation is never touched: turn it off or delete it yourself. |
+| The weekly schedule of a device is empty | The schedule helper was deleted and created again without blocks. | Open the helper (Settings, Devices and services, Helpers) and enter the blocks; the issue clears by itself once it has blocks. |
+| A change to the routine of a device was not saved | Something else changed `automations.yaml` twice while the routine was being saved. | Save the change again. |
+| The routine of a device does not load | Its automation did not load even after one regeneration. | Regenerate it from the last valid settings, or read the Home Assistant log for the reason. |
+| Two automations drive a device in opposite directions | A routine and another automation act on the same device in opposite directions in the same minute. One issue per routine, only while Raise Repairs issues for conflicts is on. | Change one of them; the issue clears when they no longer collide. |
 
 Situations that heal on their own, with no issue: a missing blueprint is reinstalled, a
 missing timer helper is created again, a deleted `Routines` label is created again and

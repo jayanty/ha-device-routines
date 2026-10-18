@@ -15,11 +15,11 @@ rules:
   # --- Bronze -------------------------------------------------------------------------
 
   action-setup:
-    status: todo
+    status: done
     comment: >-
-      Build A lane 9 registers skip_next, pause, resume, enable, disable and maintenance
-      in `async_setup` (services.py), each a one line call into the loaded entry's
-      manager, with `tests/integration/test_services.py`.
+      skip_next, pause, resume, enable, disable and maintenance are registered in
+      `async_setup` (services.py), each a one line call into the loaded entry's manager.
+      `tests/integration/test_services.py::test_the_actions_exist_before_an_entry_loads_and_say_so_when_none_is`.
 
   appropriate-polling:
     status: done
@@ -65,10 +65,11 @@ rules:
       `tests/test_repository.py` fails if a requirement appears without a decision.
 
   docs-actions:
-    status: todo
+    status: done
     comment: >-
-      The user guide section Dashboards and scripts documents every action with examples;
-      it flips to done when Build A lane 9 lands the actions it describes.
+      The user guide section Dashboards and scripts documents every action, its fields,
+      targets and response, with a dashboard button and a script; the behavior it states is
+      `tests/integration/test_services.py`.
 
   docs-high-level-description:
     status: done
@@ -144,10 +145,10 @@ rules:
   action-exceptions:
     status: todo
     comment: >-
-      Build A lane 9: the actions raise `ServiceValidationError` with the key
-      `no_routine_targets` when no target has a routine. The manager they call already
-      raises translated `ServiceValidationError`s
-      (`tests/integration/test_manager.py::test_pause_needs_exactly_one_future_value`).
+      The routine actions raise translated `ServiceValidationError`s (`no_routine_targets`,
+      `not_loaded`, the pause errors; `tests/integration/test_services.py`), but maintenance
+      errors are not translated yet and a pause into the past lists every device as ignored
+      instead of raising: both are plan A4.0 carry overs (decision L46).
 
   config-entry-unloading:
     status: done
@@ -246,9 +247,9 @@ rules:
     status: todo
     comment: >-
       The user guide carries worked examples (a window, a run timer, skip and pause, a
-      weekly schedule, a dashboard button, a script, a trigger, a markdown card); it flips
-      to done when Build A lanes 8, 9, 13 and 14 land the controls, actions, triggers and
-      hub attributes the examples use.
+      weekly schedule, a dashboard button, a script, a trigger, a condition, a markdown
+      card); it flips to done when Build A lanes 8 and 14 land the controls and the hub
+      attributes the remaining examples use.
 
   docs-known-limitations:
     status: done
@@ -272,11 +273,11 @@ rules:
       and the weekly schedule helper it describes.
 
   docs-troubleshooting:
-    status: todo
+    status: done
     comment: >-
-      The user guide's Troubleshooting section covers Health, every Repairs issue of
-      TECH_SPEC 4.8 and diagnostics; it flips to done when Build A lane 11 lands the fix
-      flows it describes.
+      The user guide's Troubleshooting section covers the Health states and attributes,
+      every Repairs issue with its fix (`tests/integration/test_repairs.py`) and
+      diagnostics; the `adapter_incompatible` issue links to it.
 
   docs-use-cases:
     status: done
@@ -337,12 +338,12 @@ rules:
       There is no connection to reconfigure; every setting is an option.
 
   repair-issues:
-    status: todo
+    status: done
     comment: >-
-      The TECH_SPEC 4.8 catalog is raised and cleared with translated titles and
-      descriptions (`tests/integration/test_reconcile.py`, `test_sync_back.py`,
-      `test_repairs_sync.py`); Build A lane 11 adds the one step fix flows and the
-      conflict issue.
+      The TECH_SPEC 4.8 catalog is raised and cleared with translated text, each fixable
+      issue has a one step fix flow and the others a description and a link.
+      `tests/integration/test_repairs.py`, `tests/integration/test_reconcile.py`,
+      `tests/integration/test_sync_back.py`.
 
   stale-devices:
     status: done
@@ -374,13 +375,15 @@ rules:
   # --- Documentation of the automation building blocks ----------------------------------
 
   docs-conditions:
-    status: todo
+    status: done
     comment: >-
-      The user guide documents `device_routines.is_paused` and `is_active`; it flips to
-      done when Build A lane 13 lands the conditions.
+      The user guide documents `device_routines.is_paused` and `is_active` with their
+      targets, `behavior` and an example;
+      `tests/integration/test_triggers_conditions.py::test_is_paused_and_is_active_with_any_and_all`.
 
   docs-triggers:
-    status: todo
+    status: done
     comment: >-
-      The user guide documents `device_routines.action_skipped`, `paused` and `resumed`;
-      it flips to done when Build A lane 13 lands the triggers.
+      The user guide documents `device_routines.action_skipped`, `paused` and `resumed`
+      with their targets, `behavior` and an example;
+      `tests/integration/test_triggers_conditions.py::test_behavior_each_first_and_all_over_two_routines`.
