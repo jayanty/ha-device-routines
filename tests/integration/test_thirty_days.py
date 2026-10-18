@@ -1401,16 +1401,6 @@ async def test_a_schema_update_raises_no_issue_on_the_way(
     assert sim.automation_state(LIGHT) == "on"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "entity.py (DeviceRoutinesDeviceEntity._heard) with manager.py "
-        "(_async_device_removed): the removed device's page entities lose their registry "
-        "entries but still hear the manager's events (the routine turned off, the target "
-        "missing) and write their state; the registry update raises KeyError, logged as "
-        "'Error running job' and as a task exception"
-    ),
-)
 async def test_removing_a_device_with_a_routine_logs_no_error(
     simulation: Simulation, caplog: pytest.LogCaptureFixture
 ) -> None:

@@ -98,8 +98,13 @@ class DeviceRoutinesDeviceEntity(Entity):
 
     @callback
     def _heard(self, event: ManagerEvent) -> None:
-        if event.device_id in {None, self._device_id}:
-            self.async_write_ha_state()
+        if event.device_id not in {None, self._device_id}:
+            return
+        if er.async_get(self.hass).async_get(self.entity_id) is None:
+            # Removed from the registry (opt out, the device gone): the platform removes
+            # the entity next, and writing its state now would fail (plan A4.0 item 26).
+            return
+        self.async_write_ha_state()
 
     @property
     def _view(self) -> RoutineView | None:
