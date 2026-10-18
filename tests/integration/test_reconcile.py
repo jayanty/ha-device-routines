@@ -44,8 +44,8 @@ from tests.integration.conftest import (
 pytestmark = pytest.mark.parametrize("expected_lingering_timers", [True])
 
 OLD_BLUEPRINT = maintenance.SHIPPED_BLUEPRINT.read_text(encoding="utf-8").replace(
-    "# Device Routines blueprint, schema 1.",
-    "# Device Routines blueprint, schema 1, an older build.",
+    "# Device Routines blueprint, schema 2.",
+    "# Device Routines blueprint, schema 2, an older build.",
 )
 
 

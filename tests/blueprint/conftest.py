@@ -15,6 +15,12 @@ what `compiler.compile` emits (wave A4 compares the two). Each fixture's contrac
 docstring. A test uses either the per entity fixtures (a running instance) or `cold_start`
 (a start over restored states), never both: the cold start builds the same entities itself
 after the restore cache is in place.
+
+Build B (plan Section 6.2.1): the mirror is blueprint input schema 2, the 29 inputs of
+schema 1 plus the nine of sun bounds; `schema_1_inputs(**overrides)` writes what a schema 1
+compiler wrote, `SCHEMA_1_BLUEPRINT` is the schema 1 file as v0.3.0-beta.1 shipped it, and
+`sun_instant(hass, event, day, offset)` says when a sun bound runs on a day (lane 19 reuses
+all three).
 """
 
 from __future__ import annotations
@@ -44,6 +50,7 @@ from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.sun import get_astral_event_date
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
@@ -66,16 +73,22 @@ REPO_ROOT: Final = Path(__file__).resolve().parents[2]
 BLUEPRINT_SOURCE: Final = (
     REPO_ROOT / "custom_components" / "device_routines" / "blueprints" / "device_routine.yaml"
 )
+# The schema 1 file byte for byte as v0.3.0-beta.1 shipped it, for the upgrade rows (B50).
+SCHEMA_1_BLUEPRINT: Final = (
+    REPO_ROOT / "tests" / "fixtures" / "blueprint" / "device_routine_schema_1.yaml"
+)
 
-# The compiler's names (plan Section 4.2), written out by hand: lane 1 writes `compiler.py`
-# in parallel, and wave A4's contract tests compare these with it.
+# The compiler's names (plan Sections 4.2 and 6.2.1), written out by hand: lane 1 wrote
+# `compiler.py` in parallel, lane 16 moves it to schema 2 in parallel, and the contract
+# tests compare these with it.
 EVENT_ACTION_SKIPPED: Final = "device_routines_action_skipped"
 EVENT_TIMER_CAUGHT_UP: Final = "device_routines_timer_caught_up"
 UNUSED_TIMER: Final = "timer.device_routines_unused"
 UNUSED_SCHEDULE: Final = "schedule.device_routines_unused"
 UNUSED_SWITCH: Final = "switch.device_routines_unused"
 UNUSED_DATETIME: Final = "datetime.device_routines_unused"
-INPUT_KEYS: Final = (
+BLUEPRINT_SCHEMA_VERSION: Final = 2
+SCHEMA_1_INPUT_KEYS: Final = (
     "target_entity",
     "on_action",
     "off_action",
@@ -106,7 +119,53 @@ INPUT_KEYS: Final = (
     "docked_guard",
     "extra_conditions",
 )
+INPUT_KEYS: Final = (
+    "target_entity",
+    "on_action",
+    "off_action",
+    "inactive_state",
+    "device_id",
+    "on_time_enabled",
+    "on_time",
+    "on_kind",
+    "on_sun_offset",
+    "off_time_enabled",
+    "off_time",
+    "off_kind",
+    "off_sun_offset",
+    "on_at_sunrise",
+    "on_at_sunset",
+    "off_at_sunrise",
+    "off_at_sunset",
+    "days_start",
+    "days_end",
+    "crosses_midnight",
+    "schedule_enabled",
+    "schedule_entity",
+    "timer_entity",
+    "turn_off_after_min",
+    "turn_back_on_after_min",
+    "catch_up",
+    "late_start_window_min",
+    "late_window_end",
+    "late_sun_offset",
+    "respect_manual",
+    "override_entity",
+    "paused_until_entity",
+    "pulse_enabled",
+    "pulse_at",
+    "pulse_minutes",
+    "pulse_min_steady_min",
+    "docked_guard",
+    "extra_conditions",
+)
+# The nine inputs schema 2 adds (plan Section 6.2.1), in their order among the 38.
+SCHEMA_2_NEW_KEYS: Final = tuple(key for key in INPUT_KEYS if key not in SCHEMA_1_INPUT_KEYS)
 WEEKDAYS: Final = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+# A bound's kind (`models.TimeKind`) and the nominal sun times that decide only whether a
+# window crosses midnight (`models.NOMINAL_SUN_TIMES`, decision L60).
+TIME_KINDS: Final = ("time", "sunrise", "sunset")
+NOMINAL_SUN_TIMES: Final[Mapping[str, time]] = {"sunrise": time(6), "sunset": time(18)}
 
 # The synthetic home every test uses. Generic names only (CLAUDE.md Section 6).
 TIME_ZONE: Final = "America/Los_Angeles"
@@ -154,8 +213,16 @@ _DEFAULTS: Final[Mapping[str, Any]] = {
     "device_id": DEVICE_ID,
     "on_time_enabled": False,
     "on_time": "00:00:00",
+    "on_kind": "time",
+    "on_sun_offset": "00:00:00",
     "off_time_enabled": False,
     "off_time": "00:00:00",
+    "off_kind": "time",
+    "off_sun_offset": "00:00:00",
+    "on_at_sunrise": False,
+    "on_at_sunset": False,
+    "off_at_sunrise": False,
+    "off_at_sunset": False,
     "days_start": list(WEEKDAYS),
     "days_end": list(WEEKDAYS),
     "crosses_midnight": False,
@@ -167,6 +234,7 @@ _DEFAULTS: Final[Mapping[str, Any]] = {
     "catch_up": True,
     "late_start_window_min": 15,
     "late_window_end": "00:15:00",
+    "late_sun_offset": "00:15:00",
     "respect_manual": True,
     "override_entity": UNUSED_SWITCH,
     "paused_until_entity": UNUSED_DATETIME,
@@ -191,15 +259,54 @@ def _plus_minutes(clock_time: str, minutes: int) -> str:
     return moment.time().isoformat()
 
 
+def sun_offset(minutes: int) -> str:
+    """Return an offset in whole minutes as `compile` writes it: `[-]HH:MM:00`.
+
+    The leading `-` (before the event) appears only for a negative offset.
+    """
+    hours, rest = divmod(abs(minutes), 60)
+    return f"{'-' if minutes < 0 else ''}{hours:02d}:{rest:02d}:00"
+
+
+def offset_minutes(text: str) -> int:
+    """Return the whole minutes of an offset text, `[-]H:MM` or `[-]HH:MM:SS`.
+
+    Seconds are dropped toward zero, as `decompile` reads them (plan Section 6.2.1).
+    """
+    negative = text.startswith("-")
+    hours, minutes, *_ = text.lstrip("+-").split(":")
+    total = int(hours) * 60 + int(minutes)
+    return -total if negative else total
+
+
+def _nominal(kind: str, clock_time: str, offset: str) -> time:
+    """Return a bound's time for ordering: its time, or the nominal sun time plus the offset."""
+    if kind == "time":
+        return time.fromisoformat(clock_time)
+    return time.fromisoformat(
+        _plus_minutes(NOMINAL_SUN_TIMES[kind].isoformat(), offset_minutes(offset))
+    )
+
+
+def _side_set(values: Mapping[str, Any], side: str) -> bool:
+    """A side is set when its time flag or either of its sun flags is on (plan 6.2.1)."""
+    return any(values[f"{side}_{flag}"] for flag in ("time_enabled", "at_sunrise", "at_sunset"))
+
+
 def inputs(**overrides: Any) -> dict[str, Any]:
-    """Return the 29 blueprint inputs in TECH_SPEC 5.2 order, as `compile` would emit them.
+    """Return the 38 blueprint inputs of schema 2 in order, as `compile` would emit them.
 
     Unused helpers are the sentinels and every flag has its spec default. The derived
-    inputs follow from what is given, as TECH_SPEC 3.3 derives them, unless given too:
-    `on_time_enabled`, `off_time_enabled`, `schedule_enabled` and `pulse_enabled` turn on
-    when their time or entity is given; `crosses_midnight` when the on time is later than
-    the off time; `days_end` is `days_start` shifted by one day for a window crossing
-    midnight; `late_window_end` is the on time plus the late start window.
+    inputs follow from what is given, as TECH_SPEC 3.3 and plan Section 6.2.1 derive them,
+    unless given too: `on_time_enabled` and `off_time_enabled` turn on when their time is
+    given for a time bound; `on_at_sunrise`, `on_at_sunset`, `off_at_sunrise` and
+    `off_at_sunset` follow `on_kind` and `off_kind`; `schedule_enabled` and `pulse_enabled`
+    turn on when their entity or time is given; `crosses_midnight` when the on bound is
+    later than the off bound, a sun bound read at its nominal time plus its offset (sunrise
+    06:00, sunset 18:00, decision L60); `days_end` is `days_start` shifted by one day for a
+    window crossing midnight; `late_window_end` is the on time plus the late start window
+    and `late_sun_offset` the on offset plus the late start window. A sun bound keeps its
+    time at the `00:00:00` sentinel; offsets are text, as `sun_offset` writes them.
     """
     unknown = set(overrides) - set(INPUT_KEYS)
     if unknown:
@@ -210,21 +317,60 @@ def inputs(**overrides: Any) -> dict[str, Any]:
         if key not in overrides:
             values[key] = value
 
-    derive("on_time_enabled", "on_time" in overrides)
-    derive("off_time_enabled", "off_time" in overrides)
+    for side in ("on", "off"):
+        assert values[f"{side}_kind"] in TIME_KINDS, values[f"{side}_kind"]
+        derive(
+            f"{side}_time_enabled", f"{side}_time" in overrides and values[f"{side}_kind"] == "time"
+        )
+        for event in ("sunrise", "sunset"):
+            derive(f"{side}_at_{event}", values[f"{side}_kind"] == event)
     derive("schedule_enabled", "schedule_entity" in overrides)
     derive("pulse_enabled", "pulse_at" in overrides)
     derive(
         "crosses_midnight",
-        bool(values["on_time_enabled"])
-        and bool(values["off_time_enabled"])
-        and time.fromisoformat(values["on_time"]) > time.fromisoformat(values["off_time"]),
+        _side_set(values, "on")
+        and _side_set(values, "off")
+        and _nominal(values["on_kind"], values["on_time"], values["on_sun_offset"])
+        > _nominal(values["off_kind"], values["off_time"], values["off_sun_offset"]),
     )
     days_start = [day for day in WEEKDAYS if day in values["days_start"]]
     derive("days_start", days_start)
     derive("days_end", _shift_days(days_start) if values["crosses_midnight"] else days_start)
-    derive("late_window_end", _plus_minutes(values["on_time"], values["late_start_window_min"]))
+    late = values["late_start_window_min"]
+    derive("late_window_end", _plus_minutes(values["on_time"], late))
+    derive("late_sun_offset", sun_offset(offset_minutes(values["on_sun_offset"]) + late))
     return {key: values[key] for key in INPUT_KEYS}
+
+
+def schema_1_inputs(**overrides: Any) -> dict[str, Any]:
+    """Return the 29 inputs a schema 1 compiler wrote for the same time bound settings.
+
+    The schema 1 mirror is the schema 2 one without the nine new inputs: every new input
+    defaults to schema 1 behavior, so a time bound routine reads the same on both.
+    """
+    refused = set(overrides) - set(SCHEMA_1_INPUT_KEYS)
+    if refused:
+        raise KeyError(f"not a schema 1 input: {sorted(refused)}")
+    written = inputs(**overrides)
+    return {key: written[key] for key in SCHEMA_1_INPUT_KEYS}
+
+
+def sun_instant(
+    hass: HomeAssistant, event: str, day: int | date, offset: timedelta = timedelta()
+) -> datetime:
+    """Return when a sun bound runs on a day: its sunrise or sunset plus the offset, local.
+
+    `day` counts days after Monday 2026-10-19, as `Clock.at` does, or is a date. The event
+    comes from the core's astral helper for the test instance's location, the helper the
+    summary's sun lookup uses; the sun trigger and the sun condition read the same astral
+    event for that local day. A day without the event fails the test.
+    """
+    when = MONDAY + timedelta(days=day) if isinstance(day, int) else day
+    moment = get_astral_event_date(hass, event, when)
+    assert moment is not None, f"no {event} on {when}"
+    local = (moment + offset).astimezone(ZoneInfo(hass.config.time_zone))
+    assert local.date() == when, f"{event} plus {offset} leaves {when}"
+    return local
 
 
 def owned_automation(routine_inputs: Mapping[str, Any]) -> dict[str, Any]:
@@ -589,22 +735,34 @@ async def routine_config_dir(hass: HomeAssistant, tmp_path: Path) -> Path:
     return tmp_path
 
 
-@pytest.fixture
-async def installed_blueprint(hass: HomeAssistant, routine_config_dir: Path) -> Path:
-    """Install the shipped blueprint at `markers.BLUEPRINT_PATH`; return the installed file.
+async def async_install_blueprint(hass: HomeAssistant, source: Path = BLUEPRINT_SOURCE) -> Path:
+    """Install a blueprint file at `markers.BLUEPRINT_PATH`; return the installed file.
 
     The install goes through `DomainBlueprints.async_add_blueprint`, the method the
-    `blueprint/save` command and the adapter use (V5). The automation component is not
-    set up here, so a cold start can still set it up before Home Assistant starts.
+    `blueprint/save` command and the adapter use (V5). Over an installed file it also
+    reloads the automations built on it, as an upgrade of the shipped file does.
     """
-    data = parse_yaml(BLUEPRINT_SOURCE.read_text(encoding="utf-8"))
+    data = parse_yaml(await hass.async_add_executor_job(source.read_text, "utf-8"))
     assert isinstance(data, dict)
     blueprint = Blueprint(data, expected_domain="automation", schema=AUTOMATION_BLUEPRINT_SCHEMA)
     await async_get_blueprints(hass).async_add_blueprint(
         blueprint, markers.BLUEPRINT_PATH, allow_override=True
     )
-    installed = routine_config_dir / "blueprints" / "automation" / markers.BLUEPRINT_PATH
+    await hass.async_block_till_done()
+    installed = Path(hass.config.config_dir) / "blueprints" / "automation" / markers.BLUEPRINT_PATH
     assert installed.is_file()
+    return installed
+
+
+@pytest.fixture
+async def installed_blueprint(hass: HomeAssistant, routine_config_dir: Path) -> Path:
+    """Install the shipped blueprint at `markers.BLUEPRINT_PATH`; return the installed file.
+
+    The install goes through `async_install_blueprint`. The automation component is not
+    set up here, so a cold start can still set it up before Home Assistant starts.
+    """
+    installed = await async_install_blueprint(hass)
+    assert installed == routine_config_dir / "blueprints" / "automation" / markers.BLUEPRINT_PATH
     return installed
 
 

@@ -1,4 +1,4 @@
-# Device Routines blueprint, schema 1.
+# Device Routines blueprint, schema 2.
 # Do not edit: changes are detected and offered for restore.
 #
 # One automation per device runs this blueprint. Every rule lives in native conditions;
@@ -6,6 +6,12 @@
 # on or off are read through `enabled:`, which a condition, an action and a trigger all
 # accept: inside a plain list a switched off condition passes, inside an `or` it counts
 # as false, so "X is set" is an `or` holding one empty `and` that X switches on.
+#
+# Schema 2 adds bounds at sunrise or sunset with an offset (FR-R10, decision L60). A sun
+# bound is a sun trigger carrying its side's scheduled id, so every branch treats it like
+# a time, and is tested with the `sun` condition, one half of a window per side with its
+# day set. The four sun flags are derived from the kinds by Device Routines; with every new
+# input at its default the routine runs exactly as on schema 1.
 blueprint:
   name: Device routine (managed by Device Routines)
   description: >-
@@ -80,6 +86,22 @@ blueprint:
           default: "00:00:00"
           selector:
             time: {}
+        on_kind:
+          name: Turn on at, kind
+          description: Turn the device on at a time of day, or at sunrise or sunset with an offset.
+          default: time
+          selector:
+            select:
+              options:
+                - {value: time, label: Time}
+                - {value: sunrise, label: Sunrise}
+                - {value: sunset, label: Sunset}
+        on_sun_offset:
+          name: Turn on at, sun offset
+          description: How long after sunrise or sunset the device turns on, as HH:MM:SS; a leading minus means before.
+          default: "00:00:00"
+          selector:
+            text: {}
         off_time_enabled:
           name: Use Turn off at
           description: Turn the device off at a time.
@@ -92,6 +114,46 @@ blueprint:
           default: "00:00:00"
           selector:
             time: {}
+        off_kind:
+          name: Turn off at, kind
+          description: Turn the device off at a time of day, or at sunrise or sunset with an offset.
+          default: time
+          selector:
+            select:
+              options:
+                - {value: time, label: Time}
+                - {value: sunrise, label: Sunrise}
+                - {value: sunset, label: Sunset}
+        off_sun_offset:
+          name: Turn off at, sun offset
+          description: How long after sunrise or sunset the device turns off, as HH:MM:SS; a leading minus means before.
+          default: "00:00:00"
+          selector:
+            text: {}
+        on_at_sunrise:
+          name: Turn on at sunrise
+          description: On when Turn on at is sunrise; set from the kind.
+          default: false
+          selector:
+            boolean: {}
+        on_at_sunset:
+          name: Turn on at sunset
+          description: On when Turn on at is sunset; set from the kind.
+          default: false
+          selector:
+            boolean: {}
+        off_at_sunrise:
+          name: Turn off at sunrise
+          description: On when Turn off at is sunrise; set from the kind.
+          default: false
+          selector:
+            boolean: {}
+        off_at_sunset:
+          name: Turn off at sunset
+          description: On when Turn off at is sunset; set from the kind.
+          default: false
+          selector:
+            boolean: {}
         days_start:
           name: Days
           description: The days the times apply to. A window that ends after midnight belongs to the day it starts.
@@ -124,7 +186,7 @@ blueprint:
                 - {value: sun, label: Sunday}
         crosses_midnight:
           name: Window crosses midnight
-          description: On when Turn on at is later in the day than Turn off at.
+          description: On when Turn on at is later in the day than Turn off at, reading sunrise as 6:00 AM and sunset as 6:00 PM.
           default: false
           selector:
             boolean: {}
@@ -205,6 +267,12 @@ blueprint:
           default: "00:15:00"
           selector:
             time: {}
+        late_sun_offset:
+          name: Late start window ends at, sun offset
+          description: The sun offset of Turn on at plus the late start window, as HH:MM:SS.
+          default: "00:15:00"
+          selector:
+            text: {}
         respect_manual:
           name: Respect manual changes
           description: A change made by hand turns the manual override on until the next scheduled time.
@@ -291,11 +359,35 @@ triggers:
     trigger: time
     at: !input on_time
     enabled: !input on_time_enabled
+  - alias: Turn on at sunrise, with its offset
+    id: scheduled_on
+    trigger: sun
+    event: sunrise
+    offset: !input on_sun_offset
+    enabled: !input on_at_sunrise
+  - alias: Turn on at sunset, with its offset
+    id: scheduled_on
+    trigger: sun
+    event: sunset
+    offset: !input on_sun_offset
+    enabled: !input on_at_sunset
   - alias: Turn off at
     id: scheduled_off
     trigger: time
     at: !input off_time
     enabled: !input off_time_enabled
+  - alias: Turn off at sunrise, with its offset
+    id: scheduled_off
+    trigger: sun
+    event: sunrise
+    offset: !input off_sun_offset
+    enabled: !input off_at_sunrise
+  - alias: Turn off at sunset, with its offset
+    id: scheduled_off
+    trigger: sun
+    event: sunset
+    offset: !input off_sun_offset
+    enabled: !input off_at_sunset
   - alias: A weekly schedule block starts
     id: block_on
     trigger: state
@@ -394,7 +486,8 @@ actions:
               - alias: Triggered by a weekly schedule block
                 condition: trigger
                 id: block_on
-              - alias: Today is a start day
+              - &start_day
+                alias: Today is a start day
                 condition: time
                 weekday: !input days_start
           - &extra_ok
@@ -504,18 +597,34 @@ actions:
                                 alias: Turn on at is set
                                 condition: or
                                 conditions:
-                                  - alias: Turn on at is in use
+                                  - alias: Turn on at is a time
                                     condition: and
                                     conditions: []
                                     enabled: !input on_time_enabled
+                                  - alias: Turn on at is sunrise
+                                    condition: and
+                                    conditions: []
+                                    enabled: !input on_at_sunrise
+                                  - alias: Turn on at is sunset
+                                    condition: and
+                                    conditions: []
+                                    enabled: !input on_at_sunset
                               - &off_time_set
                                 alias: Turn off at is set
                                 condition: or
                                 conditions:
-                                  - alias: Turn off at is in use
+                                  - alias: Turn off at is a time
                                     condition: and
                                     conditions: []
                                     enabled: !input off_time_enabled
+                                  - alias: Turn off at is sunrise
+                                    condition: and
+                                    conditions: []
+                                    enabled: !input off_at_sunrise
+                                  - alias: Turn off at is sunset
+                                    condition: and
+                                    conditions: []
+                                    enabled: !input off_at_sunset
                 then:
                   - &start_turn_off_after
                     alias: Start the Turn off after countdown
@@ -547,7 +656,8 @@ actions:
               - alias: Triggered by a weekly schedule block
                 condition: trigger
                 id: block_off
-              - alias: Today is an end day
+              - &end_day
+                alias: Today is an end day
                 condition: time
                 weekday: !input days_end
         sequence:
@@ -628,16 +738,63 @@ actions:
                     conditions:
                       - *on_time_set
                       - *off_time_set
+                      # One half per side (decision L60): a sun bound is the `sun`
+                      # condition with the side's offset next to the side's day set, never
+                      # one condition holding both sun events.
                       - &after_on_time
                         alias: After Turn on at on a start day
-                        condition: time
-                        after: !input on_time
-                        weekday: !input days_start
+                        condition: or
+                        conditions:
+                          - alias: After the time on a start day
+                            condition: time
+                            after: !input on_time
+                            weekday: !input days_start
+                            enabled: !input on_time_enabled
+                          - alias: After sunrise with its offset on a start day
+                            condition: and
+                            enabled: !input on_at_sunrise
+                            conditions:
+                              - alias: After sunrise with the Turn on at offset
+                                condition: sun
+                                after: sunrise
+                                after_offset: !input on_sun_offset
+                              - *start_day
+                          - alias: After sunset with its offset on a start day
+                            condition: and
+                            enabled: !input on_at_sunset
+                            conditions:
+                              - alias: After sunset with the Turn on at offset
+                                condition: sun
+                                after: sunset
+                                after_offset: !input on_sun_offset
+                              - *start_day
                       - &before_off_time
                         alias: Before Turn off at on an end day
-                        condition: time
-                        before: !input off_time
-                        weekday: !input days_end
+                        condition: or
+                        conditions:
+                          - alias: Before the time on an end day
+                            condition: time
+                            before: !input off_time
+                            weekday: !input days_end
+                            enabled: !input off_time_enabled
+                          - alias: Before sunrise with its offset on an end day
+                            condition: and
+                            enabled: !input off_at_sunrise
+                            conditions:
+                              - alias: Before sunrise with the Turn off at offset
+                                condition: sun
+                                before: sunrise
+                                before_offset: !input off_sun_offset
+                              - *end_day
+                          - alias: Before sunset with its offset on an end day
+                            condition: and
+                            enabled: !input off_at_sunset
+                            conditions:
+                              - alias: Before sunset with the Turn off at offset
+                                condition: sun
+                                before: sunset
+                                before_offset: !input off_sun_offset
+                              - *end_day
                   - alias: Inside a window crossing midnight, before midnight
                     condition: and
                     enabled: !input crosses_midnight
@@ -866,10 +1023,36 @@ actions:
                     conditions: []
                     enabled: !input late_start_window_min
               - alias: Within the late start window on a start day
-                condition: time
-                after: !input on_time
-                before: !input late_window_end
-                weekday: !input days_start
+                condition: or
+                conditions:
+                  - alias: Between Turn on at and the end of the late start window on a start day
+                    condition: time
+                    after: !input on_time
+                    before: !input late_window_end
+                    weekday: !input days_start
+                    enabled: !input on_time_enabled
+                  - alias: Within the late start window of a sunrise start, on a start day
+                    condition: and
+                    enabled: !input on_at_sunrise
+                    conditions:
+                      - alias: Between sunrise with the Turn on at offset and with the late offset
+                        condition: sun
+                        after: sunrise
+                        after_offset: !input on_sun_offset
+                        before: sunrise
+                        before_offset: !input late_sun_offset
+                      - *start_day
+                  - alias: Within the late start window of a sunset start, on a start day
+                    condition: and
+                    enabled: !input on_at_sunset
+                    conditions:
+                      - alias: Between sunset with the Turn on at offset and with the late offset
+                        condition: sun
+                        after: sunset
+                        after_offset: !input on_sun_offset
+                        before: sunset
+                        before_offset: !input late_sun_offset
+                      - *start_day
               - *device_inactive
               - *extra_ok
             then:

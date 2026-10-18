@@ -1,8 +1,10 @@
 """The shape of the shipped blueprint: TECH_SPEC 5.1 to 5.5 with the Stage 0 results applied.
 
 These tests read the file itself. The behavior of each rule is proven by the matrix tests
-next to this file; here only the structure the spec and decisions L20, L22, L24 and the
-A6 note pin is checked.
+next to this file; here only the structure the spec and decisions L20, L22, L24, L60 and
+the A6 note pin is checked. The file is blueprint input schema 2 (plan Section 6.2.1): the
+29 inputs of schema 1 plus the nine of sun bounds, each new one defaulting to schema 1
+behavior.
 """
 
 from __future__ import annotations
@@ -15,18 +17,21 @@ from homeassistant.components.automation.config import (
     AUTOMATION_BLUEPRINT_SCHEMA,
     async_validate_config_item,
 )
-from homeassistant.components.blueprint.models import Blueprint
+from homeassistant.components.blueprint.models import Blueprint, BlueprintInputs
 from homeassistant.core import HomeAssistant
 from homeassistant.util.yaml import Input, parse_yaml
 import pytest
 
 from tests.blueprint.conftest import (
     AUTOMATION_ID,
+    BLUEPRINT_SCHEMA_VERSION,
     BLUEPRINT_SOURCE,
     EVENT_ACTION_SKIPPED,
     EVENT_TIMER_CAUGHT_UP,
     INPUT_KEYS,
     SCHEDULE,
+    SCHEMA_1_INPUT_KEYS,
+    SCHEMA_2_NEW_KEYS,
     TIMER,
     UNUSED_DATETIME,
     UNUSED_SCHEDULE,
@@ -34,6 +39,8 @@ from tests.blueprint.conftest import (
     UNUSED_TIMER,
     inputs,
     owned_automation,
+    schema_1_inputs,
+    sun_offset,
     target_inputs,
 )
 
@@ -54,6 +61,25 @@ TRIGGER_IDS = {
     "pause_changed",
     "override_cleared",
     "pulse",
+}
+# The four sun flags of plan Section 6.2.1, which the compiler derives from the kinds.
+SUN_FLAGS = {
+    Input("on_at_sunrise"),
+    Input("on_at_sunset"),
+    Input("off_at_sunrise"),
+    Input("off_at_sunset"),
+}
+# What each new input holds when a routine does not give it: schema 1 behavior.
+SCHEMA_2_DEFAULTS = {
+    "on_kind": "time",
+    "on_sun_offset": "00:00:00",
+    "off_kind": "time",
+    "off_sun_offset": "00:00:00",
+    "on_at_sunrise": False,
+    "on_at_sunset": False,
+    "off_at_sunrise": False,
+    "off_at_sunset": False,
+    "late_sun_offset": "00:15:00",
 }
 
 
@@ -77,6 +103,11 @@ def flat_inputs(blueprint: Mapping[str, Any]) -> list[tuple[str, Mapping[str, An
     ]
 
 
+def section_of(blueprint: Mapping[str, Any], key: str) -> str:
+    """Return the section an input sits in."""
+    return next(name for name, section in sections(blueprint).items() if key in section["input"])
+
+
 def walk(node: Any, path: tuple[str, ...] = ()) -> Iterator[tuple[tuple[str, ...], Any]]:
     """Yield every node of the YAML tree with the keys and indexes leading to it."""
     yield path, node
@@ -86,6 +117,14 @@ def walk(node: Any, path: tuple[str, ...] = ()) -> Iterator[tuple[tuple[str, ...
     elif isinstance(node, list):
         for index, value in enumerate(node):
             yield from walk(value, (*path, str(index)))
+
+
+def node_at(root: Any, path: tuple[str, ...]) -> Any:
+    """Return the node a path from `walk` leads to."""
+    node = root
+    for step in path:
+        node = node[int(step)] if isinstance(node, list) else node[step]
+    return node
 
 
 def conditions_of(node: Any) -> Iterator[Mapping[str, Any]]:
@@ -112,13 +151,30 @@ def triggers(blueprint: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     return result
 
 
+def sun_nodes(root: Any) -> Iterator[tuple[tuple[str, ...], Mapping[str, Any]]]:
+    """Yield every sun trigger and sun condition with its path."""
+    for path, value in walk(root):
+        if isinstance(value, Mapping) and "sun" in (value.get("trigger"), value.get("condition")):
+            yield path, value
+
+
+def switches_of(root: Any, path: tuple[str, ...]) -> list[Any]:
+    """Return the `enabled` values of a node and of every node above it."""
+    return [
+        node["enabled"]
+        for depth in range(len(path) + 1)
+        if isinstance(node := node_at(root, path[:depth]), Mapping) and "enabled" in node
+    ]
+
+
 async def test_loads_through_the_automation_blueprint_schema(
     hass: HomeAssistant, blueprint: dict[str, Any], installed_blueprint: Path
 ) -> None:
     loaded = Blueprint(blueprint, expected_domain="automation", schema=AUTOMATION_BLUEPRINT_SCHEMA)
 
     assert loaded.name == "Device routine (managed by Device Routines)"
-    # An automation built from the default inputs, and one using every helper, validates.
+    # An automation built from the default inputs, one using every helper, sun bounds with
+    # offsets both ways and the inputs a schema 1 compiler wrote all validate.
     for routine_inputs in (
         inputs(),
         inputs(
@@ -131,6 +187,15 @@ async def test_loads_through_the_automation_blueprint_schema(
         ),
         inputs(schedule_entity=SCHEDULE, timer_entity=TIMER, turn_back_on_after_min=10),
         inputs(**target_inputs("vacuum", "vacuum.robot_vacuum"), on_time="09:45:00"),
+        inputs(
+            on_kind="sunset",
+            on_sun_offset=sun_offset(-180),
+            off_kind="sunrise",
+            off_sun_offset=sun_offset(180),
+        ),
+        inputs(on_kind="sunrise", on_sun_offset=sun_offset(30), off_time="23:00:00"),
+        inputs(on_kind="sunset", on_sun_offset=sun_offset(-45), late_start_window_min=0),
+        schema_1_inputs(on_time="17:00:00", off_time="09:00:00"),
     ):
         validated = await async_validate_config_item(
             hass, AUTOMATION_ID, owned_automation(routine_inputs)
@@ -143,8 +208,15 @@ def test_every_input_of_the_contract_exists_once_in_order(blueprint: dict[str, A
     keys = [key for key, _ in flat_inputs(blueprint)]
 
     assert tuple(keys) == INPUT_KEYS
-    assert len(keys) == 29
+    assert len(keys) == 38
     assert list(inputs()) == list(INPUT_KEYS)
+    # Schema 2 is schema 1 with nine inputs added; none moved or went away.
+    assert [key for key in keys if key in SCHEMA_1_INPUT_KEYS] == list(SCHEMA_1_INPUT_KEYS)
+    assert tuple(SCHEMA_2_DEFAULTS) == SCHEMA_2_NEW_KEYS
+    assert {key: section_of(blueprint, key) for key in SCHEMA_2_NEW_KEYS} == {
+        **dict.fromkeys(SCHEMA_2_NEW_KEYS, "schedule"),
+        "late_sun_offset": "behavior",
+    }
 
 
 def test_the_sections_follow_the_spec(blueprint: dict[str, Any]) -> None:
@@ -167,6 +239,18 @@ def test_every_input_has_a_name_a_description_and_a_selector(blueprint: dict[str
         assert isinstance(definition.get("selector"), Mapping), key
 
 
+def test_the_new_inputs_have_the_selectors_of_the_contract(blueprint: dict[str, Any]) -> None:
+    selectors = {key: definition["selector"] for key, definition in flat_inputs(blueprint)}
+    kinds = [{"value": "time", "label": "Time"}, {"value": "sunrise", "label": "Sunrise"}]
+    kinds.append({"value": "sunset", "label": "Sunset"})
+
+    assert selectors["on_kind"] == selectors["off_kind"] == {"select": {"options": kinds}}
+    for key in ("on_sun_offset", "off_sun_offset", "late_sun_offset"):
+        assert selectors[key] == {"text": {}}, key
+    for key in ("on_at_sunrise", "on_at_sunset", "off_at_sunrise", "off_at_sunset"):
+        assert selectors[key] == {"boolean": {}}, key
+
+
 def test_defaults_carry_the_sentinels(blueprint: dict[str, Any]) -> None:
     defaults = {key: definition.get("default") for key, definition in flat_inputs(blueprint)}
 
@@ -183,10 +267,31 @@ def test_defaults_carry_the_sentinels(blueprint: dict[str, Any]) -> None:
     }
 
 
-def test_the_header_says_schema_1_and_do_not_edit() -> None:
+def test_every_new_input_defaults_to_schema_1_behavior(blueprint: dict[str, Any]) -> None:
+    defaults = {key: definition.get("default") for key, definition in flat_inputs(blueprint)}
+    loaded = Blueprint(blueprint, expected_domain="automation", schema=AUTOMATION_BLUEPRINT_SCHEMA)
+    routine = schema_1_inputs(on_time="06:30:00", off_time="17:30:00", pulse_at="12:00:00")
+
+    assert {key: defaults[key] for key in SCHEMA_2_NEW_KEYS} == SCHEMA_2_DEFAULTS
+    # Every sun trigger and sun condition is switched by a sun flag, and a schema 1 routine
+    # (inputs without the nine keys) leaves all of them off, so it runs as on schema 1.
+    raw = list(sun_nodes(blueprint))
+    assert [node["event"] for _, node in raw if "trigger" in node] == ["sunrise", "sunset"] * 2
+    assert [node for _, node in raw if "condition" in node]
+    for path, _ in raw:
+        assert SUN_FLAGS & set(switches_of(blueprint, path)), path
+    substituted = BlueprintInputs(loaded, owned_automation(routine)).async_substitute()
+    rendered = list(sun_nodes(substituted))
+    assert [path for path, _ in rendered] == [path for path, _ in raw]
+    for path, _ in rendered:
+        assert False in switches_of(substituted, path), path
+
+
+def test_header_names_schema_2() -> None:
     header = BLUEPRINT_SOURCE.read_text(encoding="utf-8").splitlines()[:3]
 
-    assert header[0] == "# Device Routines blueprint, schema 1."
+    assert header[0] == f"# Device Routines blueprint, schema {BLUEPRINT_SCHEMA_VERSION}."
+    assert header[0] == "# Device Routines blueprint, schema 2."
     assert "do not edit" in header[1].lower()
 
 
@@ -240,6 +345,63 @@ def test_time_triggers_are_switched_by_their_inputs(blueprint: dict[str, Any]) -
         "scheduled_off": (Input("off_time"), Input("off_time_enabled")),
         "pulse": (Input("pulse_at"), Input("pulse_enabled")),
     }
+
+
+def test_sun_triggers_carry_the_scheduled_ids(blueprint: dict[str, Any]) -> None:
+    sun = [trigger for trigger in triggers(blueprint) if trigger["trigger"] == "sun"]
+
+    # L60: the ids of the time triggers, so every branch, the start and end day checks,
+    # pause, skip and the skipped action event treat a sun bound like a time.
+    assert [
+        (trigger["id"], trigger["event"], trigger["offset"], trigger["enabled"]) for trigger in sun
+    ] == [
+        ("scheduled_on", "sunrise", Input("on_sun_offset"), Input("on_at_sunrise")),
+        ("scheduled_on", "sunset", Input("on_sun_offset"), Input("on_at_sunset")),
+        ("scheduled_off", "sunrise", Input("off_sun_offset"), Input("off_at_sunrise")),
+        ("scheduled_off", "sunset", Input("off_sun_offset"), Input("off_at_sunset")),
+    ]
+    # Each side's triggers sit together: its time trigger, then its two sun triggers.
+    order = [(trigger["id"], trigger["trigger"]) for trigger in triggers(blueprint)][:6]
+    assert order == [
+        ("scheduled_on", "time"),
+        ("scheduled_on", "sun"),
+        ("scheduled_on", "sun"),
+        ("scheduled_off", "time"),
+        ("scheduled_off", "sun"),
+        ("scheduled_off", "sun"),
+    ]
+
+
+def test_no_sun_sun_state_condition(blueprint: dict[str, Any]) -> None:
+    # L60: sun.sun carries neither the offsets nor the weekday sets of a window.
+    text = BLUEPRINT_SOURCE.read_text(encoding="utf-8")
+    kinds = {cond["condition"] for cond in conditions_of(blueprint["actions"])}
+    kinds |= {trigger["trigger"] for trigger in triggers(blueprint)}
+    sun_conditions = [
+        (path, cond)
+        for path, cond in sun_nodes(blueprint["actions"])
+        if cond.get("condition") == "sun"
+    ]
+
+    assert "sun.sun" not in text
+    assert not {kind for kind in kinds if kind.startswith("sun.")}
+    assert sun_conditions
+    for path, cond in sun_conditions:
+        # One event per condition, so never `after: sunset, before: sunrise`, which the
+        # core reads as an or; the offset of each half is the side's input.
+        events = {cond.get("after"), cond.get("before")} - {None}
+        assert len(events) == 1, path
+        for half in ("after", "before"):
+            if half in cond:
+                assert isinstance(cond[f"{half}_offset"], Input), path
+        # Each half is tested on its day set: a weekday condition sits beside it.
+        siblings = node_at(blueprint["actions"], path[:-1])
+        weekdays = [
+            sibling["weekday"]
+            for sibling in siblings
+            if sibling.get("condition") == "time" and "weekday" in sibling
+        ]
+        assert weekdays in ([Input("days_start")], [Input("days_end")]), path
 
 
 def test_no_schedule_block_started_trigger(blueprint: dict[str, Any]) -> None:

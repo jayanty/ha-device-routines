@@ -283,7 +283,7 @@ Reads `.deployed` next to the component (when present) and `manifest.json`; comp
 
 ### 5.1 File
 
-`custom_components/device_routines/blueprints/device_routine.yaml`, installed to `<config>/blueprints/automation/device_routines/device_routine.yaml`. Header comment: Device Routines blueprint, schema 1; do not edit, changes are detected and offered for restore. `blueprint.name` is Device routine (managed by Device Routines); the description explains that the form is the second editor; `homeassistant.min_version` is the Stage 0 validated version, 2026.10.2. No `source_url`: the file is installed and upgraded by the integration, and a `source_url` would offer a re-import from GitHub in the core and, with Spook, an update entity (decision L24). Every trigger, condition and branch carries an `alias` so a trace reads like documentation.
+`custom_components/device_routines/blueprints/device_routine.yaml`, installed to `<config>/blueprints/automation/device_routines/device_routine.yaml`. Header comment: Device Routines blueprint, schema 2 (the input schema, `compiler.BLUEPRINT_SCHEMA_VERSION`); do not edit, changes are detected and offered for restore. Schema 1 (v0.3.0) had the 29 inputs of Build A; schema 2 adds the nine inputs of sun relative bounds (FR-R10, decision L60), each defaulting to schema 1 behavior, so a routine written for schema 1 runs unchanged on the schema 2 file until the migration of Section 4.11 rewrites it. `tests/fixtures/blueprint/device_routine_schema_1.yaml` keeps the schema 1 file byte for byte for the upgrade tests. `blueprint.name` is Device routine (managed by Device Routines); the description explains that the form is the second editor; `homeassistant.min_version` is the Stage 0 validated version, 2026.10.2. No `source_url`: the file is installed and upgraded by the integration, and a `source_url` would offer a re-import from GitHub in the core and, with Spook, an update entity (decision L24). Every trigger, condition and branch carries an `alias` so a trace reads like documentation.
 
 ### 5.2 Inputs
 
@@ -295,15 +295,19 @@ Sections are collapsible; Timers, Behavior and Advanced start collapsed.
 | Target | `on_action`, `off_action` | text | required | Service names from the domain profile, for example `switch.turn_on` |
 | Target | `inactive_state` | text | required | `off`, `docked`, `closed` or `locked` |
 | Target | `device_id` | text | required | Carried in events |
-| Schedule | `on_time_enabled`, `on_time` | boolean, time | false, 00:00:00 | Sentinel pattern: a disabled trigger still needs a valid value |
+| Schedule | `on_time_enabled`, `on_time` | boolean, time | false, 00:00:00 | Sentinel pattern: a disabled trigger still needs a valid value. True only for a time bound; a sun bound keeps the sentinel |
+| Schedule | `on_kind`, `on_sun_offset` | select (`time`, `sunrise`, `sunset`), text | `time`, 00:00:00 | Schema 2. The offset is `[-]HH:MM:SS` in whole minutes, plus or minus 180, negative before the event; 0 for a time bound |
 | Schedule | `off_time_enabled`, `off_time` | boolean, time | false, 00:00:00 |  |
+| Schedule | `off_kind`, `off_sun_offset` | as the on twins | `time`, 00:00:00 | Schema 2 |
+| Schedule | `on_at_sunrise`, `on_at_sunset`, `off_at_sunrise`, `off_at_sunset` | boolean | false | Schema 2, derived from the kinds; they switch the sun triggers and the sun conditions |
 | Schedule | `days_start`, `days_end` | select, multiple, weekdays | all days | `days_end` is `days_start` shifted by one day when the window crosses midnight |
-| Schedule | `crosses_midnight` | boolean | false |  |
+| Schedule | `crosses_midnight` | boolean | false | Decided by nominal times: a sun bound reads as sunrise 06:00 or sunset 18:00 plus its offset (L60) |
 | Schedule | `schedule_enabled`, `schedule_entity` | boolean, entity (schedule) | false, `schedule.device_routines_unused` |  |
 | Timers | `timer_entity` | entity (timer) | `timer.device_routines_unused` |  |
 | Timers | `turn_off_after_min`, `turn_back_on_after_min` | number 0 to 1440 | 0, 0 | At most one is non zero (D27) |
 | Behavior | `catch_up` | boolean | true |  |
 | Behavior | `late_start_window_min`, `late_window_end` | number, time | 15, 00:15:00 | `late_window_end` is computed by the compiler |
+| Behavior | `late_sun_offset` | text | 00:15:00 | Schema 2, derived: the on offset plus the late start window; it ends the late start window of a sun start |
 | Behavior | `respect_manual`, `override_entity` | boolean, entity (switch) | true, `switch.device_routines_unused` |  |
 | Behavior | `paused_until_entity` | entity (datetime) | `datetime.device_routines_unused` |  |
 | Advanced | `pulse_enabled`, `pulse_at`, `pulse_minutes`, `pulse_min_steady_min` | boolean, time, number, number | false, 00:00:00, 3, 5 |  |
@@ -312,12 +316,14 @@ Sections are collapsible; Timers, Behavior and Advanced start collapsed.
 
 Sentinel entities never exist: a state trigger on a missing entity never fires, and `enabled: false` keeps the time triggers inert while their values stay valid for schema validation. V5 confirms `enabled: !input` on triggers and on conditions.
 
+Schema 2 has 38 inputs in this order (plan Section 6.2.1): `target_entity`, `on_action`, `off_action`, `inactive_state`, `device_id`, `on_time_enabled`, `on_time`, `on_kind`, `on_sun_offset`, `off_time_enabled`, `off_time`, `off_kind`, `off_sun_offset`, `on_at_sunrise`, `on_at_sunset`, `off_at_sunrise`, `off_at_sunset`, `days_start`, `days_end`, `crosses_midnight`, `schedule_enabled`, `schedule_entity`, `timer_entity`, `turn_off_after_min`, `turn_back_on_after_min`, `catch_up`, `late_start_window_min`, `late_window_end`, `late_sun_offset`, `respect_manual`, `override_entity`, `paused_until_entity`, `pulse_enabled`, `pulse_at`, `pulse_minutes`, `pulse_min_steady_min`, `docked_guard`, `extra_conditions`. The blueprint reads only the four sun flags and the offsets; `on_kind` and `off_kind` are the primary inputs `decompile` reads and the form shows. With the nine at their defaults every sun trigger and sun condition is switched off, which is what makes a schema 1 routine run unchanged.
+
 ### 5.3 Triggers
 
 | Id | Trigger |
 | --- | --- |
-| `scheduled_on` | time at `on_time`, enabled `on_time_enabled` |
-| `scheduled_off` | time at `off_time`, enabled `off_time_enabled` |
+| `scheduled_on` | time at `on_time`, enabled `on_time_enabled`; sun at sunrise and sun at sunset, each with `offset: on_sun_offset`, enabled `on_at_sunrise` and `on_at_sunset` (schema 2) |
+| `scheduled_off` | time at `off_time`, enabled `off_time_enabled`; sun at sunrise and at sunset with `off_sun_offset`, enabled `off_at_sunrise` and `off_at_sunset` |
 | `block_on`, `block_off` | state of `schedule_entity` to on, to off; enabled `schedule_enabled`. Never `schedule.block_started`, which fires again at midnight between back to back blocks (Stage 0 V10, A6) |
 | `ha_start` | Home Assistant start |
 | `reconnect` | state of `target_entity` from unavailable, for 10 seconds (a debounce, not a duration that must survive restarts) |
@@ -329,10 +335,13 @@ Sentinel entities never exist: a state trigger on a missing entity never fires, 
 | `override_cleared` | state of `override_entity` to off |
 | `pulse` | time at `pulse_at`, enabled `pulse_enabled` |
 
+The sun triggers share the ids of the time triggers (decision L60), so the start and end day checks, pause, skip and the `device_routines_action_skipped` event treat a sun bound exactly like a time; their `scheduled_at` is the moment the trigger ran, because a sun trigger carries no `trigger.now`.
+
 ### 5.4 Shared conditions (repeated per branch; no templates except `not_paused`)
 
 - `not_paused`: one template, `{% set s = states(entity) %}{{ s in ('unknown', 'unavailable', '') or as_datetime(s) <= now() }}`, unit tested. A native time condition is not possible: it refuses a `datetime` entity and compares a timestamp sensor by time of day only (Stage 0 V12, decision L22).
-- `expected_on`: with `schedule_enabled`, the schedule entity is on. With `crosses_midnight`, either (time after `on_time` and weekday in `days_start`) or (time before `off_time` and weekday in `days_end`). Otherwise time after `on_time` before `off_time` with weekday in `days_start`. Meaningful only when `has_window` (both times enabled, or a schedule linked).
+- `expected_on`: with `schedule_enabled`, the schedule entity is on. With `crosses_midnight`, either (after the on bound and weekday in `days_start`) or (before the off bound and weekday in `days_end`). Otherwise after the on bound and before the off bound with weekday in `days_start`. "After the on bound" is an `or` of the time condition `after: on_time` (enabled `on_time_enabled`) and, for a sun bound, an `and` of the `sun` condition `after: sunrise` or `after: sunset` with `after_offset: on_sun_offset` and the weekday condition (enabled by the sun flag); "before the off bound" is its twin with `before`, `before_offset: off_sun_offset` and `days_end`. Each `sun` condition names one event, so a window from sunset to sunrise is tested one half per side, never as `after: sunset, before: sunrise` in one condition (which the core reads as an or of today's events) and never through the state of `sun.sun`, which carries neither the offsets nor the weekday sets (L60). This is `nextrun.expected_state` with the bounds of the day: same day, today a start day and on bound <= now < off bound; crossing, today a start day and now >= today's on bound, or yesterday a start day (today an end day) and now < today's off bound. The core's `sun` condition counts the instant of a `before` bound as before, the time condition as after; the two differ only at that instant. Meaningful only when `has_window` (both sides set, or a schedule linked).
+- A side is set when its time flag or either of its sun flags is on; `has_window`, the one shot rules and the countdown rules read that.
 - `no_override`: the override entity is unavailable or off.
 - `device_inactive` and `device_active`: the target state equals, or does not equal, `inactive_state`.
 - `extra_ok`: `extra_conditions`, plus the docked guard on every on action for vacuum and lawn mower.
@@ -341,14 +350,14 @@ Sentinel entities never exist: a state trigger on a missing entity never fires, 
 
 | Trigger ids | Conditions | Actions |
 | --- | --- | --- |
-| `scheduled_on`, `block_on` | weekday in `days_start` (time triggers only), `not_paused`, `extra_ok` | override off; on action; when `turn_off_after_min` is set and `off_time_enabled` is false: start the timer for that duration |
-| `scheduled_off`, `block_off` | weekday in `days_end` (time triggers only), `not_paused` | override off; off action; cancel the timer |
+| `scheduled_on`, `block_on` | weekday in `days_start` (time and sun triggers only), `not_paused`, `extra_ok` | override off; on action; when `turn_off_after_min` is set and there is no window (`has_window` false, so no off side): start the timer for that duration |
+| `scheduled_off`, `block_off` | weekday in `days_end` (time and sun triggers only), `not_paused` | override off; off action; cancel the timer |
 | `device_on` | `not_paused`, `turn_off_after_min` set, not (`has_window` and `expected_on`) | start the timer for `turn_off_after_min` |
 | `device_on` | `turn_back_on_after_min` set | cancel the timer |
 | `device_off` | `not_paused`, `turn_back_on_after_min` set, `expected_on` or not `has_window` | start the timer for `turn_back_on_after_min` |
 | `device_off` | `turn_off_after_min` set | cancel the timer |
 | `timer_done` | `not_paused` | with `turn_off_after_min` set: off action; with `turn_back_on_after_min` set: `extra_ok`, then on action |
-| `ha_start`, `reconnect`, `override_cleared` | `catch_up`, `not_paused`, `no_override` | with `has_window`: on action when `expected_on` and `device_inactive`, off action when not `expected_on` and `device_active`; one shot (on enabled, off disabled): on action when time after `on_time` before `late_window_end`, weekday in `days_start` and `device_inactive` |
+| `ha_start`, `reconnect`, `override_cleared` | `catch_up`, `not_paused`, `no_override` | with `has_window`: on action when `expected_on` and `device_inactive`, off action when not `expected_on` and `device_active`; one shot (on side set, off side not set, a late start window above 0): on action when inside the late start window, weekday in `days_start` and `device_inactive`. The window is time after `on_time` before `late_window_end` for a time bound, and the `sun` condition `after` the event with `on_sun_offset`, `before` the same event with `late_sun_offset` for a sun bound |
 | `pause_changed` | the paused entity is in the future | pause the timer |
 | `pause_changed` (a resume, or the integration clearing the entity at the stored end) | the paused entity is not in the future | resume the timer, then the catch up branch (D20) |
 | `pulse` | `not_paused`, the device steady for `pulse_min_steady_min` in either state | opposite action; delay `pulse_minutes`; restore. Pulse uses delay deliberately: a restart mid pulse is repaired by catch up, and the timer stays unambiguous for the one duration feature a routine can have |
@@ -475,6 +484,10 @@ Every row is a harness test with time travel; the ids are stable and the Impleme
 | B42 | A queued burst is processed in order |
 | B43 | Integration disabled, the routine still runs |
 | B44 to B46 | Attribution: a time triggered automation change is not manual; a wall switch change is manual; an app change is manual |
+| B47 | Sun window: on at sunrise plus 30, off at sunset minus 30, every day, at the instants the core's astral helper computes for the instance's location; a cold start inside the window turns the device on, outside off |
+| B48 | Sunset to sunrise on weekdays, across midnight: Friday's sunset turns on, Saturday's sunrise turns off, Saturday's sunset does nothing; a cold start at 02:00 on Saturday turns on, at 02:00 on Sunday does not; a sun start without an end catches up inside `late_sun_offset` only, with offsets after and before the event |
+| B49 | Only when (FR-R9): an extra condition that fails blocks the scheduled start, at a time or at sunset; nothing is called and no `device_routines_action_skipped` event fires, even while paused, and the catch up at a pause end is gated too; the next passing day runs |
+| B50 | Schema 1 to 2: a routine on the schema 1 file with schema 1 inputs keeps its state when the schema 2 file is installed and automations reload, and its next scheduled actions run; rewritten with the schema 2 inputs of the same settings and reloaded, the same |
 
 ### 11.3 Integration tests
 
