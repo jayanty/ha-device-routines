@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Build A (Phases 2 and 3) is in progress; the entries below grow with it.
+
+### Added
+
+- Every Schedule sensor carries two more attributes, `paused_until` and `skipped_action`
+  (empty until a device has a routine), and a device's routine line sorts first.
+
 ## [0.1.0] - 2026-10-18
 
 The read only Schedule summary (Phase 1).
