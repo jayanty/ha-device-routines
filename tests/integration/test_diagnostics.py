@@ -20,7 +20,10 @@ async def test_diagnostics_report_the_integration_and_its_health(
 
     diagnostics = await get_diagnostics_for_config_entry(hass, hass_client, init_integration)
 
-    assert set(diagnostics) == {"integration"}
+    assert set(diagnostics) == {"integration", "summary"}
+    assert diagnostics["summary"]["devices"] == 0
+    assert diagnostics["integration"]["settings"]["schedule_scope"] == "all"
+    assert diagnostics["integration"]["adapter"] == {"failed": []}
     assert diagnostics["integration"]["version"] == integration.version
     assert diagnostics["integration"]["entry_id"] == init_integration.entry_id
     assert diagnostics["integration"]["options"] == {}

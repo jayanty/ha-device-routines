@@ -15,7 +15,7 @@ HUB_MODEL: Final = "Hub"
 
 # Platforms forwarded to the config entry, in setup order. Later phases append their
 # platforms here.
-PLATFORMS: Final[list[Platform]] = [Platform.SENSOR]
+PLATFORMS: Final[list[Platform]] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
 # Health sensor states (TECH_SPEC 10.3).
 HEALTH_OK: Final = "ok"

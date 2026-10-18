@@ -18,7 +18,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
-from . import ha_adapter, health
+from . import ha_adapter, health, repairs
 from .const import DOMAIN, PLATFORMS
 from .ha_adapter import AdapterReport
 from .health import HealthReport
@@ -67,11 +67,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: DeviceRoutinesConfigEntr
     settings = from_options(entry.options)
     phrases = await hass.async_add_executor_job(load_phrases, hass.config.language)
     summary = SummaryCoordinator(hass, entry.entry_id, settings, phrases)
+    adapter = ha_adapter.check(hass)
+    repairs.async_sync_adapter_issue(hass, adapter)
     entry.runtime_data = DeviceRoutinesRuntimeData(
         version=version,
         health=report,
         settings=settings,
-        adapter=ha_adapter.check(hass),
+        adapter=adapter,
         summary=summary,
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

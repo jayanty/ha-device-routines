@@ -14,6 +14,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Hub entities Routines (count of active routines, 0 until routines ship) and Problem
+  (on while a Device Routines Repairs issue is open), a settings page in the options
+  (Schedule sensor scope, time format), the Repairs issue raised when the running Home
+  Assistant lacks what the summary needs, and diagnostics that report the summary as
+  shapes and counts only.
 - A Schedule sensor on every device an automation acts on, directly or through its area,
   floor or a label: the next action as a sentence ("Off at 9:00 AM") and one line per
   automation action in its attributes, recomputed on every change without polling. The

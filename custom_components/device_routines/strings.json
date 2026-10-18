@@ -12,6 +12,11 @@
     }
   },
   "entity": {
+    "binary_sensor": {
+      "hub_problem": {
+        "name": "Problem"
+      }
+    },
     "sensor": {
       "schedule": {
         "name": "Schedule"
@@ -23,7 +28,56 @@
           "degraded": "Degraded",
           "error": "Error"
         }
+      },
+      "hub_routines": {
+        "name": "Routines",
+        "unit_of_measurement": "routines"
       }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Settings",
+        "description": "How Device Routines shows schedules. Changing a setting rebuilds every Schedule sensor.",
+        "data": {
+          "schedule_scope": "Schedule sensor scope",
+          "time_format": "Time format"
+        },
+        "data_description": {
+          "schedule_scope": "Which devices get a Schedule sensor: every device an automation acts on, only devices with a routine, or none.",
+          "time_format": "How times read in every sentence. Automatic follows the country set in Home Assistant."
+        }
+      }
+    },
+    "error": {
+      "invalid_choice": "Choose one of the listed values.",
+      "invalid_boolean": "Choose on or off.",
+      "out_of_range": "Enter a number in the allowed range.",
+      "invalid_ai_task_entity": "Choose an AI Task entity.",
+      "unknown_setting": "This setting is not known to this version."
+    }
+  },
+  "selector": {
+    "schedule_scope": {
+      "options": {
+        "all": "All devices with automations",
+        "routines": "Only devices with routines",
+        "none": "Nowhere"
+      }
+    },
+    "time_format": {
+      "options": {
+        "auto": "Automatic",
+        "12h": "12 hour (9:00 AM)",
+        "24h": "24 hour (09:00)"
+      }
+    }
+  },
+  "issues": {
+    "adapter_incompatible": {
+      "title": "Device Routines cannot read automations on this Home Assistant version",
+      "description": "Home Assistant {ha_version} does not offer what Device Routines needs for: {capabilities}. Schedule sensors stay as they were and routines keep running. Update Device Routines; the issue clears by itself once a compatible version loads."
     }
   }
 }

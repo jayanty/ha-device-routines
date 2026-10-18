@@ -26,7 +26,12 @@ async def async_setup_entry(
 ) -> None:
     """Add the hub sensors and hand the coordinator a way to add Schedule sensors."""
     runtime = entry.runtime_data
-    async_add_entities([HealthSensor(entry.entry_id, runtime.version, runtime.health)])
+    async_add_entities(
+        [
+            HealthSensor(entry.entry_id, runtime.version, runtime.health),
+            RoutinesSensor(entry.entry_id, runtime.version),
+        ]
+    )
     coordinator = runtime.summary
 
     def add_schedule_sensors(device_ids: list[str]) -> None:
@@ -56,6 +61,27 @@ class HealthSensor(DeviceRoutinesHubEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the report's details."""
         return self._report.as_attributes()
+
+
+class RoutinesSensor(DeviceRoutinesHubEntity, SensorEntity):
+    """The count of active routines; every managed routine as attributes (PRD 4.4).
+
+    Routines arrive in Phase 2, so the count is 0 and the list empty until then.
+    """
+
+    def __init__(self, entry_id: str, version: str) -> None:
+        """Attach to the hub."""
+        super().__init__(entry_id, "hub_routines", version)
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of active routines."""
+        return 0
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return every managed routine."""
+        return {"routines": []}
 
 
 class ScheduleSensor(SensorEntity):

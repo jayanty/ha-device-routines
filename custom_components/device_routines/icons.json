@@ -1,5 +1,10 @@
 {
   "entity": {
+    "binary_sensor": {
+      "hub_problem": {
+        "default": "mdi:alert-circle-outline"
+      }
+    },
     "sensor": {
       "schedule": {
         "default": "mdi:calendar-clock"
@@ -10,6 +15,9 @@
           "degraded": "mdi:heart-flash",
           "error": "mdi:heart-off"
         }
+      },
+      "hub_routines": {
+        "default": "mdi:calendar-check"
       }
     }
   }
