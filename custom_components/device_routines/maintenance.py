@@ -19,6 +19,11 @@ changes and the report lists what would; without it the report lists what change
 The cleanup rule (D28) lives here as well, for the manager's automatic cleanup: a device
 opted out and not opted back in, or removed from Home Assistant, is a candidate from that
 moment; it is due once `cleanup_after_days` have passed, and 0 means never.
+
+Errors (quality rule `action-exceptions`). An action that cannot finish raises a
+`HomeAssistantError` with the translation key `maintenance_failed`, naming the action and
+what went wrong, never a bare adapter error; a refusal that is already translated (a
+`ServiceValidationError`, say) passes unchanged.
 """
 
 from __future__ import annotations
@@ -33,8 +38,10 @@ from pathlib import Path
 from typing import Final, Protocol
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 
 from . import ha_adapter, markers
+from .const import DOMAIN
 from .store import RoutineStore, StoreData
 
 _LOGGER = logging.getLogger(__name__)
@@ -219,7 +226,10 @@ async def async_run(
     action: MaintenanceAction | str,
     dry_run: bool,
 ) -> MaintenanceReport:
-    """Run one maintenance action; raise `ValueError` for a name that is not one."""
+    """Run one maintenance action; raise `ValueError` for a name that is not one.
+
+    A failure raises the translated `maintenance_failed` (see the module docstring).
+    """
     action = MaintenanceAction(action)
     runs: dict[MaintenanceAction, Callable[[], Awaitable[list[str]]]] = {
         MaintenanceAction.CLEAN_UP_NOW: lambda: _async_clean_up_now(target, dry_run),
@@ -231,8 +241,24 @@ async def async_run(
             dry_run=dry_run
         ),
     }
-    changes = await runs[action]()
+    try:
+        changes = await runs[action]()
+    except HomeAssistantError as err:
+        if err.translation_key is not None:
+            raise
+        raise _failed(action, err) from err
+    except (ha_adapter.AdapterError, OSError) as err:
+        raise _failed(action, err) from err
     _LOGGER.debug("Maintenance %s (dry run %s): %s", action, dry_run, changes)
     if dry_run:
         return MaintenanceReport(action=action, would_change=changes)
     return MaintenanceReport(action=action, changed=changes)
+
+
+def _failed(action: MaintenanceAction, err: Exception) -> HomeAssistantError:
+    """Return the translated error of an action that could not finish."""
+    return HomeAssistantError(
+        translation_domain=DOMAIN,
+        translation_key="maintenance_failed",
+        translation_placeholders={"action": str(action), "error": str(err)},
+    )

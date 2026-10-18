@@ -144,12 +144,17 @@ rules:
   # --- Silver -------------------------------------------------------------------------
 
   action-exceptions:
-    status: todo
+    status: done
     comment: >-
-      The routine actions raise translated `ServiceValidationError`s (`no_routine_targets`,
-      `not_loaded`, the pause errors; `tests/integration/test_services.py`), but maintenance
-      errors are not translated yet and a pause into the past lists every device as ignored
-      instead of raising: both are plan A4.0 carry overs (decision L46).
+      The routine actions raise translated `ServiceValidationError`s for what a caller got
+      wrong (`no_routine_targets`, `not_loaded`, `pause_until_or_for`, and
+      `paused_until_in_past` before any target is resolved), and maintenance raises the
+      translated `HomeAssistantError` `maintenance_failed` when an action cannot finish,
+      never a bare adapter error.
+      `tests/integration/test_services.py::test_a_target_without_any_routine_raises_no_routine_targets`,
+      `tests/integration/test_services.py::test_a_pause_that_ends_now_or_in_the_past_is_rejected_with_a_translated_error`,
+      `tests/integration/test_services.py::test_a_maintenance_failure_raises_a_translated_error`,
+      `tests/integration/test_maintenance.py::test_a_failure_is_a_translated_home_assistant_error`.
 
   config-entry-unloading:
     status: done

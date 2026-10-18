@@ -17,11 +17,13 @@ from typing import Any
 
 from homeassistant.config import AUTOMATION_CONFIG_PATH
 from homeassistant.core import Event, HomeAssistant
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.setup import async_setup_component
 from homeassistant.util.yaml import dump
 import pytest
 
 from custom_components.device_routines import ha_adapter, maintenance, markers
+from custom_components.device_routines.const import DOMAIN
 from custom_components.device_routines.maintenance import (
     MaintenanceAction,
     MaintenanceReport,
@@ -437,3 +439,54 @@ async def test_the_shipped_blueprint_is_read_from_the_package(
 
     assert maintenance.shipped_blueprint_text() == BLUEPRINT
     assert maintenance.blueprint_hash(BLUEPRINT) == sha256(BLUEPRINT)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        ha_adapter.AdapterError("automations.yaml does not hold a list"),
+        ha_adapter.HelperError("timeout", "schedule/delete did not answer"),
+        OSError("disk full"),
+        HomeAssistantError("an untranslated core error"),
+    ],
+    ids=["adapter", "helper", "os", "untranslated"],
+)
+async def test_a_failure_is_a_translated_home_assistant_error(
+    hass: HomeAssistant, manager: FakeManager, failure: Exception
+) -> None:
+    """Plan A4.0 item 5, quality rule `action-exceptions`: never a bare adapter error."""
+
+    async def failing(*, dry_run: bool) -> list[str]:
+        raise failure
+
+    manager.async_rebuild_index = failing  # type: ignore[method-assign]
+
+    with pytest.raises(HomeAssistantError) as raised:
+        await maintenance.async_run(hass, manager, MaintenanceAction.REBUILD_INDEX, dry_run=False)
+
+    assert type(raised.value) is HomeAssistantError
+    assert raised.value.__cause__ is failure
+    assert (raised.value.translation_domain, raised.value.translation_key) == (
+        DOMAIN,
+        "maintenance_failed",
+    )
+    assert raised.value.translation_placeholders == {
+        "action": "rebuild_index",
+        "error": str(failure),
+    }
+
+
+async def test_a_translated_refusal_passes_unchanged(
+    hass: HomeAssistant, manager: FakeManager
+) -> None:
+    refusal = ServiceValidationError(translation_domain=DOMAIN, translation_key="not_loaded")
+
+    async def refusing(*, dry_run: bool) -> list[str]:
+        raise refusal
+
+    manager.async_refresh_summaries = refusing  # type: ignore[method-assign]
+
+    with pytest.raises(ServiceValidationError) as raised:
+        await maintenance.async_run(hass, manager, "refresh_summaries", dry_run=True)
+
+    assert raised.value is refusal

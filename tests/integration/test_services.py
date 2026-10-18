@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from homeassistant.core import HomeAssistant, ServiceResponse
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr, label_registry as lr
 from homeassistant.helpers.service import async_get_all_descriptions
 from homeassistant.setup import async_setup_component
@@ -25,7 +25,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 import yaml
 
-from custom_components.device_routines import services
+from custom_components.device_routines import ha_adapter, services
 from custom_components.device_routines.const import DOMAIN
 from custom_components.device_routines.domains import SUPPORTED_DOMAINS
 from custom_components.device_routines.maintenance import MaintenanceAction, MaintenanceReport
@@ -440,6 +440,38 @@ async def test_maintenance_runs_each_action_with_and_without_a_dry_run(
         )
     with pytest.raises(vol.Invalid):
         await hass.services.async_call(DOMAIN, "maintenance", {}, blocking=True)
+
+
+async def test_a_maintenance_failure_raises_a_translated_error(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Quality rule `action-exceptions` (plan A4.0 item 5): no bare adapter error."""
+
+    async def unreadable(*_args: Any) -> list[Any]:
+        raise ha_adapter.AdapterError("automations.yaml does not hold a list")
+
+    async def uninstallable(*_args: Any) -> bool:
+        raise ha_adapter.AdapterError("the blueprint text is not a mapping")
+
+    monkeypatch.setattr(ha_adapter, "async_read_automations", unreadable)
+    monkeypatch.setattr(ha_adapter, "installed_blueprint_text", lambda _hass: None)
+    monkeypatch.setattr(ha_adapter, "async_install_blueprint", uninstallable)
+
+    for action, error in (
+        ("rebuild_index", "automations.yaml does not hold a list"),
+        ("reinstall_blueprint", "the blueprint text is not a mapping"),
+    ):
+        with pytest.raises(HomeAssistantError) as raised:
+            await hass.services.async_call(DOMAIN, "maintenance", {"action": action}, blocking=True)
+        assert not isinstance(raised.value, ServiceValidationError)
+        assert (raised.value.translation_domain, raised.value.translation_key) == (
+            DOMAIN,
+            "maintenance_failed",
+        )
+        assert raised.value.translation_placeholders == {"action": action, "error": error}
+        assert str(raised.value).startswith(
+            f"The maintenance action {action} could not finish: {error}. Check the Home"
+        )
 
 
 # --------------------------------------------------------------------------------------

@@ -19,7 +19,7 @@ from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
-from custom_components.device_routines import maintenance, markers, websocket_api
+from custom_components.device_routines import ha_adapter, maintenance, markers, websocket_api
 from custom_components.device_routines.manager import ActionResults, RoutineManager
 from custom_components.device_routines.models import Weekday
 from custom_components.device_routines.settings import GlobalSettings, TimeFormat
@@ -681,6 +681,32 @@ async def test_maintenance_runs_for_real_by_default_and_refuses_unknown_actions(
     assert report == {"action": "clean_up_now", "changed": [home.lamp], "would_change": []}
     assert home.lamp not in manager.store.data.opted_out_at
     assert unknown["code"] == "invalid_format"
+
+
+async def test_a_maintenance_failure_is_answered_with_its_translation(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    hass_ws_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan A4.0 item 5: the console gets the translated error, never a bare one."""
+
+    async def unreadable(*_args: Any) -> list[Any]:
+        raise ha_adapter.AdapterError("automations.yaml does not hold a list")
+
+    monkeypatch.setattr(ha_adapter, "async_read_automations", unreadable)
+    client = await hass_ws_client(hass)
+
+    error = await refusal(client, {"type": f"{PREFIX}/maintenance", "action": "rebuild_index"})
+
+    assert error["code"] == "home_assistant_error"
+    assert error["translation_key"] == "maintenance_failed"
+    assert error["translation_domain"] == "device_routines"
+    assert error["translation_placeholders"] == {
+        "action": "rebuild_index",
+        "error": "automations.yaml does not hold a list",
+    }
 
 
 # --------------------------------------------------------------------------------------

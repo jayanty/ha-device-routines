@@ -687,6 +687,9 @@
     },
     "invalid_ai_task_entity": {
       "message": "{setting} must be an AI Task entity, or empty."
+    },
+    "maintenance_failed": {
+      "message": "The maintenance action {action} could not finish: {error}. Check the Home Assistant log and run it again."
     }
   },
   "triggers": {
