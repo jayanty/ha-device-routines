@@ -1,9 +1,11 @@
-"""The integration's own storage: `.storage/device_routines`, schema 1 (TECH_SPEC 6).
+"""The integration's own storage: `.storage/device_routines`, schema 1.2 (TECH_SPEC 6).
 
 A routine lives in its automation's blueprint inputs; the Store holds only indexes and
-caches. Everything except `opted_out_at` and `ai_cache` can be rebuilt from the markers
-and the registries (the `rebuild_index` maintenance action), so losing the file costs at
-most a delayed cleanup and some AI calls. It holds no secret.
+caches. Everything except `opted_out_at`, `ai_cache`, `suspended` and `own_helpers` can be
+rebuilt from the markers and the registries (the `rebuild_index` maintenance action), so
+losing the file costs at most a delayed cleanup, some AI calls, a routine the manager
+turned off staying off, and a helper no routine names any more left to a person. It holds
+no secret.
 
 Serialized shape (`StoreData.to_dict`), every value plain JSON:
 
@@ -16,12 +18,20 @@ Serialized shape (`StoreData.to_dict`), every value plain JSON:
 - `blueprint_schema`: the blueprint input schema the routines were last migrated to, or
   null before the first record.
 - `ai_cache`: config hash to `{text, created}`, `created` an ISO 8601 timestamp.
+- `suspended` (1.2): automation id to why the manager turned that automation off,
+  `invalid` or `missing_target`, so it turns it back on when that ends, across restarts
+  too (L44). A routine a person turned off is never in it.
+- `own_helpers` (1.2): device id to the sorted entity ids of the timer and schedule
+  helpers the manager created for that device's routine. A helper stays when the routine
+  stops naming it (Days back from Weekly schedule keeps the blocks, FR-R2), so it is
+  found again after a rename and a restart, and deleted with the routine (L53).
 
 Versions. `migrate_store` has the shape of the core `Store` migrate function. Version 0
 is the PRD 10.2 layout, before TECH_SPEC 6 added the per record schema, previous inputs
-and alias history, the removal timestamps and the blueprint schema. A version newer than
-this code (a downgrade) is refused with `StoreVersionError`, never read with keys
-dropped; the file stays on disk as it was.
+and alias history, the removal timestamps and the blueprint schema. Minor version 2 adds
+`suspended` and `own_helpers`; the migration reads the helpers a routine's inputs name
+under the routine prefix. A version newer than this code (a downgrade) is refused with
+`StoreVersionError`, never read with keys dropped; the file stays on disk as it was.
 """
 
 from __future__ import annotations
@@ -40,12 +50,16 @@ from .const import DOMAIN
 
 STORAGE_KEY: Final = DOMAIN
 STORAGE_VERSION: Final = 1
-STORAGE_MINOR_VERSION: Final = 1
+STORAGE_MINOR_VERSION: Final = 2
 # Seconds a delayed save waits, so a burst of changes is one write.
 SAVE_DELAY: Final = 1.0
 
 # Version 0 predates the blueprint schema record; schema 1 is the first one ever shipped.
 _VERSION_0_BLUEPRINT_SCHEMA: Final = 1
+# The inputs naming a routine's helpers, and the object id prefix its own helpers carry
+# (M8: `timer.routine_<slug>`, `schedule.routine_<slug>`).
+_HELPER_INPUTS: Final = ("timer_entity", "schedule_entity")
+_OWN_HELPER_PREFIX: Final = "routine_"
 
 
 class StoreVersionError(HomeAssistantError):
@@ -105,6 +119,8 @@ class StoreData:
     blueprint_hash: str | None = None
     blueprint_schema: int | None = None
     ai_cache: dict[str, AiCacheEntry] = field(default_factory=dict)
+    suspended: dict[str, str] = field(default_factory=dict)
+    own_helpers: dict[str, list[str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Return the serialized shape of the module docstring."""
@@ -119,6 +135,8 @@ class StoreData:
                 key: {"text": entry.text, "created": entry.created.isoformat()}
                 for key, entry in self.ai_cache.items()
             },
+            "suspended": dict(self.suspended),
+            "own_helpers": {key: sorted(value) for key, value in self.own_helpers.items()},
         }
 
     @classmethod
@@ -137,6 +155,8 @@ class StoreData:
                 )
                 for key, item in data.get("ai_cache", {}).items()
             },
+            suspended=dict(data.get("suspended", {})),
+            own_helpers={key: list(value) for key, value in data.get("own_helpers", {}).items()},
         )
 
 
@@ -209,17 +229,41 @@ def _from_version_0(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _from_minor_1(data: dict[str, Any]) -> dict[str, Any]:
+    """1.1 to 1.2: add `suspended` (empty) and `own_helpers` (read from the inputs).
+
+    Before 1.2 the manager kept why it turned a routine off in memory only, so nothing is
+    known; a routine's own helpers are the timer and schedule its inputs name under the
+    routine prefix (M8).
+    """
+    own: dict[str, set[str]] = {}
+    for item in data.get("owned", {}).values():
+        inputs = item.get("last_valid_inputs") or {}
+        for key in _HELPER_INPUTS:
+            helper = inputs.get(key)
+            if isinstance(helper, str) and helper.partition(".")[2].startswith(_OWN_HELPER_PREFIX):
+                own.setdefault(item["device_id"], set()).add(helper)
+    helpers = {device_id: sorted(found) for device_id, found in own.items()}
+    return {**data, "suspended": {}, "own_helpers": helpers}
+
+
 # Each entry turns data of major version N into version N + 1.
 _MIGRATIONS: Final[Mapping[int, Callable[[dict[str, Any]], dict[str, Any]]]] = {
     0: _from_version_0,
+}
+# Each entry turns data of minor version N of the current major version into N + 1.
+_MINOR_MIGRATIONS: Final[Mapping[int, Callable[[dict[str, Any]], dict[str, Any]]]] = {
+    1: _from_minor_1,
 }
 
 
 def migrate_store(version: int, minor_version: int, data: Mapping[str, Any]) -> dict[str, Any]:
     """Bring stored data of any earlier version to the current one.
 
-    Raises `StoreVersionError` for a version newer than this code reads (a downgrade) and
-    for a version no migration path starts from; the input is never mutated.
+    Major steps first; data that took one lands on minor version 1 of the current major
+    version, and the minor steps follow. Raises `StoreVersionError` for a version newer
+    than this code reads (a downgrade) and for a version no migration path starts from;
+    the input is never mutated.
     """
     if (version, minor_version) > (STORAGE_VERSION, STORAGE_MINOR_VERSION):
         raise StoreVersionError(version, minor_version)
@@ -228,6 +272,11 @@ def migrate_store(version: int, minor_version: int, data: Mapping[str, Any]) -> 
         if step not in _MIGRATIONS:
             raise StoreVersionError(version, minor_version)
         migrated = _MIGRATIONS[step](migrated)
+    first = minor_version if version == STORAGE_VERSION else 1
+    for step in range(first, STORAGE_MINOR_VERSION):
+        if step not in _MINOR_MIGRATIONS:
+            raise StoreVersionError(version, minor_version)
+        migrated = _MINOR_MIGRATIONS[step](migrated)
     return migrated
 
 

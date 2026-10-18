@@ -63,12 +63,14 @@ from tests.integration.conftest import (
     LAMP,
     OVERRIDE,
     PAUSED,
+    SCHEDULE,
     TIMER,
     Clock,
     Home,
     automations_path,
     file_entries,
     file_entry,
+    flush,
     give_routine,
     issue_of,
     save_entry,
@@ -708,6 +710,24 @@ async def test_removing_with_delete_removes_every_routine_and_its_helpers(
     assert category_id(hass) is None
     assert issues_of_ours(hass) == []
     assert STORAGE_KEY not in hass_storage
+
+
+@pytest.mark.parametrize("options", [{"on_removal": "delete"}])
+async def test_removing_with_delete_takes_a_kept_weekly_schedule_along(
+    hass: HomeAssistant, home: Home, routines: MockConfigEntry, freezer: Any
+) -> None:
+    """Plan A4.0 item 15: the routine's own schedule, kept after Days changed back."""
+    manager: RoutineManager = routines.runtime_data.manager
+    await give_routine(hass, manager, home.fan, freezer, days="weekly_schedule")
+    await manager.async_update(home.fan, {"days": "every_day", "on_time": "17:00"})
+    await flush(hass, freezer)
+    assert state_of(hass, SCHEDULE) is not None
+
+    await hass.config_entries.async_remove(routines.entry_id)
+    await hass.async_block_till_done()
+
+    assert er.async_get(hass).async_get(SCHEDULE) is None
+    assert state_of(hass, SCHEDULE) is None
 
 
 async def test_removing_an_entry_that_never_had_a_routine_leaves_nothing_behind(

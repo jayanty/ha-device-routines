@@ -184,6 +184,8 @@ async def async_clean_up(target: MaintenanceTarget, device_ids: list[str]) -> li
         for automation_id, record in list(data.owned.items()):
             if record.device_id == device_id:
                 del data.owned[automation_id]
+                data.suspended.pop(automation_id, None)
+        data.own_helpers.pop(device_id, None)
         data.opted_out_at.pop(device_id, None)
         data.removed_devices_at.pop(device_id, None)
         data.opted_in.discard(device_id)

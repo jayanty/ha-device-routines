@@ -223,15 +223,21 @@ async def _async_delete_routines(
     """Delete: remove every owned automation and its helpers; return the system user used.
 
     The helpers are the timer and the schedule the entry's inputs or the Store's last
-    valid inputs name, each only while it carries the Routines label, so a helper a
-    person linked to a routine themselves is never deleted.
+    valid inputs name, and those the Store remembers creating for the device's routine
+    (a weekly schedule kept after Days changed back), each only while it carries the
+    Routines label, so a helper a person linked to a routine themselves is never deleted.
     """
     label_id = _label_id(hass)
     registry = er.async_get(hass)
     for item in owned:
         automation_id = item["id"]
         record = data.owned.get(automation_id)
-        helpers = _helpers(_inputs(item)) | _helpers(record.last_valid_inputs if record else None)
+        device_id = _inputs(item).get("device_id")
+        helpers = (
+            _helpers(_inputs(item))
+            | _helpers(record.last_valid_inputs if record else None)
+            | set(data.own_helpers.get(device_id, ()) if isinstance(device_id, str) else ())
+        )
         try:
             await ha_adapter.async_delete_automation(hass, automation_id)
         except ha_adapter.AdapterError:

@@ -204,6 +204,56 @@ async def test_after_a_restart_weekly_schedule_links_the_kept_helper_again(
     assert [domain for domain, _name, _entity in created] == ["schedule"]
 
 
+async def test_after_a_rename_and_a_restart_the_kept_helper_is_found_by_the_store(
+    hass: HomeAssistant,
+    home: Home,
+    routines: MockConfigEntry,
+    freezer: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan A4.0 item 15 (L53): the own helper is remembered, not guessed from the name.
+
+    With Days not on Weekly schedule and no timer, the inputs name no helper, so after a
+    rename and a restart the device's new name gives another slug; the Store still knows
+    the routine's own schedule, so it is linked again, renamed and finally deleted.
+    """
+    manager: RoutineManager = routines.runtime_data.manager
+    automation_id = await weekly_routine(hass, manager, home, freezer)
+    await add_blocks(hass, manager, monday=MONDAY_EVENING)
+    assert manager.store.data.own_helpers == {home.fan: [SCHEDULE]}
+    await manager.async_update(home.fan, {"days": "every_day", "on_time": "17:00"})
+    await flush(hass, freezer)
+    dr.async_get(hass).async_update_device(home.fan, name_by_user="Bedroom fan")
+    await hass.async_block_till_done()
+    assert hass.states.get(SCHEDULE).name == "Bedroom fan routine"  # type: ignore[union-attr]
+    assert await hass.config_entries.async_reload(routines.entry_id)
+    await hass.async_block_till_done()
+    manager = routines.runtime_data.manager
+    created = helper_creations(monkeypatch)
+
+    again = await manager.async_update(home.fan, {"days": "weekly_schedule"})
+    await flush(hass, freezer)
+
+    assert again.problem is None
+    assert created == []
+    assert inputs_of(hass, automation_id)["schedule_entity"] == SCHEDULE
+    user = await system_user(hass, manager)
+    blocks = await ha_adapter.async_schedule_blocks(hass, user, SCHEDULE)
+    assert blocks is not None
+    assert blocks["monday"] == MONDAY_EVENING
+
+    await manager.async_update(home.fan, {"days": "every_day", "on_time": "17:00"})
+    await flush(hass, freezer)
+    assert await hass.config_entries.async_reload(routines.entry_id)
+    await hass.async_block_till_done()
+    manager = routines.runtime_data.manager
+    await manager.async_delete_routine(home.fan)
+    await hass.async_block_till_done()
+
+    assert er.async_get(hass).async_get(SCHEDULE) is None
+    assert manager.store.data.own_helpers == {}
+
+
 async def test_a_schedule_named_in_the_patch_is_linked_as_it_is(
     hass: HomeAssistant,
     home: Home,

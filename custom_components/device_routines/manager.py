@@ -500,7 +500,6 @@ class _Routine:
     load_failed: bool = False
     regenerated: bool = False
     migration_failed: bool = False
-    turned_off_for: str | None = None
     slug: str | None = None
     watched: str | None = None
     write_handle: CALLBACK_TYPE | None = None
@@ -1127,6 +1126,7 @@ class RoutineManager:
         if device is not None and label in device.labels:
             dr.async_get(self.hass).async_update_device(device_id, labels=device.labels - {label})
         await self._async_turn(routine, on=False)
+        self._forget_suspension(routine.automation_id)  # opted out: it stays off
         self._clear_runtime(routine)
         self._remove_entities(device_id)
         self._store.async_delay_save()
@@ -1327,7 +1327,7 @@ class RoutineManager:
         if settings.turn_off_after_min or settings.turn_back_on_after_min:
             timer = old.timer_entity
             if timer == compiler.UNUSED_TIMER:
-                timer = f"timer.routine_{self._slug(routine)}"
+                timer = self._own_helper(routine, "timer")
             if not self._exists(timer):
                 await self._async_create_helper(routine, "timer", timer)
         return compiler.HelperRefs(
@@ -1341,15 +1341,33 @@ class RoutineManager:
     async def _async_create_helper(
         self, routine: _Routine, domain: Literal["timer", "schedule"], entity_id: str
     ) -> None:
-        """Create a timer or schedule helper with this entity id and the label (L36)."""
+        """Create a timer or schedule helper with this entity id and the label (L36).
+
+        The Store remembers it as one of the routine's own helpers (L53), so it is found
+        again whatever the device is called later, and deleted with the routine.
+        """
         user_id = await self._async_system_user()
         fields: dict[str, Any] = (
             {"duration": "00:00:00", "restore": True} if domain == "timer" else {}
         )
         name = self._helper_name(routine.device_id, domain)
-        await ha_adapter.async_create_helper(
+        created = await ha_adapter.async_create_helper(
             self.hass, user_id, domain, name, entity_id=entity_id, labels=[self._label()], **fields
         )
+        own = self._store.data.own_helpers.setdefault(routine.device_id, [])
+        if created not in own:
+            own.append(created)
+            own.sort()
+            self._store.async_delay_save()
+
+    def _own_helper(self, routine: _Routine, domain: Literal["timer", "schedule"]) -> str:
+        """Return the entity id of the routine's own timer or schedule (M8, L53).
+
+        The one the Store remembers creating, or `<domain>.routine_<slug>` for a new one.
+        """
+        stored = self._store.data.own_helpers.get(routine.device_id, ())
+        found = next((helper for helper in stored if helper.startswith(f"{domain}.")), None)
+        return found or f"{domain}.routine_{self._slug(routine)}"
 
     async def _async_system_user(self) -> str:
         stored = self.entry.data.get(CONF_SYSTEM_USER_ID)
@@ -1495,16 +1513,32 @@ class RoutineManager:
         )
         return True
 
+    def _suspended_for(self, routine: _Routine) -> str | None:
+        """Return why the manager turned the routine's automation off, if it did (L44)."""
+        return self._store.data.suspended.get(routine.automation_id)
+
     async def _async_suspend(self, routine: _Routine, reason: str) -> None:
-        """Turn the routine off for a reason, remembering it was the manager that did."""
-        if await self._async_turn(routine, on=False) and routine.turned_off_for is None:
-            routine.turned_off_for = reason
+        """Turn the routine off for a reason, remembering it was the manager that did.
+
+        The reason is kept in the Store, so it outlives a restart: a routine the manager
+        turned off comes back on when the reason ends, even after a restart, while a
+        routine a person turned off stays off (it is already off, so nothing is kept).
+        """
+        suspended = self._store.data.suspended
+        if await self._async_turn(routine, on=False) and routine.automation_id not in suspended:
+            suspended[routine.automation_id] = reason
+            self._store.async_delay_save()
 
     async def _async_unsuspend(self, routine: _Routine, reason: str) -> None:
         """Turn the routine back on when the manager turned it off for this reason."""
-        if routine.turned_off_for == reason:
-            routine.turned_off_for = None
+        if self._suspended_for(routine) == reason:
+            self._forget_suspension(routine.automation_id)
             await self._async_turn(routine, on=True)
+
+    def _forget_suspension(self, automation_id: str) -> None:
+        """Drop why the manager turned an automation off: it is not the manager's to undo."""
+        if self._store.data.suspended.pop(automation_id, None) is not None:
+            self._store.async_delay_save()
 
     def _sync_issue(
         self, issue_id: str, routine: _Routine, *, present: bool, **placeholders: str
@@ -1545,7 +1579,7 @@ class RoutineManager:
         routine.invalid = False
         if await self._async_write(routine):
             self._sync_issue(repairs.INVALID_INPUTS, routine, present=False)
-            routine.turned_off_for = None
+            self._forget_suspension(automation_id)
             await self._async_turn(routine, on=True)
             self._changed(routine.device_id)
 
@@ -1580,7 +1614,7 @@ class RoutineManager:
         routine.detached = False
         routine.invalid = routine.load_failed = False
         routine.regenerated = routine.migration_failed = False
-        routine.turned_off_for = None
+        self._forget_suspension(old_id)
         await self._async_write(routine)
         self._changed(device_id)
 
@@ -2039,7 +2073,8 @@ class RoutineManager:
         self._changed(device_id)
 
     async def _async_valid_again(self, routine: _Routine) -> None:
-        if routine.invalid:
+        """End an invalid state: known in memory, or kept in the Store over a restart."""
+        if routine.invalid or self._suspended_for(routine) == _OFF_INVALID:
             routine.invalid = False
             self._sync_issue(repairs.INVALID_INPUTS, routine, present=False)
             await self._async_unsuspend(routine, _OFF_INVALID)
@@ -2055,16 +2090,16 @@ class RoutineManager:
         await self._async_delete_helpers(
             _refs(record.last_valid_inputs if record else None) or compiler.HelperRefs("")
         )
+        self._forget_suspension(automation_id)
         self._store.async_delay_save()
         if device_id is None:
             return
-        await self._async_delete_own_schedule(device_id)
+        await self._async_delete_own_helpers(device_id)
         routine = self._routine(device_id)
         self._clear_runtime(routine)
         routine.settings = None
         routine.invalid = routine.detached = routine.missing_target = False
         routine.load_failed = routine.regenerated = False
-        routine.turned_off_for = None
         routine.automation_id = markers.automation_id(device_id)
         self._watch(routine)
         if device_id not in data.opted_in:
@@ -2079,6 +2114,7 @@ class RoutineManager:
         data = self._store.data
         if data.owned.pop(automation_id, None) is not None:
             self._store.async_delay_save()
+        self._forget_suspension(automation_id)
         routine = self._routine(device_id, automation_id)
         if routine.detached:
             return
@@ -2091,9 +2127,15 @@ class RoutineManager:
         self._changed(device_id)
 
     async def _async_delete_helpers(self, refs: compiler.HelperRefs) -> None:
-        for entity_id in (refs.timer_entity, refs.schedule_entity):
-            if entity_id in {compiler.UNUSED_TIMER, compiler.UNUSED_SCHEDULE}:
-                continue
+        await self._async_delete_helper_ids(
+            entity_id
+            for entity_id in (refs.timer_entity, refs.schedule_entity)
+            if entity_id not in {compiler.UNUSED_TIMER, compiler.UNUSED_SCHEDULE}
+        )
+
+    async def _async_delete_helper_ids(self, entity_ids: Iterable[str]) -> None:
+        """Delete timer and schedule helpers that still exist; a failure is logged."""
+        for entity_id in list(entity_ids):
             if er.async_get(self.hass).async_get(entity_id) is None:
                 continue
             try:
@@ -2209,9 +2251,10 @@ class RoutineManager:
         await self._async_write(routine)
         record = self._store.data.owned[routine.automation_id]
         refs = _refs(record.last_valid_inputs) or compiler.HelperRefs(routine.device_id)
+        own = self._store.data.own_helpers.get(routine.device_id, [])
         helpers = [
             entity_id
-            for entity_id in (refs.timer_entity, refs.schedule_entity)
+            for entity_id in dict.fromkeys((refs.timer_entity, refs.schedule_entity, *own))
             if er.async_get(self.hass).async_get(entity_id) is not None
         ]
         for entity_id in helpers:
@@ -2279,14 +2322,20 @@ class RoutineManager:
         await self._async_write(routine)
 
     async def _async_check_target(self, routine: _Routine) -> None:
-        """Turn the routine off while its target is missing, back on when it returns."""
+        """Turn the routine off while its target is missing, back on when it returns.
+
+        The Store remembers that the manager turned it off (L44), so a target that came
+        back while Home Assistant was down turns the routine on at the next reconcile.
+        """
         assert routine.settings is not None  # noqa: S101  # callers pass routines with settings
         exists = self._exists(routine.settings.target_entity)
         if not exists and not routine.missing_target:
             routine.missing_target = True
             await self._async_suspend(routine, _OFF_MISSING_TARGET)
             self._changed(routine.device_id)
-        elif exists and routine.missing_target:
+        elif exists and (
+            routine.missing_target or self._suspended_for(routine) == _OFF_MISSING_TARGET
+        ):
             routine.missing_target = False
             await self._async_unsuspend(routine, _OFF_MISSING_TARGET)
             self._changed(routine.device_id)
@@ -2471,7 +2520,7 @@ class RoutineManager:
             await self._async_delete_helpers(
                 _refs(record.last_valid_inputs) or compiler.HelperRefs(device_id)
             )
-        await self._async_delete_own_schedule(device_id)
+        await self._async_delete_own_helpers(device_id)
         self._remove_entities(device_id)
         if (routine := self._routines.pop(device_id, None)) is not None:
             self._clear_runtime(routine)
@@ -2509,6 +2558,8 @@ class RoutineManager:
             return changed
         if lr.async_get(self.hass).async_get_label(self._label_id) is not None:
             data.opted_in = self._labelled_devices()
+        # Why the manager turned an automation off is kept for the automations still owned.
+        data.suspended = {key: value for key, value in data.suspended.items() if key in owned}
         installed = await self.hass.async_add_executor_job(
             ha_adapter.installed_blueprint_text, self.hass
         )
@@ -2541,7 +2592,7 @@ class RoutineManager:
 
     def _own_schedule(self, routine: _Routine) -> str:
         """Return the entity id of the routine's own weekly schedule helper (M8)."""
-        return f"schedule.routine_{self._slug(routine)}"
+        return self._own_helper(routine, "schedule")
 
     def _weekly_schedule_linked(
         self, routine: _Routine, settings: RoutineSettings, patch: Patch
@@ -2665,21 +2716,28 @@ class RoutineManager:
             routine.blocks_watch[1]()
             routine.blocks_watch = None
 
-    async def _async_delete_own_schedule(self, device_id: str) -> None:
-        """Delete the routine's own weekly schedule when it goes with its routine (D28).
+    async def _async_delete_own_helpers(self, device_id: str) -> None:
+        """Delete the routine's own helpers when they go with the routine (D28).
 
-        The schedule stays when Days changes back from Weekly schedule, so the routine
-        no longer names it; it is deleted here only while it is a schedule helper that
-        carries the `Routines` label, never a schedule someone else owns.
+        A helper stays when the routine stops naming it (Days back from Weekly schedule
+        keeps the blocks, Turn off after back to 0 keeps the timer), so the routine no
+        longer names it; the Store remembers every helper the manager created (L53), and
+        `schedule.routine_<slug>` counts too. Each is deleted only while it is a timer or
+        schedule helper carrying the `Routines` label, never a helper someone else owns.
         """
+        stored = self._store.data.own_helpers.pop(device_id, [])
+        if stored:
+            self._store.async_delay_save()
         routine = self._routines.get(device_id)
-        if routine is None:
-            return
-        schedule = self._own_schedule(routine)
-        entry = er.async_get(self.hass).async_get(schedule)
-        if entry is None or entry.platform != "schedule" or self._label_id not in entry.labels:
-            return
-        await self._async_delete_helpers(compiler.HelperRefs(device_id, schedule_entity=schedule))
+        named = [f"schedule.routine_{self._slug(routine)}"] if routine is not None else []
+        registry = er.async_get(self.hass)
+        await self._async_delete_helper_ids(
+            entity_id
+            for entity_id in dict.fromkeys([*stored, *named])
+            if (entry := registry.async_get(entity_id)) is not None
+            and entry.platform in {"timer", "schedule"}
+            and self._label_id in entry.labels
+        )
 
     # ----------------------------------------------------------------------------------
     # The hub Routines sensor (Build A lane 14: PRD 4.4)

@@ -257,6 +257,145 @@ async def test_a_missing_target_turns_the_routine_off_until_it_returns(
     assert state_of(hass, AUTOMATION) == "on"
 
 
+def remove_the_fan(hass: HomeAssistant) -> None:
+    er.async_get(hass).async_remove(FAN)
+    hass.states.async_remove(FAN)
+
+
+def bring_the_fan_back(hass: HomeAssistant) -> None:
+    er.async_get(hass).async_get_or_create(
+        "switch", "sandbox", "fan_again", suggested_object_id="living_room_fan"
+    )
+    hass.states.async_set(FAN, "off")
+
+
+async def test_a_routine_off_for_a_missing_target_comes_back_after_a_restart(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    routines: MockConfigEntry,
+    freezer: Any,
+) -> None:
+    """Plan A4.0 item 2 (L44): why the manager turned a routine off outlives a restart."""
+    automation_id = await give_routine(hass, manager, home.fan, freezer, on_time=time(17))
+    remove_the_fan(hass)
+    await hass.async_block_till_done()
+    await manager.async_reconcile()
+    assert state_of(hass, AUTOMATION) == "off"
+    assert manager.store.data.suspended == {automation_id: "missing_target"}
+
+    # A restart while the target is still missing: still off, and still remembered.
+    assert await hass.config_entries.async_reload(routines.entry_id)
+    await hass.async_block_till_done()
+    restarted: RoutineManager = routines.runtime_data.manager
+    assert restarted is not manager
+    assert state_of(hass, AUTOMATION) == "off"
+    assert restarted.store.data.suspended == {automation_id: "missing_target"}
+
+    bring_the_fan_back(hass)
+    await hass.async_block_till_done()
+
+    assert state_of(hass, AUTOMATION) == "on"
+    assert restarted.store.data.suspended == {}
+    view = restarted.get(home.fan)
+    assert view is not None
+    assert view.status is Status.ACTIVE
+
+
+async def test_a_target_that_returns_during_a_restart_turns_the_routine_back_on(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    routines: MockConfigEntry,
+    freezer: Any,
+) -> None:
+    automation_id = await give_routine(hass, manager, home.fan, freezer, on_time=time(17))
+    remove_the_fan(hass)
+    await hass.async_block_till_done()
+    await manager.async_reconcile()
+    assert state_of(hass, AUTOMATION) == "off"
+
+    assert await hass.config_entries.async_unload(routines.entry_id)
+    await hass.async_block_till_done()
+    bring_the_fan_back(hass)
+    assert await hass.config_entries.async_setup(routines.entry_id)
+    await hass.async_block_till_done()
+
+    assert state_of(hass, AUTOMATION) == "on"
+    restarted: RoutineManager = routines.runtime_data.manager
+    assert restarted.store.data.suspended == {}
+    assert automation_id in restarted.store.data.owned
+
+
+async def test_inputs_corrected_during_a_restart_turn_the_routine_back_on(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    routines: MockConfigEntry,
+    freezer: Any,
+) -> None:
+    automation_id = await give_routine(hass, manager, home.fan, freezer, on_time=time(17))
+    valid = file_entry(hass, automation_id)
+    assert valid is not None
+    refused = {**valid["use_blueprint"]["input"], "on_action": "lock.unlock"}
+    broken = {**valid, "use_blueprint": {**valid["use_blueprint"], "input": refused}}
+    await save_entry(hass, broken)
+    assert state_of(hass, AUTOMATION) == "off"
+    assert manager.store.data.suspended == {automation_id: "invalid"}
+
+    assert await hass.config_entries.async_unload(routines.entry_id)
+    await hass.async_block_till_done()
+    await save_entry(hass, valid)  # corrected while the integration is down
+    assert state_of(hass, AUTOMATION) == "off"
+    assert await hass.config_entries.async_setup(routines.entry_id)
+    await hass.async_block_till_done()
+
+    assert state_of(hass, AUTOMATION) == "on"
+    restarted: RoutineManager = routines.runtime_data.manager
+    assert restarted.store.data.suspended == {}
+    assert issue_of(hass, "invalid_inputs", automation_id) is None
+
+
+async def test_a_routine_a_person_turned_off_stays_off_when_its_target_returns(
+    hass: HomeAssistant,
+    home: Home,
+    manager: RoutineManager,
+    routines: MockConfigEntry,
+    freezer: Any,
+) -> None:
+    """Only the manager's own reason is remembered: a person's disable sticks (L44)."""
+    await give_routine(hass, manager, home.fan, freezer, on_time=time(17))
+    await manager.async_disable(home.fan)
+    remove_the_fan(hass)
+    await hass.async_block_till_done()
+    await manager.async_reconcile()
+    assert manager.store.data.suspended == {}
+
+    assert await hass.config_entries.async_reload(routines.entry_id)
+    await hass.async_block_till_done()
+    bring_the_fan_back(hass)
+    await hass.async_block_till_done()
+
+    assert state_of(hass, AUTOMATION) == "off"
+
+
+async def test_opting_out_forgets_why_the_manager_turned_the_routine_off(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any
+) -> None:
+    """An opted out routine stays off when its target returns."""
+    await give_routine(hass, manager, home.fan, freezer, on_time=time(17))
+    remove_the_fan(hass)
+    await hass.async_block_till_done()
+    await manager.async_reconcile()
+
+    await manager.async_opt_out(home.fan)
+    assert manager.store.data.suspended == {}
+    bring_the_fan_back(hass)
+    await hass.async_block_till_done()
+
+    assert state_of(hass, AUTOMATION) == "off"
+
+
 @pytest.mark.parametrize(("options", "follows"), [({}, True), ({"assign_area": False}, False)])
 async def test_the_area_follows_the_device_when_assign_area_is_on(
     hass: HomeAssistant, home: Home, manager: RoutineManager, freezer: Any, follows: bool

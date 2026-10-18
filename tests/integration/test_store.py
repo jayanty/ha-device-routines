@@ -1,4 +1,7 @@
-"""Build A lane 6: the persistent Store, schema 1, and its migration (TECH_SPEC 6 and 4.11).
+"""Build A lane 6: the persistent Store, schema 1.2, and its migration (TECH_SPEC 6, 4.11).
+
+Minor version 2 (plan A4.0 items 2 and 15) adds why the manager turned an automation off
+(`suspended`, L44) and the helpers it created for each routine (`own_helpers`, L53).
 
 Every id and name is synthetic. `hass_storage` stands in for `.storage`: a save lands in it
 at once, a load reads from it.
@@ -69,6 +72,8 @@ def every_key() -> StoreData:
         blueprint_hash="b" * 64,
         blueprint_schema=1,
         ai_cache={"c" * 64: AiCacheEntry(text="Turns the fan on at dusk", created=CACHED)},
+        suspended={VACUUM_ID: "missing_target"},
+        own_helpers={FAN_DEVICE: ["schedule.routine_living_room_fan", "timer.routine_fan"]},
     )
 
 
@@ -101,6 +106,8 @@ SERIALIZED: dict[str, Any] = {
     "ai_cache": {
         "c" * 64: {"text": "Turns the fan on at dusk", "created": "2026-10-03T12:00:00+00:00"}
     },
+    "suspended": {VACUUM_ID: "missing_target"},
+    "own_helpers": {FAN_DEVICE: ["schedule.routine_living_room_fan", "timer.routine_fan"]},
 }
 
 # What a version 0 Store held: the PRD 10.2 layout, before TECH_SPEC 6 added the per
@@ -136,7 +143,7 @@ def stored(
 def test_the_contract_names() -> None:
     assert store.STORAGE_KEY == "device_routines"
     assert store.STORAGE_VERSION == 1
-    assert store.STORAGE_MINOR_VERSION == 1
+    assert store.STORAGE_MINOR_VERSION == 2
 
 
 async def test_the_store_round_trips_every_key(
@@ -149,7 +156,7 @@ async def test_the_store_round_trips_every_key(
 
     saved = hass_storage[store.STORAGE_KEY]
     assert saved["version"] == 1
-    assert saved["minor_version"] == 1
+    assert saved["minor_version"] == 2
     assert saved["data"] == SERIALIZED
 
     reloaded = RoutineStore(hass)
@@ -234,6 +241,8 @@ def test_migrate_store_from_a_hand_written_version_0_payload() -> None:
     assert migrated["blueprint_hash"] == "b" * 64
     assert migrated["blueprint_schema"] == 1
     assert migrated["ai_cache"] == {}
+    assert migrated["suspended"] == {}
+    assert migrated["own_helpers"] == {}
     assert "previous_inputs" not in VERSION_0["owned"][FAN_ID], "the payload is not mutated"
 
 
@@ -257,14 +266,78 @@ async def test_a_version_0_store_migrates_on_load_and_is_saved_as_version_1(
     assert loaded.opted_out_at == {GONE_DEVICE: OPTED_OUT}
     assert loaded.blueprint_schema == 1
     assert hass_storage[store.STORAGE_KEY]["version"] == 1
+    assert hass_storage[store.STORAGE_KEY]["minor_version"] == 2
     assert hass_storage[store.STORAGE_KEY]["data"]["removed_devices_at"] == {}
 
 
 def test_migrate_store_leaves_the_current_version_alone() -> None:
-    assert migrate_store(1, 1, SERIALIZED) == SERIALIZED
+    assert migrate_store(1, 2, SERIALIZED) == SERIALIZED
 
 
-@pytest.mark.parametrize(("version", "minor"), [(2, 1), (1, 2), (7, 0)])
+# What a version 1.1 Store held: the TECH_SPEC 6 layout before minor version 2. The fan's
+# routine names its own timer and schedule; the lamp's names a schedule a person made.
+VERSION_1_1: dict[str, Any] = {
+    "owned": {
+        FAN_ID: {
+            "device_id": FAN_DEVICE,
+            "target_entity": "fan.living_room",
+            "last_valid_inputs": {
+                **FAN_INPUTS,
+                "timer_entity": "timer.routine_living_room_fan",
+                "schedule_entity": "schedule.routine_living_room_fan",
+            },
+        },
+        VACUUM_ID: {
+            "device_id": VACUUM_DEVICE,
+            "target_entity": "vacuum.robot",
+            "last_valid_inputs": {
+                "timer_entity": compiler.UNUSED_TIMER,
+                "schedule_entity": "schedule.cleaning_hours",
+            },
+        },
+        markers.automation_id(GONE_DEVICE): {
+            "device_id": GONE_DEVICE,
+            "target_entity": "switch.garden_pump",
+            "last_valid_inputs": None,
+        },
+    },
+    "opted_in": [FAN_DEVICE, VACUUM_DEVICE],
+}
+
+
+def test_migrate_store_from_1_1_adds_suspended_and_reads_the_own_helpers() -> None:
+    """Plan A4.0 items 2 and 15: minor version 2 and its migration."""
+    migrated = migrate_store(1, 1, VERSION_1_1)
+
+    assert migrated["suspended"] == {}
+    assert migrated["own_helpers"] == {
+        FAN_DEVICE: ["schedule.routine_living_room_fan", "timer.routine_living_room_fan"]
+    }
+    assert migrated["owned"] == VERSION_1_1["owned"]
+    assert "suspended" not in VERSION_1_1, "the payload is not mutated"
+
+
+async def test_a_1_1_store_migrates_on_load_and_is_saved_as_1_2(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    stored(hass_storage, VERSION_1_1, 1, minor=1)
+
+    loaded = await RoutineStore(hass).async_load()
+
+    assert loaded.suspended == {}
+    assert loaded.own_helpers == {
+        FAN_DEVICE: ["schedule.routine_living_room_fan", "timer.routine_living_room_fan"]
+    }
+    assert hass_storage[store.STORAGE_KEY]["minor_version"] == 2
+    assert hass_storage[store.STORAGE_KEY]["data"]["suspended"] == {}
+
+
+def test_a_minor_version_without_a_migration_path_is_refused() -> None:
+    with pytest.raises(StoreVersionError):
+        migrate_store(1, 0, {})
+
+
+@pytest.mark.parametrize(("version", "minor"), [(2, 1), (1, 3), (7, 0)])
 def test_an_unknown_future_version_is_refused(version: int, minor: int) -> None:
     with pytest.raises(StoreVersionError) as raised:
         migrate_store(version, minor, SERIALIZED)
@@ -272,7 +345,7 @@ def test_an_unknown_future_version_is_refused(version: int, minor: int) -> None:
     assert raised.value.translation_key == "store_version_unsupported"
     assert raised.value.translation_placeholders == {
         "version": f"{version}.{minor}",
-        "supported": "1.1",
+        "supported": "1.2",
     }
 
 
@@ -284,12 +357,12 @@ def test_a_version_without_a_migration_path_is_refused() -> None:
 async def test_a_future_store_is_refused_on_load_and_left_on_disk(
     hass: HomeAssistant, hass_storage: dict[str, Any]
 ) -> None:
-    stored(hass_storage, {"owned": {}, "future_key": True}, 1, minor=2)
+    stored(hass_storage, {"owned": {}, "future_key": True}, 1, minor=3)
 
     with pytest.raises(StoreVersionError):
         await RoutineStore(hass).async_load()
 
-    assert hass_storage[store.STORAGE_KEY]["minor_version"] == 2
+    assert hass_storage[store.STORAGE_KEY]["minor_version"] == 3
     assert hass_storage[store.STORAGE_KEY]["data"]["future_key"] is True
 
 
