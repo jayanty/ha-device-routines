@@ -63,15 +63,20 @@ def test_every_fixture_produces_exactly_the_expected_lines() -> None:
         assert actual[name] == expected[name], name
 
 
-def test_the_parse_rate_is_recorded() -> None:
-    """G5 counts items parsed; the corpus keeps its golden negatives on purpose."""
+def test_the_parse_rate_meets_g5() -> None:
+    """G5 counts items parsed (a line from the parser, partial lines included) over all items.
+
+    The corpus keeps its golden negatives on purpose: items whose only triggers mean
+    something only a guess could say (an integration defined device trigger, a custom
+    event) and must read as custom logic. They count in the denominator.
+    """
     items = [item for lines in corpus().values() for group in lines.values() for item in group]
     parsed = sum(item["source"] == SOURCE_PARSER for item in items)
 
     assert len(items) >= 50
-    # Golden negatives (multi automation logic, scripts) are a third of the captured set;
-    # the synthetic cases cover every grammar rule. Raise this floor, never lower it.
-    assert parsed / len(items) >= 0.75
+    # Task A4.3 (finding F3) brought the corpus from 45 to 51 of 56 items. Raise this
+    # floor, never lower it.
+    assert parsed / len(items) >= 0.90
 
 
 if __name__ == "__main__":  # pragma: no cover

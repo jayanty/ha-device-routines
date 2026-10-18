@@ -325,6 +325,16 @@ def test_a_state_trigger_with_several_states_reads_one_clause_per_state() -> Non
     ) == ("When Front door is unavailable for 10 min or when Front door is unknown for 10 min: on")
 
 
+def test_event_reads_one_state_trigger_as_its_line_does() -> None:
+    """`event` renders any one event trigger; a line groups its state triggers itself (L31),
+    and a group of one reads exactly as `event` does."""
+    trigger = StateTrigger(DOOR, to="on", duration=timedelta(minutes=5))
+    parsed = line(trigger, TimeTrigger(at=time(9)))
+    assert writer().event(trigger, parsed) == "when Front door is on for 5 min"
+    assert writer().event(TimeTrigger(at=time(9)), parsed) is None
+    assert writer().line(parsed) == "9:00 AM or when Front door is on for 5 min: off"
+
+
 def test_a_timer_event_reads_like_the_timer_trigger() -> None:
     event = {"event_type": "timer.finished", "event_data": {"entity_id": "timer.a"}}
     named = {"target": {"entity_id": "timer.a"}}
