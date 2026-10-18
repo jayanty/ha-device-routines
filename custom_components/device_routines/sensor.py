@@ -12,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import DeviceRoutinesConfigEntry
 from .const import HEALTH_STATES
 from .entity import DeviceRoutinesHubEntity, linked_device_info
-from .health import HealthReport
+from .health import HealthMonitor
 from .summary import SCHEDULE_KEY, SummaryCoordinator, schedule_unique_id
 
 # Nothing here polls, so there is nothing to serialize.
@@ -47,20 +47,24 @@ class HealthSensor(DeviceRoutinesHubEntity, SensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_options = HEALTH_STATES
 
-    def __init__(self, entry_id: str, version: str, report: HealthReport) -> None:
-        """Hold the report collected at setup."""
+    def __init__(self, entry_id: str, version: str, health: HealthMonitor) -> None:
+        """Read the report the monitor keeps current."""
         super().__init__(entry_id, "health", version)
-        self._report = report
+        self._health = health
+
+    async def async_added_to_hass(self) -> None:
+        """Write the state whenever the report changes."""
+        self.async_on_remove(self._health.async_add_listener(self.async_write_ha_state))
 
     @property
     def native_value(self) -> str:
         """Return the overall state."""
-        return self._report.state
+        return self._health.report.state
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the report's details."""
-        return self._report.as_attributes()
+        return self._health.report.as_attributes()
 
 
 class RoutinesSensor(DeviceRoutinesHubEntity, SensorEntity):

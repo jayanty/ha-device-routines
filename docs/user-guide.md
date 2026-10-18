@@ -1,13 +1,45 @@
 # Device Routines user guide
 
-This guide grows with each release. Sections for routines, skip and pause, and removing
-the integration arrive with the features they describe.
+Device Routines puts start and stop times, run timers and a plain language Schedule
+sentence on your device pages. Each routine is a normal Home Assistant automation built
+from a blueprint the integration ships, so Home Assistant runs it, traces it and keeps it
+in `automations.yaml` like any other automation.
+
+It is made for the behaviors people otherwise write by hand, one automation per device:
+
+- Run the air purifier from 5:00 PM to 9:00 AM.
+- Turn the bathroom fan off 60 minutes after anyone turns it on.
+- Start the robot vacuum at 9:45 AM on weekdays, only from its dock.
+
+And it answers, on every device page, what will happen to that device next, whichever
+automation does it.
+
+Every example below uses made up devices (a living room fan, a desk lamp, a robot
+vacuum) and is a routine the project's test suite runs. Routines ship in version 0.3.0;
+version 0.1.0 has the Schedule sensor only.
+
+- [Reading the Schedule sensor](#reading-the-schedule-sensor)
+- [Giving a device a routine](#giving-a-device-a-routine)
+- [Skip, pause and resume](#skip-pause-and-resume)
+- [Weekly schedules](#weekly-schedules)
+- [Turn back on after](#turn-back-on-after)
+- [Pulse](#pulse)
+- [What the managed automation looks like](#what-the-managed-automation-looks-like)
+- [If you edit the automation yourself](#if-you-edit-the-automation-yourself)
+- [When the integration is off](#when-the-integration-is-off)
+- [Daylight saving nights](#daylight-saving-nights)
+- [Dashboards and scripts](#dashboards-and-scripts)
+- [Supported devices](#supported-devices)
+- [Settings](#settings)
+- [Removing the integration](#removing-the-integration)
+- [Troubleshooting](#troubleshooting)
+- [Limitations](#limitations)
 
 ## Reading the Schedule sensor
 
 Every device that at least one automation acts on gets a sensor called **Schedule** in the
-Sensors card of its device page. The integration only reads automations to write it; it
-never changes them.
+Sensors card of its device page. The integration only reads hand written automations to
+write it; it never changes them.
 
 ### The state
 
@@ -19,27 +51,32 @@ The state is the next thing that will happen to the device, in at most 40 charac
 | Start Wed 9:45 AM | The next timed action is on Wednesday. |
 | Next: 9:45 AM | Two automations do opposite things at that moment, or the sentence would not fit; their conditions decide. |
 | Off 60 min after it turns on | No timed action is coming; this is the first event driven line. |
+| Skipped, on Thu 5:00 PM | The device's routine skipped its next action; this is the next one that will really run. |
+| Paused until Sun 6:00 PM | The device's routine is paused until then. |
+| Routine off | The device's routine is turned off, or cannot run (see [Troubleshooting](#troubleshooting)). |
 
 A turned off automation never supplies the next action. A device with no automation
-acting on it has no Schedule sensor at all.
+acting on it has no Schedule sensor at all. A routine's pause or skip never changes the
+lines of hand written automations on the same device.
 
 ### The attributes
 
-`items` lists one entry per automation action on the device, timed ones first:
+`items` lists one entry per automation action on the device. The routine comes first,
+then timed lines, then event driven ones:
 
 | Field | Content |
 | --- | --- |
-| `kind` | `automation` today; `routine` and `detached_routine` arrive with routines. |
+| `kind` | `routine` for the device's routine, `automation` for any other automation, `detached_routine` for a former routine someone took control of. |
 | `automation` | The automation entity, so a card can link to it. |
 | `alias` | The automation's name. |
-| `summary` | The line, for example `Weekdays 9:45 AM: start (if 6 conditions pass)`. |
+| `summary` | The line, for example `Weekdays 9:45 AM: start (if 6 conditions pass)`. A routine reads like `Weekdays 5:00 PM: on, Weekdays 11:00 PM: off`. |
 | `next_run` | When the line runs next, or null for event driven lines. |
 | `source` | `parser` when the line was read from the automation, `none` when it could not be. |
 | `enabled` | Whether the automation is turned on. |
 
 `conflicts` lists pairs of items that drive the device in opposite directions in the same
-minute within the next day. `paused_until` and `skipped_action` stay empty until routines
-arrive.
+minute within the next day. `paused_until` holds the end of the routine's pause or skip,
+and `skipped_action` names the action Skip next skipped; both are empty otherwise.
 
 ### How lines are written
 
@@ -60,7 +97,7 @@ Anything else (templates, scripts, repeats, waits, events) is never guessed. A l
 has some of it ends with "plus custom logic"; a line where nothing could be read says
 "Automation: <name> (custom logic)".
 
-### Daylight saving time
+### Daylight saving time in sentences
 
 Times are local wall clock times and follow what Home Assistant's own time trigger does.
 On the night clocks spring forward, a time that does not exist that night (2:30 AM in the
@@ -69,13 +106,615 @@ night clocks fall back, a time that happens twice runs twice, an hour apart.
 
 ### Where the sensor appears
 
-The **Schedule sensor scope** setting (Settings, Devices and services, Device Routines,
-Configure) chooses all devices with automations (the default), only devices with
-routines, or nowhere. The **Time format** setting chooses 12 hour, 24 hour, or automatic,
-which follows the country set in Home Assistant.
+The **Schedule sensor scope** setting chooses all devices with automations (the
+default), only devices with routines, or nowhere. The **Time format** setting chooses 12
+hour, 24 hour, or automatic, which follows the country set in Home Assistant. Both are on
+the settings page (see [Settings](#settings)).
 
 ### Freshness
 
 The sensor updates when automations are reloaded, turned on or off, when devices, areas,
-floors or labels change, when a helper a time trigger reads changes, and at each next
-run. Nothing polls.
+floors or labels change, when a helper a time trigger reads changes, when a routine
+changes, and at each next run. Nothing polls.
+
+## Giving a device a routine
+
+### Choosing devices
+
+Nothing has routine controls until you ask for them. Any of these gives a device its
+controls, and they stay in sync:
+
+- **The `Routines` label.** Open the device page and add the label `Routines` (the
+  integration creates it, with a calendar clock icon). Removing the label takes the
+  controls away again. The label is the visible truth: every other way applies it.
+
+<!-- A3: lane 10 -->
+- **The options.** Settings, Devices and services, Device Routines, Configure, then
+  **Devices with routines**: a device picker that lists only devices with something a
+  routine can drive.
+- **The suggestions.** Right after setup, and again from the options, one optional screen
+  lists the devices that already have time based automations, all unchecked. Tick the
+  ones you want, or skip it.
+
+A device qualifies when it has an entity in a [supported domain](#supported-devices)
+that is not a configuration or diagnostic entity. Entities without a device are not
+supported.
+
+### The controls
+
+<!-- A3: lane 8 -->
+The device page gets these controls. They are Home Assistant's own time pickers, number
+boxes and switches; labels follow the device, so a robot vacuum shows "Start at" and a
+blind shows "Open at".
+
+<!-- A3: lane 8 -->
+| Control | Card | Shown | What it does |
+| --- | --- | --- | --- |
+| Routine | Configuration | Yes | Turns the routine on and off. Off means nothing runs. It mirrors the automation, so turning the automation off in the automation list turns this off too. |
+| Turn on at | Configuration | Yes | The time the device turns on. Setting it creates the routine. |
+| Turn off at | Configuration | Yes | The time the device turns off. Either time alone is fine. |
+| Days | Configuration | Yes | Every day, Weekdays, Weekends, Some days or Weekly schedule. |
+| Turn off after | Configuration | Where the device supports it | Minutes after any turn on before the device turns off again; 0 is off. |
+| Turn back on after | Configuration | No, advanced | Minutes after a turn off before the device turns back on; 0 is off. See [Turn back on after](#turn-back-on-after). |
+| Catch up after restart | Configuration | No, advanced | On by default. See [After a restart](#after-a-restart-catch-up). |
+| Respect manual changes | Configuration | No, advanced | On by default. See [Manual changes](#manual-changes). |
+| Skip next | Controls | Yes | Skips the action the Schedule sentence shows next. |
+| Paused until | Controls | Yes | Empty unless paused. A future time pauses the routine. |
+| Resume | Controls | Yes, available while paused or skipping | Ends a pause or a skip now. |
+| Manual override | Diagnostic | Yes | On while a change made by hand holds the device away from its schedule. |
+| Routine controls | Configuration | Only with several candidates | Picks which entity the routine drives when the device has more than one. |
+
+<!-- A3: lane 8 -->
+Advanced controls are created disabled. To use one, open the device page, show the
+entities that are hidden, and enable it.
+
+<!-- A3: lane 8 -->
+The Schedule sensor confirms every change within a second, in words. The write to
+`automations.yaml` follows one second after your last change, so setting three values in
+a row is one write. A combination that cannot work is refused with a message and the
+control goes back to its old value: the same start and stop time, Turn off after together
+with Turn back on after, a start time on a device that cannot be turned on (a lock), or a
+time while Days is Weekly schedule.
+
+Example: a living room fan with **Turn on at** 5:00 PM and **Turn off at** 9:00 AM turns
+on at 5:00 PM and off at 9:00 AM the next morning. During the day its Schedule reads "On
+at 5:00 PM".
+
+### Days
+
+<!-- A3: lane 8 -->
+Days limits the scheduled times; run timers apply every day.
+
+| Days | Runs on |
+| --- | --- |
+| Every day | Every day. |
+| Weekdays | Monday to Friday. |
+| Weekends | Saturday and Sunday. |
+| Some days | A day set you choose in the routine's automation form (the device page select shows Some days). |
+| Weekly schedule | The blocks of a weekly schedule helper instead of the two times. See [Weekly schedules](#weekly-schedules). |
+
+A window that crosses midnight belongs to the day it starts. With Weekdays, 5:00 PM to
+9:00 AM: Friday's window runs until Saturday 9:00 AM, Saturday and Sunday stay off, and
+on Monday at 8:00 AM the device is off, because Sunday did not start a window.
+
+### Turn off after
+
+Turn off after counts down from any turn on that the schedule did not make: by hand, from
+the app, by voice or from another automation. Example: a desk lamp with Turn off after
+30, turned on at 10:00 AM, turns off at 10:30 AM.
+
+- Turning the device off cancels the countdown; turning it on again starts a new one.
+- The countdown is a timer helper (`timer.routine_desk_lamp`), so it survives a restart:
+  restarted at 10:20 AM, the lamp still turns off at 10:30 AM.
+- Inside a window that has a Turn off at, it does not apply: the window decides.
+- After a Turn on at with no Turn off at, it does apply: Turn on at 7:00 AM with Turn off
+  after 30 means "on at 7:00 for 30 minutes", even if the device was already on.
+
+### After a restart: catch up
+
+With **Catch up after restart** on (the default), when Home Assistant starts, and when the
+device comes back from unavailable for 10 seconds, the routine sets the device to the
+state its schedule expects now. Example: a 5:00 PM on time, Home Assistant down from 4:55
+PM to 5:10 PM: the fan is on within a minute of the start. A device that was unreachable
+at 5:00 PM is switched when it returns.
+
+A start with no stop (a robot vacuum that starts at 9:45 AM) is caught up only inside the
+late start window, 15 minutes by default: down from 9:40 AM to 9:50 AM, the vacuum starts
+at 9:50 AM; back at 10:05 AM, it waits for tomorrow. The window is in the routine's
+automation form (Behavior, Late start window; 0 turns it off).
+
+<!-- A3: lane 14 -->
+New routines take the late start window from the **Late start window** setting.
+
+Every on and off checks the device first, so catch up running twice changes nothing.
+
+### Manual changes
+
+<!-- A3: lane 8 -->
+With **Respect manual changes** on (the default), a change made by hand (a wall switch,
+the app, a dashboard, a voice assistant) that leaves the device in a state the schedule
+did not ask for turns **Manual override** on. While it is on, catch up and Turn back on
+after leave the device alone. The next scheduled time always runs and clears it.
+Turning Manual override off yourself hands the device back to the schedule at once. Its
+`last_change_source` attribute says what changed the device last: `automation`, `user`
+or `device`.
+
+Example: the fan's window is 5:00 PM to 9:00 AM. You turn it on by hand at noon, and Home
+Assistant restarts at 12:30 PM: the fan stays on, with Manual override on. At 5:00 PM the
+routine takes over and the override clears.
+
+With Respect manual changes off, nothing is held: the next catch up (a restart or a
+reconnect) puts the device back to the schedule's state.
+
+Changes made by other automations and scripts never count as manual.
+
+## Skip, pause and resume
+
+Every "not now" is one stored value per device, **Paused until**, so a restart never loses
+it and the routine checks a single rule. Skip and pause act on routines only; hand
+written automations on the same device keep running.
+
+### Skip next
+
+Skip next skips the action the Schedule sentence shows next:
+
+- **A window start:** the whole occurrence is skipped, start and end. Example: Wednesday at
+  3:00 PM with a 5:00 PM to 9:00 AM window, Skip next leaves the fan off tonight; the
+  sentence reads "Skipped, on Thu 5:00 PM" and Paused until is Thursday 9:01 AM.
+- **A window end:** the device stays as it is until the following scheduled action.
+  Example: at 8:00 PM inside a 5:00 PM to 11:00 PM window, Skip next keeps the fan on past
+  11:00 PM; Manual override turns on so nothing turns it off early, and tomorrow's 5:00 PM
+  start clears it.
+- **A running countdown:** the timer is cancelled and the device stays as it is.
+
+<!-- A3: lane 8 -->
+Pressing Skip next again extends the skip to the following action. Skip next is
+unavailable when nothing is scheduled.
+
+### Pause until
+
+Set **Paused until** to a future time. A time in the past is refused with a message.
+While paused, no scheduled action runs and no countdown starts; a countdown that was
+running pauses and later continues with the time it had left. You can still use the
+device by hand, and that does not turn Manual override on. The sentence reads "Paused
+until Sun 6:00 PM".
+
+When the pause ends, the routine catches up if Catch up after restart is on. Example: the
+fan's window is 5:00 PM to 11:00 PM and it is paused until 6:30 PM: it stays off at 5:00
+PM, and at 6:30 PM it turns on.
+
+### Resume
+
+**Resume** ends a pause or a skip now and then catches up the same way. It also clears a
+Manual override that a skip set. A new pause replaces a skip.
+
+### The Routine switch
+
+Turning the **Routine** switch off stops everything: no scheduled action, no countdown,
+no catch up. A Paused until value is kept, and applies again if you turn the routine
+back on before it ends. The sentence reads "Routine off".
+
+<!-- A3: lane 9 -->
+The same four things are actions you can call for a whole room or label at once; see
+[Actions](#actions).
+
+## Weekly schedules
+
+<!-- A3: lane 14 -->
+Set **Days** to **Weekly schedule** when the times differ by day. The integration creates
+a schedule helper named after the device ("Living room fan routine",
+`schedule.routine_living_room_fan`), labels it `Routines` and links it to the routine.
+Turn on at and Turn off at become unavailable, because the blocks decide. Edit the blocks
+in Home Assistant's own weekly editor: Settings, Devices and services, Helpers, then the
+schedule.
+
+The device turns on when a block starts and off when it ends. Example: blocks Monday 5:00
+PM to 10:00 PM and Tuesday 8:00 AM to 9:00 AM turn the fan on and off at exactly those
+times. Two blocks that meet at midnight (Monday 10:00 PM to midnight, Tuesday midnight to
+2:00 AM) keep the device on across midnight without a blip.
+
+Catch up, Manual override, pauses and Turn off after treat a block like a window. If the
+schedule helper is deleted, the integration creates it again with the same entity id, but
+the new one is empty: a Repairs issue asks you to enter the blocks once more.
+
+## Turn back on after
+
+Turn back on after keeps a device on: after any turn off the routine did not make, it
+turns the device back on after N minutes. Example: a fan that turns itself off at 2:00 PM
+is back on at 2:10 PM with Turn back on after 10.
+
+- It never fires during a scheduled off period: with a window, it acts only inside it.
+- Turning the device on yourself cancels the countdown.
+- The countdown survives a restart, like Turn off after.
+- It wins over Respect manual changes by design, because undoing offs is its purpose. To
+  stop it, turn the Routine off or pause it.
+- A routine has either Turn off after or Turn back on after, never both.
+
+## Pulse
+
+A pulse switches the device to the opposite state for a few minutes at a set time, then
+back, but only if the device has been steady for a while. Example: a fan on since 6:00
+AM, with a pulse at 8:00 AM, is off from 8:00 AM to 8:03 AM and then on again. A fan
+that is off gets a three minute on instead.
+
+Pulse is set in the routine's automation form, not on the device page: open the routine
+from the device page's Automations card, then Advanced: **Use pulse**, **Pulse at**,
+**Pulse length** (3 minutes by default) and **Pulse only after steady for** (5 minutes by
+default; a device that changed more recently is left alone). A pulse is skipped while the
+routine is paused. If Home Assistant restarts during the pulse, its second half is lost;
+a routine with a window puts the device back to the window's state at startup.
+
+## What the managed automation looks like
+
+Each routine is one automation, and you can tell it apart from your own at a glance:
+
+| Where you look | What you see |
+| --- | --- |
+| Automation list | The alias `Routine: Living room fan`, the calendar clock icon, the category Device Routines and the label Routines |
+| Its settings | The id `device_routines_` followed by 12 hexadecimal characters, the entity id `automation.routine_living_room_fan`, and the device's area |
+| The editor | The blueprint form "Device routine (managed by Device Routines)" and the description "Managed by Device Routines. Change it on the Living room fan device page or in this form. Take control to turn it into a normal automation." |
+| `automations.yaml` | One entry that uses the blueprint `device_routines/device_routine.yaml`, its settings as blueprint inputs |
+
+A trimmed entry looks like this:
+
+```yaml
+- id: device_routines_0123456789ab
+  alias: "Routine: Living room fan"
+  description: >-
+    Managed by Device Routines. Change it on the Living room fan device page or in this
+    form. Take control to turn it into a normal automation.
+  use_blueprint:
+    path: device_routines/device_routine.yaml
+    input:
+      target_entity: switch.living_room_fan
+      on_action: switch.turn_on
+      off_action: switch.turn_off
+      on_time_enabled: true
+      on_time: "17:00:00"
+      off_time_enabled: true
+      off_time: "09:00:00"
+      crosses_midnight: true
+      # ... the other inputs, each with its value
+```
+
+Only the id and the blueprint make an automation a routine. An automation with the same
+alias, label or category is still yours, and the integration never writes to it.
+Duplicating a routine in the editor gives a normal automation too.
+
+The routine may come with two helpers, both labeled `Routines`:
+
+| Helper | When |
+| --- | --- |
+| `timer.routine_living_room_fan` | Turn off after or Turn back on after is set |
+| `schedule.routine_living_room_fan` | Days is Weekly schedule |
+
+The blueprint also reads two of the device's own Device Routines entities, Manual
+override (`switch.living_room_fan_manual_override`) and Paused until
+(`datetime.living_room_fan_paused_until`).
+
+Pausing or skipping never rewrites `automations.yaml`, so git only sees real changes. The
+**Routines** label page and the automation list filtered by the label or the category show
+every routine and helper in one place.
+
+## If you edit the automation yourself
+
+The device page and the automation's blueprint form are two editors of the same settings.
+
+| You | The integration |
+| --- | --- |
+| Change an input in the blueprint form | The device page controls follow. |
+| Edit the entry in `automations.yaml` and reload automations | The same as a form edit. |
+| Turn the automation off or on | The Routine switch follows. |
+| Save something a routine cannot run (an unknown input, a missing one, a refused action) | Turns the routine off, overwrites nothing, and raises a Repairs issue that can restore the last valid settings. Correcting the form brings the routine back. |
+| Delete the automation | Treats it as clearing the routine: the settings reset and the device keeps its controls. No Repairs issue. |
+| Take control (Home Assistant's "Take control" in the editor) | The automation becomes a normal automation and is never touched again. The device page controls show unavailable, the Schedule lists it as "Detached routine", and a Repairs issue offers to create a new routine. |
+| Restore `automations.yaml` from git | The integration rebuilds its index from the id and the blueprint of each entry; the device pages follow the restored settings. |
+| Change the alias | The alias stays yours: it no longer follows device renames. |
+| Remove the category, label or icon | Allowed; the automation stays a routine. |
+| Edit the installed blueprint file | Left as it is; routines keep running on your edit. A Repairs issue offers to restore the shipped file. |
+
+Renaming the device renames the alias while it is still the generated one. Renaming the
+target entity id rewrites the input and reloads the automation. Moving the device to
+another area moves the automation too, while **Put routines in the device's area** is on.
+
+Writing `automations.yaml` drops comments and anchors in it, exactly as the automation
+editor does. Keep notes in the automation's description instead.
+
+## When the integration is off
+
+Home Assistant runs the routines; the integration only configures them. With Device
+Routines disabled, or removed with On removal set to keep, every routine still turns
+devices on and off on time, runs its countdowns, catches up after a restart or a
+reconnect, keeps devices alive and pulses.
+
+What needs the integration:
+
+- The device page controls, the Schedule sensors and the hub sensors.
+- Manual override: no new override is set, and an existing one reads as off, so routines
+  behave as plain schedules.
+- Computing Skip next. A pause that already exists still holds and still ends; the catch
+  up at its exact end waits for the routine's next scheduled time instead.
+- Catching up a countdown that ran out while Home Assistant was down. Home Assistant
+  finishes such a timer while it starts, before any automation listens, so nothing sees
+  the finish. With the integration loaded, it reads the timer's state from before the
+  shutdown and runs the routine's countdown action once Home Assistant has started.
+  Without it, a Turn off after that ran out during the restart leaves the device on, and
+  a Turn back on after leaves it off, until something else changes the device.
+
+## Daylight saving nights
+
+Times are local wall clock times and routines do exactly what Home Assistant's time
+trigger does:
+
+- **Spring forward:** a time inside the skipped hour does not run that night. A routine
+  from 2:30 AM to 6:00 AM in the United States does not start on 2026-03-08; it runs
+  normally the next night.
+- **Fall back:** a time inside the repeated hour runs twice, an hour apart. Every on and
+  off checks the device first, so the second run changes nothing, but a pulse at a
+  repeated time pulses twice.
+
+## Dashboards and scripts
+
+### Actions
+
+<!-- A3: lane 9 -->
+| Action | Does | Fields |
+| --- | --- | --- |
+| `device_routines.skip_next` | Skip next | target |
+| `device_routines.pause` | Pause until a time, or for a duration | target, and exactly one of `until` or `for` |
+| `device_routines.resume` | Resume | target |
+| `device_routines.enable` | Turn the routine on | target |
+| `device_routines.disable` | Turn the routine off | target |
+| `device_routines.maintenance` | Run a maintenance action | `action`: `clean_up_now`, `rebuild_index`, `reinstall_blueprint` or `refresh_summaries` |
+
+<!-- A3: lane 9 -->
+The target is a device, an area, a label or an entity. Devices without a routine are
+ignored and listed in the response, so a label that covers a fan with a routine and a
+lamp without one skips the fan and reports the lamp. A target with no routine at all is
+an error. The optional response lists, per device, what was skipped or how long it is
+paused, and the next action.
+
+<!-- A3: lane 9 -->
+A dashboard button that skips the next run of every routine labeled Evening:
+
+```yaml
+type: button
+name: Skip tonight
+icon: mdi:calendar-remove
+tap_action:
+  action: perform-action
+  perform_action: device_routines.skip_next
+  target:
+    label_id: evening
+```
+
+<!-- A3: lane 9 -->
+A script that pauses the living room's routines for two hours:
+
+```yaml
+sequence:
+  - action: device_routines.pause
+    target:
+      area_id: living_room
+    data:
+      for:
+        hours: 2
+```
+
+### Triggers and conditions
+
+<!-- A3: lane 13 -->
+The automation editor's own trigger and condition pickers list these, with a device, area
+or label target:
+
+| Kind | Name | Fires or holds when |
+| --- | --- | --- |
+| Trigger | `device_routines.action_skipped` | A scheduled action or countdown did not run because the routine was skipped or paused |
+| Trigger | `device_routines.paused` | A routine becomes paused or skipping |
+| Trigger | `device_routines.resumed` | A pause or skip ends, at its time or by Resume |
+| Condition | `device_routines.is_paused` | The routine is paused or skipping |
+| Condition | `device_routines.is_active` | The routine is on and not paused |
+
+<!-- A3: lane 13 -->
+Triggers take `behavior` `each`, `first` or `all`; conditions take `any` or `all`. A
+notification when a living room routine skips something:
+
+```yaml
+triggers:
+  - trigger: device_routines.action_skipped
+    target:
+      area_id: living_room
+    options:
+      behavior: each
+actions:
+  - action: notify.notify
+    data:
+      message: A living room routine skipped an action.
+```
+
+### Events
+
+Plain events work as event triggers too. The first is fired by the routine's automation
+itself, so it keeps firing with the integration disabled:
+
+| Event | Fired by | Data |
+| --- | --- | --- |
+| `device_routines_action_skipped` | The routine's automation, when it skips an action | `device_id`, `automation_id`, `trigger_id`, `action`, `scheduled_at` |
+| `device_routines_paused` | The integration, when a routine becomes paused or skipping | `device_id`, `automation_id`, `until` |
+| `device_routines_resumed` | The integration, when a pause or skip ends | `device_id`, `automation_id`, `until` |
+
+### A card listing every routine
+
+<!-- A3: lane 14 -->
+The hub's **Routines** sensor counts the active routines and lists every routine in its
+`routines` attribute, each with `device`, `area`, `summary`, `next_action`, `status`
+(`active`, `paused`, `skipping`, `off`, `detached` or `missing_target`) and `automation`.
+A markdown card over it:
+
+```yaml
+type: markdown
+title: Routines
+content: >-
+  {% for routine in state_attr('sensor.device_routines_routines', 'routines') or [] %}
+  - **{{ routine.device }}** ({{ routine.area or 'no area' }}): {{ routine.summary }},
+    next {{ routine.next_action or 'nothing' }}, {{ routine.status }}
+  {% endfor %}
+```
+
+<!-- A3: lane 12 -->
+Everything the device page can do is also available over Home Assistant's WebSocket API
+for custom cards and tools; see [docs/api.md](api.md).
+
+## Supported devices
+
+The routine drives one entity of the device: the only one in a supported domain without
+an entity category, or the one picked in **Routine controls**.
+
+| Domain | Start, label | Stop, label | Options | Built in guard |
+| --- | --- | --- | --- | --- |
+| `switch`, `light`, `fan`, `input_boolean`, `humidifier` | turn on, "Turn on at" | turn off, "Turn off at" | Times, Days, Turn off after, Turn back on after, Pulse | None |
+| `climate` | turn on, "Turn on at" | turn off, "Turn off at" | Times, Days, Turn off after | None |
+| `media_player` | none | turn off, "Turn off at" | Turn off at, Days, Turn off after | None |
+| `vacuum`, `lawn_mower` | start, "Start at" | return to dock, "Return to dock at" | Times, Days | Starts only when docked (on by default, in the form's Advanced section) |
+| `cover` | open, "Open at" | close, "Close at" | Times, Days, Close after | Never opens a garage door, gate or door |
+| `lock` | none | lock, "Lock at" | Lock at, Days, Lock after | Never unlocks |
+| `valve` | open, "Open at" | close, "Close at" | Times, Days, Close after | Never opens a gas valve |
+
+Some actions are refused because they would weaken safety or security: unlocking a lock,
+opening a garage door, gate or door cover, opening a gas valve, and disarming an alarm
+(alarm panels and sirens are not supported at all). They are refused when you set a
+routine, again when the automation form is edited, and a third time inside the blueprint
+itself. Climate is on and off only; there is no temperature scheduling.
+
+## Settings
+
+<!-- A3: lane 10 -->
+Settings, Devices and services, Device Routines, Configure. Defaults apply to routines
+created afterwards; changing one never rewrites existing routines.
+
+<!-- A3: lane 10 -->
+| Setting | Values | Default |
+| --- | --- | --- |
+| Schedule sensor scope | All devices with automations, only devices with routines, none | All |
+| Time format | Automatic, 12 hour, 24 hour | Automatic (follows the Home Assistant country) |
+| Catch up after restart, for new routines | On, off | On |
+| Respect manual changes, for new routines | On, off | On |
+| Late start window, for new routines | 0 to 180 minutes | 15 |
+| Clean up after | 0 (never) to 365 days | 30 |
+| Put routines in the device's area | On, off | On |
+| On removal | Keep, delete | Keep |
+| AI summary entity | An AI Task entity of yours, or none | None |
+| AI calls per hour | 1 to 100 | 20 |
+| Offer to convert matching automations | On, off (conversions arrive in a later version) | On |
+| Raise Repairs issues for conflicts | On, off | On |
+
+<!-- A3: lane 14 -->
+**AI summary.** Off by default. When you pick one of your own AI Task entities, only the
+automations the parser could not fully read are sent to it, one at a time, as their
+trigger, condition and action blocks with entity ids only (no states, no attributes, no
+names). The answer, at most twelve words, is cached until the automation changes, marked
+`source: ai` and shown with "(AI)". Nothing is sent during the first five minutes after a
+start, and never more than the calls per hour you allow.
+
+**Cleanup.** A routine whose device was opted out (the label removed) or removed from
+Home Assistant is turned off at once. After the cleanup period its automation and helpers
+are deleted; 0 keeps them forever.
+
+<!-- A3: lane 8 -->
+The hub's **Clean up now** button runs the cleanup immediately; nothing requires pressing
+it.
+
+## Removing the integration
+
+To stop using routines on one device, remove its `Routines` label: the controls go, the
+routine is turned off with its settings kept (adding the label back restores them), and
+the automation is cleaned up after the cleanup period.
+
+<!-- A3: lane 10 -->
+To remove the integration, first choose what happens to the routines with the **On
+removal** setting, because Home Assistant's removal dialog cannot ask:
+
+<!-- A3: lane 10 -->
+- **Keep** (the default): every routine is taken control of, so it becomes a normal
+  automation with the description "Formerly managed by Device Routines." and keeps
+  running. The blueprint is removed once nothing uses it. The helpers stay.
+- **Delete**: every routine automation and its helpers are deleted.
+
+<!-- A3: lane 10 -->
+Then remove Device Routines in Settings, Devices and services. The integration's own
+system user goes with it. If you only want to stop the integration for a while, disable
+it instead: routines keep running (see [When the integration is off](#when-the-integration-is-off)).
+
+## Troubleshooting
+
+### Health
+
+The hub's **Health** sensor (a diagnostic entity of the Device Routines device) reads:
+
+| State | Means | What to do |
+| --- | --- | --- |
+| `ok` | Every check passes. | Nothing. |
+| `degraded` | The blueprint file was edited by hand, or a routine's automation does not load. | Look in Repairs: each case has an issue with a fix. |
+| `error` | This Home Assistant version lacks something routine editing needs. Routines keep running; editing is off. | Update Device Routines; the state clears by itself. |
+
+Its attributes: `version`; `commit`, `branch` and `deployed_at` (development installs
+only); `channel` (`hacs`, `dev` or `unknown`); `ha_version`; `blueprint_schema`;
+`blueprint_status` (`ok`, `modified`, or empty before the first check); `owned_count` (the
+routines' automations) and `loaded_count` (how many of them loaded); `issues` (the open
+Repairs issues of Device Routines); `last_reconcile` (the last self check). The self check
+runs at every start and after maintenance, and the attributes follow every change in
+between.
+
+### Repairs issues
+
+Device Routines repairs what it can on its own and raises an issue only when a person has
+to decide. The hub's **Problem** sensor is on while any of these is open.
+
+<!-- A3: lane 11 -->
+| Issue | When | Fix |
+| --- | --- | --- |
+| Device Routines cannot read automations on this Home Assistant version | A capability the integration needs is missing on this core. | Nothing to do now: routines keep running; update Device Routines and the issue clears when a compatible version loads. |
+| The Device Routines blueprint was changed | The installed blueprint differs from the shipped one and from the last one installed. | One step: reinstall the shipped blueprint and reload automations. |
+| The routine of a device cannot run as edited | The automation form or file was saved with inputs a routine cannot use, or with a refused action. The routine was turned off. | One step: restore the last valid settings. Correcting the form also works. |
+| The routine of a device is now a normal automation | Someone took control of the routine's automation. | One step: create a new routine for the device. The old automation is never touched. |
+| The weekly schedule of a device is empty | The schedule helper was deleted and created again without blocks. | Open the helper and enter the blocks. |
+| A change to the routine of a device was not saved | Something else changed `automations.yaml` twice while the routine was being saved. | One step: retry. |
+| The routine of a device does not load | Its automation did not load even after one regeneration. | One step: regenerate it from the last valid settings, or read the Home Assistant log for the reason. |
+| Two automations drive a device in opposite directions | A routine and another automation act on the same device in opposite directions in the same minute. Only while Raise Repairs issues for conflicts is on. | Change one of them; the issue clears when they no longer collide. |
+
+Situations that heal on their own, with no issue: a missing blueprint is reinstalled, a
+missing timer helper is created again, a deleted `Routines` label is created again and
+put back on every device that had it, a renamed device or entity is followed, a deleted
+routine automation resets the routine, and a routine whose device entity disappears is
+turned off until it returns.
+
+### Diagnostics
+
+Settings, Devices and services, Device Routines, the three dot menu, Download
+diagnostics; the Device Routines hub device offers the same. Attach the file to a bug
+report. It holds counts, settings, the adapter report, the Health report and one shape
+per routine. Entity ids, device ids, device and area names, aliases and anything that
+looks like a token or an address are redacted.
+
+## Limitations
+
+- **Comments in `automations.yaml`.** Every routine write rewrites the file and drops its
+  comments and anchors, exactly as the automation editor does.
+- **A countdown that ran out during a restart** is acted on only with the integration
+  loaded (see [When the integration is off](#when-the-integration-is-off)).
+- **Daylight saving nights** follow Home Assistant's time trigger: a skipped time does not
+  run that night, a repeated one runs twice (see [Daylight saving nights](#daylight-saving-nights)).
+- **Helpers have no device.** The timer and schedule helpers do not appear on the device
+  page; Home Assistant no longer keeps a device on a helper that has no integration of its
+  own. Find them through the `Routines` label or their entity ids.
+- **Minutes, not seconds.** Times are minutes and durations are minutes, up to 1440.
+- **One routine per device**, driving one entity of it. Devices with several controllable
+  entities pick one in Routine controls.
+- **No house wide pause or vacation mode** in this version; pause a room or a label with
+  the actions instead.
+- **Climate is on and off only**; there is no temperature or media scheduling.
+- **Entities without a device** cannot have a routine.
+- **Not an automation engine.** Anything beyond the controls above stays a normal
+  automation, which the Schedule sensor still summarizes.
+- **Summaries never guess.** Templates, scripts, repeats and events in a hand written
+  automation read as "custom logic".

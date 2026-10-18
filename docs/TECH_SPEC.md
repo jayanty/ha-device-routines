@@ -369,6 +369,9 @@ Event reactions, all routed through the manager: device registry update (rename,
 Layout per PRD 7.4 plus `tools/ha_package/`, `tools/make_denylist.py`, `tools/style_check.py`, `docs/decisions-log.md`, `docs/user-guide.md`, `docs/api.md`, `docs/stage0-report.md`, `.github/ISSUE_TEMPLATE/`, `.pre-commit-config.yaml`, `pyproject.toml` and `requirements_test.txt`.
 
 - Python 3.13 locally (matching the core version Stage 0 validates); `ruff` with select ALL and a short documented ignore list, line length 100; `mypy --strict` on the component and `tools/`; `pytest` with `pytest-homeassistant-custom-component` pinned to the validated core; `hypothesis`; coverage fails under 95 percent for `custom_components/device_routines`.
+
+  Note: superseded by decision L1 (`docs/decisions-log.md`): Python 3.14 locally and in CI, because core 2026.10 requires it.
+
 - `.github/workflows/ci.yml` on push and pull request to `dev` and `main`, jobs: `lint`, `typecheck`, `test` (a matrix with the pinned core and the latest core, the latter as continue on error until it passes), `hassfest`, `hacs` (the HACS action), `privacy`, `style`, `deploy-tool-parity` (fetches `tools/ha_deploy.py` from the `ha-device-links` main branch and diffs; skipped when the sibling repository or file does not exist) and `promote` (needs every other job; runs only on push to `dev`; moves the `dev-stable` tag to the commit with a forced tag push; permissions `contents: write`).
 - `.github/workflows/release.yml` on a `v*` tag: verifies that `manifest.json` carries the tag version, builds the console bundle (from Phase 4), zips `custom_components/device_routines` as `device_routines.zip`, creates the GitHub release with notes from `CHANGELOG.md`; a `-beta.N` tag becomes a pre release.
 - Branches: `dev` is the working branch; `main` is protected (all CI jobs required, no force pushes, no deletions, linear history) and receives merges from `dev` at phase exits and for releases. Conventional commits; `CHANGELOG.md` in Keep a Changelog format; the version bump in `manifest.json` lands in the release commit.
@@ -470,6 +473,9 @@ PRD 13.4 S1 to S13 are mapped to phases in the Implementation plan; each live wr
 ## 12. Performance, limits, security
 
 - No polling anywhere in the integration; recompute is event driven and debounced; one point in time listener per device.
+
+  Note: superseded by decision L30 (`docs/decisions-log.md`): one point in time listener for the whole summary, at the earliest next run of any device.
+
 - Bounded structures: the attribution map holds 10,000 entries; the AI cache is pruned to known hashes; debounce queues are per device.
 - A home with 100 routines has 100 automations, at most 100 timers, at most 100 schedule helpers, 100 override switches, 100 Paused until entities and Schedule sensors per scope.
 - Security: no outbound calls from the integration (the AI Task entity is one the user chose on their own instance); no stored secrets; WebSocket writes require admin; actions follow Home Assistant permissions; refused actions are enforced in the compiler, on sync back and in the blueprint guards.
@@ -478,5 +484,8 @@ PRD 13.4 S1 to S13 are mapped to phases in the Implementation plan; each live wr
 
 - Minimum Home Assistant version: the one Stage 0 validates, recorded in `hacs.json`, `manifest.json` and the blueprint.
 - Python 3.13 locally; the deploy tool stays 3.11 compatible.
+
+  Note: superseded by decision L1 (`docs/decisions-log.md`): Python 3.14 locally; the deploy tool stays 3.11 compatible.
+
 - Console (Phase 4): Lit and TypeScript, built with Vite into one bundle under `frontend/dist/`, served by `panel_custom` with `require_admin: true`, cache busted by version; vitest for tests. Nothing of this is needed before Phase 4.
 - Everything else follows the PRD decision register; new design level choices go to `docs/decisions-log.md` with a PRD register entry in the same pull request.

@@ -28,7 +28,7 @@ from . import ha_adapter, health, repairs, websocket_api
 from .attribution import Attributor
 from .const import DOMAIN, PLATFORMS
 from .ha_adapter import AdapterReport
-from .health import HealthReport
+from .health import HealthMonitor
 from .manager import RoutineManager
 from .migration import async_migrate_entry
 from .sentence import load_phrases
@@ -57,7 +57,7 @@ class DeviceRoutinesRuntimeData:
     """What the loaded entry owns."""
 
     version: str
-    health: HealthReport
+    health: HealthMonitor
     settings: GlobalSettings
     adapter: AdapterReport
     summary: SummaryCoordinator
@@ -78,7 +78,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: DeviceRoutinesConfigEntr
     """Build the runtime data, start the manager and set up the platforms."""
     integration = await async_get_integration(hass, DOMAIN)
     version = str(integration.version or "0.0.0")
-    report = await health.async_collect(hass, version)
     settings = from_options(entry.options)
     phrases = await hass.async_add_executor_job(load_phrases, hass.config.language)
     store = RoutineStore(hass)
@@ -87,9 +86,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: DeviceRoutinesConfigEntr
     adapter = ha_adapter.check(hass)
     repairs.async_sync_adapter_issue(hass, adapter)
     manager = RoutineManager(hass, entry, store, summary, Attributor)
+    # Health follows the manager from before its first reconcile (Build A lane 15).
+    monitor = await health.async_start_monitor(hass, version, manager)
+    entry.async_on_unload(monitor.async_stop)
     entry.runtime_data = DeviceRoutinesRuntimeData(
         version=version,
-        health=report,
+        health=monitor,
         settings=settings,
         adapter=adapter,
         summary=summary,

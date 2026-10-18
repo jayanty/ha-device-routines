@@ -2,12 +2,14 @@
 #
 # The scale is awarded only to core integrations; a custom integration is shown as custom
 # and is not scored. This project tracks every rule anyway, as its engineering checklist
-# (PRD G6). Three statuses, meaning what they say: `done` is satisfied now and something in
-# the test suite says so; `exempt` cannot apply, with the reason; `todo` names what is
-# missing and the phase that brings it. `tests/test_repository.py` checks that this file
-# accounts for exactly the official rules and that every entry carries a reason.
+# (PRD G6). Three statuses, meaning what they say: `done` is satisfied by code on `dev`
+# and the comment names the test that proves it; `exempt` cannot apply, with the reason;
+# `todo` names what is missing and who brings it. `tests/test_repository.py` checks that
+# this file accounts for exactly the official rules and that every entry carries a reason.
 #
-# Phase 0 ships a skeleton, so most rules are still todo. That is the honest state.
+# Refreshed against the code in Build A wave A3 (plan finding F1). A rule a wave A3 lane
+# satisfies stays todo and names its lane ("lane N"); the orchestrator flips it to done at
+# wave A4 once the lane's tests are on `dev`.
 
 rules:
   # --- Bronze -------------------------------------------------------------------------
@@ -15,38 +17,46 @@ rules:
   action-setup:
     status: todo
     comment: >-
-      The skip, pause, resume, enable, disable and maintenance actions arrive in Phase 2
-      (task 2.7) and will be registered in `async_setup` with translated validation errors.
+      Build A lane 9 registers skip_next, pause, resume, enable, disable and maintenance
+      in `async_setup` (services.py), each a one line call into the loaded entry's
+      manager, with `tests/integration/test_services.py`.
 
   appropriate-polling:
     status: done
     comment: >-
-      Nothing polls. The Health report is read once at setup and the Schedule summaries of
-      Phase 1 recompute on events only; a test will assert that no interval listener exists.
+      Nothing polls: Schedule sensors recompute on events and at each next run, the
+      manager reacts to registry and automation events, and Health follows the manager's
+      events. `tests/integration/test_summary.py::test_no_interval_or_time_pattern_listener_exists`.
 
   brands:
     status: todo
     comment: >-
       `brand/icon.png` and `brand/logo.png` are placeholders. The final assets and the
-      pull request to `home-assistant/brands` are Phase 4 task 4.5.
+      pull request to `home-assistant/brands` are Build B (plan Section 6, publication).
 
   common-modules:
-    status: todo
+    status: done
     comment: >-
-      `entity.py` holds the hub base class. The coordinator (`summary.py`) and the service
-      layer (`manager.py`) arrive in Phases 1 and 2 and complete the shared modules.
+      `entity.py` holds the entity bases, `summary.py` the SummaryCoordinator and
+      `manager.py` the RoutineManager, the one service layer every surface calls (PRD
+      P16); `tests/integration/test_summary.py` and `tests/integration/test_manager.py`
+      prove them. Build A lane 8 adds the device entity base to `entity.py`.
 
   config-flow:
     status: done
     comment: >-
-      A zero field user step with translated title and description creates the single entry
-      (PRD D33). The options flow arrives in Phase 1 with the settings scaffold.
+      A zero field user step with translated title and description creates the single
+      entry (PRD D33), and the options flow edits the settings with translated errors.
+      `tests/integration/test_config_flow.py`,
+      `tests/integration/test_phase1_entities.py::test_options_flow_stores_settings_and_reloads`.
+      Build A lane 10 adds the suggestions step and the devices picker.
 
   config-flow-test-coverage:
     status: done
     comment: >-
       `tests/integration/test_config_flow.py` covers the form, the created entry and the
-      refusal of a second instance.
+      refusal of a second instance; `tests/integration/test_phase1_entities.py` the
+      options flow and its errors. Build A lane 10 extends both with its new steps.
 
   dependency-transparency:
     status: exempt
@@ -57,97 +67,115 @@ rules:
   docs-actions:
     status: todo
     comment: >-
-      The user guide section on the actions is written with the actions in Phase 2 (task
-      2.11) and the dashboards section in Phase 3 (task 3.12).
+      The user guide section Dashboards and scripts documents every action with examples;
+      it flips to done when Build A lane 9 lands the actions it describes.
 
   docs-high-level-description:
     status: done
     comment: >-
-      README.md opens with what the integration does and why, without instance names.
+      README.md opens with what the integration does and why, without instance names, and
+      the user guide opens with its use cases.
 
   docs-installation-instructions:
     status: done
     comment: >-
-      README.md walks through the HACS custom repository install step by step.
+      README.md walks through the HACS custom repository install step by step, including
+      the minimum Home Assistant version and how to try a pre release.
 
   docs-removal-instructions:
     status: todo
     comment: >-
-      The user guide section Removing the integration, with the keep or delete setting of
-      PRD 10.4, is Phase 2 task 2.11.
+      The user guide section Removing the integration explains the On removal setting
+      (keep or delete, PRD 10.4); it flips to done when Build A lane 10 lands the removal
+      it describes (`async_remove_entry`).
 
   entity-event-setup:
-    status: todo
+    status: done
     comment: >-
-      No entity subscribes to events yet. The Schedule sensors of Phase 1 subscribe in
-      `async_added_to_hass` and unsubscribe in `async_will_remove_from_hass`.
+      The Schedule, Problem and Health sensors subscribe in `async_added_to_hass` through
+      `async_on_remove`, so they unsubscribe when removed.
+      `tests/integration/test_summary.py::test_an_automation_removed_drops_the_sensor`,
+      `tests/integration/test_phase1_entities.py::test_the_problem_sensor_follows_open_issues`,
+      `tests/integration/test_health.py::test_the_issues_attribute_follows_repairs_between_reconciles`.
 
   entity-unique-id:
     status: done
     comment: >-
       Every entity sets a unique id built from the domain, the hub or device id and the
-      entity key (`entity.py`).
+      entity key (`entity.py`, `summary.schedule_unique_id`); the manager pre registers
+      the device page entities by those ids (`tests/integration/test_manager.py`).
 
   has-entity-name:
     status: done
     comment: >-
-      The hub base class sets `has_entity_name` and every entity carries a translation key.
+      The hub base class and the Schedule sensor set `has_entity_name`, and every entity
+      carries a translation key that `tests/test_repository.py` finds in `strings.json`.
 
   runtime-data:
     status: done
     comment: >-
-      Everything the entry owns is a `DeviceRoutinesRuntimeData` on `entry.runtime_data`;
-      nothing is kept in `hass.data`.
+      Everything the entry owns (the Health monitor, the settings, the adapter report,
+      the Store, the summary and the manager) is a `DeviceRoutinesRuntimeData` on
+      `entry.runtime_data`; nothing is kept in `hass.data`.
 
   test-before-configure:
     status: exempt
     comment: >-
-      There is nothing to connect to. Setup reads two local files and configures Home
+      There is nothing to connect to. Setup reads local files and configures Home
       Assistant itself, so there is no connection to test before creating the entry.
 
   test-before-setup:
     status: exempt
     comment: >-
-      Setup cannot fail for a reason a retry would fix: it reads two optional local files
-      and tolerates their absence. The adapter check of Phase 1 raises a Repairs issue
-      instead of failing setup, because the routines keep running without the integration.
+      There is no connection a retry could fix. An incompatible core raises the Repairs
+      issue `adapter_incompatible` instead of failing setup, because the routines keep
+      running without the integration; only a Store written by a newer version refuses
+      setup, with a translated error (decision L42).
 
   unique-config-entry:
     status: done
     comment: >-
       The manifest declares `single_config_entry` and the flow sets the domain as the
-      unique id, so a second instance is refused; a test proves it.
+      unique id, so a second instance is refused;
+      `tests/integration/test_config_flow.py::test_a_second_instance_is_refused`.
 
   # --- Silver -------------------------------------------------------------------------
 
   action-exceptions:
     status: todo
     comment: >-
-      Arrives with the actions in Phase 2: `ServiceValidationError` with a translation key
-      when no target has a routine, `HomeAssistantError` when a write fails.
+      Build A lane 9: the actions raise `ServiceValidationError` with the key
+      `no_routine_targets` when no target has a routine. The manager they call already
+      raises translated `ServiceValidationError`s
+      (`tests/integration/test_manager.py::test_pause_needs_exactly_one_future_value`).
 
   config-entry-unloading:
     status: done
     comment: >-
-      `async_unload_entry` unloads the platforms; a test checks the entry reaches
-      `NOT_LOADED` and the Health sensor becomes unavailable.
+      `async_unload_entry` unloads the platforms, and the manager, the summary and Health
+      stop on unload, writing what is pending first.
+      `tests/integration/test_init.py::test_setup_loads_and_unload_unloads`,
+      `tests/integration/test_manager.py::test_the_entry_unload_writes_what_is_pending`,
+      `tests/integration/test_health.py::test_health_stops_following_when_the_entry_unloads`.
 
   docs-configuration-parameters:
     status: todo
     comment: >-
-      The global settings of PRD 10.4 are documented with the options flow in Phase 1 and
-      completed in Phase 3 (task 3.9).
+      The user guide section Settings documents every PRD 10.4 setting with its values and
+      default; it flips to done when Build A lane 10 puts every setting on the options page.
 
   docs-installation-parameters:
     status: exempt
     comment: >-
-      Setup has no parameters by design (PRD D33); the README says so.
+      Setup has no parameters by design (PRD D33); README.md says so.
 
   entity-unavailable:
     status: todo
     comment: >-
-      Phase 2 entities become unavailable with a `reason` attribute when the adapter is
-      incompatible, a routine is detached or the target entity is missing (TECH_SPEC 4.5).
+      Build A lane 8: device page entities turn unavailable with a `reason` attribute
+      from `manager.unavailable_reason` (adapter incompatible, detached, missing target,
+      weekly schedule), which `tests/integration/test_manager.py::test_health_inputs_and_unavailable_reasons`
+      already proves on the manager side.
 
   integration-owner:
     status: done
@@ -156,16 +184,18 @@ rules:
       maintainer for now.
 
   log-when-unavailable:
-    status: todo
+    status: done
     comment: >-
-      Logged once when the adapter check fails and once when it recovers, with the
-      adapter in Phase 1 (task 1.5).
+      The adapter check logs once at warning when a capability stops working and once at
+      info when it works again (plan finding F5).
+      `tests/integration/test_adapter.py::test_check_reports_each_capability_and_logs_once`.
 
   parallel-updates:
     status: done
     comment: >-
-      `PARALLEL_UPDATES = 0` on the sensor platform; nothing polls, so there is nothing to
-      serialize. Each later platform sets it the same way.
+      `PARALLEL_UPDATES = 0` on the sensor and binary sensor platforms; nothing polls, so
+      there is nothing to serialize. Build A lane 8 sets it on every new platform and adds
+      an AST test over all of them.
 
   reauthentication-flow:
     status: exempt
@@ -175,21 +205,25 @@ rules:
   test-coverage:
     status: done
     comment: >-
-      CI fails under 95 percent coverage of the component and the tools (pyproject.toml).
+      CI fails under 95 percent coverage of the component and the tools (pyproject.toml);
+      the suite stands near 100 percent.
 
   # --- Gold ---------------------------------------------------------------------------
 
   devices:
     status: done
     comment: >-
-      The hub is a service device holding the house wide entities; from Phase 1 the
-      Schedule sensors attach to the devices other integrations created.
+      The hub is a service device holding the house wide entities, and Schedule sensors
+      land on a record linked to the user's device (decision L25).
+      `tests/integration/test_init.py::test_the_hub_device_is_a_service_device`,
+      `tests/integration/test_summary.py::test_the_sensor_lands_on_a_record_linked_to_the_users_device`.
 
   diagnostics:
     status: done
     comment: >-
-      Config entry diagnostics with secret shaped option keys redacted. Phase 1 adds the
-      Store and summaries with entity ids, names and aliases redacted (PRD 10.3).
+      Config entry and device diagnostics: the Store as counts, owned automations and
+      Schedule summaries as shapes, every id, name, alias and privacy pattern redacted
+      (TECH_SPEC 4.9). `tests/integration/test_diagnostics.py`.
 
   discovery-update-info:
     status: exempt
@@ -202,64 +236,81 @@ rules:
       Nothing is discovered: there is no device or service of its own to find.
 
   docs-data-update:
-    status: todo
+    status: done
     comment: >-
-      The user guide explains in Phase 1 how the Schedule sensor stays fresh without
-      polling (PRD FR-S7).
+      The user guide's Freshness section explains how the Schedule sensor stays current
+      without polling (PRD FR-S7), and the Health section how the self check follows
+      every change.
 
   docs-examples:
     status: todo
     comment: >-
-      Worked examples (a window, a run timer, a weekly schedule) go into the user guide as
-      each feature ships, Phases 1 to 3.
+      The user guide carries worked examples (a window, a run timer, skip and pause, a
+      weekly schedule, a dashboard button, a script, a trigger, a markdown card); it flips
+      to done when Build A lanes 8, 9, 13 and 14 land the controls, actions, triggers and
+      hub attributes the examples use.
 
   docs-known-limitations:
-    status: todo
+    status: done
     comment: >-
-      The user guide gets a limitations section in Phase 1 (what the parser cannot read)
-      and grows with each phase.
+      The user guide's Limitations section: comments dropped from automations.yaml,
+      countdowns that ran out during a restart, daylight saving nights, helpers without a
+      device, minute precision, what the parser never guesses.
 
   docs-supported-devices:
-    status: todo
+    status: done
     comment: >-
-      The supported domains table of PRD 5.3 goes into the user guide in Phase 2.
+      The user guide's Supported devices section is the PRD 5.3 table with the refused
+      actions, the same data as `domains.PROFILES`
+      (`tests/unit/test_domains_settings_conflicts.py::test_every_supported_domain_has_a_profile`).
 
   docs-supported-functions:
     status: todo
     comment: >-
-      The routine catalog and the Schedule sensor are documented in the user guide as they
-      ship, Phases 1 to 3.
+      The user guide documents the routine catalog, skip and pause and the Schedule
+      sensor; it flips to done when Build A lanes 8 and 14 land the device page controls
+      and the weekly schedule helper it describes.
 
   docs-troubleshooting:
     status: todo
     comment: >-
-      The Repairs catalog of TECH_SPEC 4.8 becomes the troubleshooting section in Phase 2.
+      The user guide's Troubleshooting section covers Health, every Repairs issue of
+      TECH_SPEC 4.8 and diagnostics; it flips to done when Build A lane 11 lands the fix
+      flows it describes.
 
   docs-use-cases:
-    status: todo
+    status: done
     comment: >-
-      The user guide opens with the three use cases of PRD Section 1 in Phase 1.
+      The user guide opens with the use cases of PRD Section 1 (a window, a run timer, a
+      weekday start) and README.md describes what each feature is for.
 
   dynamic-devices:
-    status: todo
+    status: done
     comment: >-
-      Phase 1: Schedule sensors appear when an automation starts acting on a device and are
-      removed when none does, following registry events.
+      Schedule sensors appear when an automation starts acting on a device and go when
+      none does, following registry and automation events.
+      `tests/integration/test_summary.py::test_an_automation_removed_drops_the_sensor`,
+      `tests/integration/test_summary.py::test_a_scope_change_removes_stale_sensors_on_reload`.
 
   entity-category:
     status: done
     comment: >-
-      The Health sensor is diagnostic. Later entities follow the categories of PRD 4.2.
+      The Health sensor is diagnostic; the Schedule sensor has no category so it shows in
+      the Sensors card. Build A lane 8 gives the device page entities the PRD 4.2
+      categories.
 
   entity-device-class:
     status: done
     comment: >-
-      The Health sensor is an enum sensor with translated states.
+      The Health sensor is an enum sensor with translated states and the Problem sensor a
+      problem binary sensor (`tests/integration/test_health.py`,
+      `tests/integration/test_phase1_entities.py::test_hub_routines_and_problem_sensors`).
 
   entity-disabled-by-default:
     status: todo
     comment: >-
-      The advanced routine controls of PRD 4.2 are created disabled by default in Phase 2.
+      Build A lane 8 creates the advanced routine controls of PRD 4.2 (Turn back on
+      after, Catch up after restart, Respect manual changes) disabled by default.
 
   entity-translations:
     status: done
@@ -268,9 +319,12 @@ rules:
       checks that each translation key the source uses is defined.
 
   exception-translations:
-    status: todo
+    status: done
     comment: >-
-      Arrives with the first raised exceptions in Phase 2.
+      Every exception raised to a caller carries a translation key in `strings.json`:
+      the manager's `ServiceValidationError`s and the Store's version refusal.
+      `tests/integration/test_manager.py::test_pause_needs_exactly_one_future_value`,
+      `tests/integration/test_store.py::test_a_future_store_is_refused_on_load_and_left_on_disk`.
 
   icon-translations:
     status: done
@@ -285,13 +339,19 @@ rules:
   repair-issues:
     status: todo
     comment: >-
-      The Repairs catalog of TECH_SPEC 4.8 starts with `adapter_incompatible` in Phase 1.
+      The TECH_SPEC 4.8 catalog is raised and cleared with translated titles and
+      descriptions (`tests/integration/test_reconcile.py`, `test_sync_back.py`,
+      `test_repairs_sync.py`); Build A lane 11 adds the one step fix flows and the
+      conflict issue.
 
   stale-devices:
-    status: todo
+    status: done
     comment: >-
-      Phase 2 removes an opted out device's entities from the registry and cleans up its
-      managed automation after the cleanup period (PRD D28).
+      A device removed from Home Assistant loses its linked record at once and its routine
+      after the cleanup period (PRD D28); Schedule sensors of devices nothing acts on are
+      removed.
+      `tests/integration/test_manager.py::test_a_device_removal_turns_the_routine_off_and_cleanup_deletes_it_after_the_period`,
+      `tests/integration/test_summary.py::test_an_automation_removed_drops_the_sensor`.
 
   # --- Platinum -----------------------------------------------------------------------
 
@@ -303,8 +363,8 @@ rules:
   inject-websession:
     status: exempt
     comment: >-
-      Nothing makes HTTP requests. The optional AI summary of Phase 3 calls an AI Task
-      entity, not a web session.
+      Nothing makes HTTP requests. The optional AI summary calls an AI Task entity the
+      user chose, not a web session.
 
   strict-typing:
     status: done
@@ -316,11 +376,11 @@ rules:
   docs-conditions:
     status: todo
     comment: >-
-      The `device_routines.is_paused` and `is_active` conditions and their documentation
-      arrive in Phase 3 (task 3.4).
+      The user guide documents `device_routines.is_paused` and `is_active`; it flips to
+      done when Build A lane 13 lands the conditions.
 
   docs-triggers:
     status: todo
     comment: >-
-      The `device_routines.action_skipped`, `paused` and `resumed` triggers and their
-      documentation arrive in Phase 3 (task 3.4).
+      The user guide documents `device_routines.action_skipped`, `paused` and `resumed`;
+      it flips to done when Build A lane 13 lands the triggers.

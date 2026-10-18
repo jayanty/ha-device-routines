@@ -18,6 +18,9 @@ Device Routines adds start and stop times, run timers and a plain language sched
 
 1. Read the whole document before writing code. Anything marked **ASSUMPTION** is unverified and has a Stage 0 item that closes it.
 2. Do **Stage 0** (Section 13) before any Phase 1 code. Read only probes are pre approved. Every write probe needs Jayant's explicit approval for that specific item, a read before it and a read after it proving the state was restored.
+
+   Note: since 2026-10-17 write probes and live write scenarios are pre approved, and the read before and after each write stays (decision L26, `docs/decisions-log.md`).
+
 3. Produce `docs/stage0-report.md` that closes or amends every ASSUMPTION and records anonymized fixtures under `tests/fixtures/`.
 4. Section 14 is the decision register. Each decision has a default. If Jayant has not answered, proceed with the default and record that in the Stage 0 report.
 5. This document has two tabs. **This tab is public** and becomes `docs/PRD.md` in the repository. The **Instance context** tab is private: it becomes `CLAUDE.local.md` (gitignored) and must never be committed, quoted in issues, or copied into fixtures, tests, docs or commit messages (Section 3, P1).
@@ -696,6 +699,8 @@ Stage 0 closes fourteen assumptions before any product code; the Schedule summar
 ### 13.2 Stage 0 items
 
 Read only items are pre approved. **WRITE** items need Jayant's approval per item, with a read before and a read proving restoration after. Throwaway artifacts are named `stage0_*` and removed at the end.
+
+Note: since 2026-10-17 WRITE items no longer need a per item approval; the read before and the read after stay (decision L26, `docs/decisions-log.md`).
 
 | ID | Item | Write? | Closes |
 | --- | --- | --- | --- |
