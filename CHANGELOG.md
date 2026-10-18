@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Turn on at and Turn off at accept sunrise or sunset, up to three hours before or after,
+  in a routine's automation form (routine blueprint input schema 2). A window from sunset
+  to sunrise runs across midnight and belongs to the day it starts on, like any other
+  window. The device page controls for it follow in a later build.
+
+### Changed
+
+- The routine blueprint moves to input schema 2. At the first start of this version
+  Device Routines installs it and rewrites every routine's automation to schema 2 with
+  the same behavior, keeping the previous inputs in its store. A routine still on schema 1
+  keeps running unchanged on the new blueprint until it is rewritten.
+
+### Fixed
+
+- A hand written automation with a duration too large to represent no longer stops the
+  Schedule summary from reading the other automations.
+
 ## [0.3.0] - 2026-10-18
 
 Routines (Phases 2 and 3), first published as the pre release `v0.3.0-beta.1`. Version
