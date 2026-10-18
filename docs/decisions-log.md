@@ -334,3 +334,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | (b). A full tag always follows a live validation record; a beta tag follows a harness record. |
 | Consequence | `CHANGELOG.md` goes from 0.1.0 to 0.3.0; `manifest.json` carries 0.3.0 at the Build A exit (the release workflow checks the tag's version against it, and `0.3.0-beta.1` is compared as `0.3.0`, which the workflow must strip; task A4.5 adjusts `release.yml` so a `-beta.N` suffix is ignored in that comparison). The sandbox instance runs the beta between the two tags. |
 | PRD register entry | no |
+
+## 2026-10-18 L34: markers.py is seeded before wave A1 so the adapter guard uses the real predicate
+
+| Field | Content |
+| --- | --- |
+| Context | Plan Section 4.3 has lane 1 create `markers.py` while lane 3, in parallel, writes the adapter whose write guard must refuse anything `markers.is_owned` rejects. A local stub in lane 3 would duplicate a security invariant (CLAUDE.md Section 3: the adapter refuses unowned configs whatever the caller) and make the rebase order of the two lanes matter. |
+| Options | (a) The stub of the plan; (b) the orchestrator lands the M1 and M2 functions on `dev` before dispatching the wave, and lane 1 extends the module. |
+| Choice | (b). `markers.py` on `dev` holds `AUTOMATION_ID_PREFIX`, `BLUEPRINT_PATH`, `automation_id`, `has_routine_id` (M1 alone, which `is_detached` needs) and `is_owned`, each tested at 100 percent. `BLUEPRINT_PATH` is defined in `markers` and re exported by `compiler`, so the contract name `compiler.BLUEPRINT_PATH` holds and `markers` stays free of a compiler import. |
+| Consequence | Plan Section 4.2 (`markers.py` row) and the lane 1 and lane 3 file lists amended. TECH_SPEC 3.4 is unchanged; `has_routine_id` is the M1 half of `is_owned` that TECH_SPEC 4.2's take control detection already describes. |
+| PRD register entry | no |
