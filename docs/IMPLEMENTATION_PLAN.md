@@ -6,7 +6,7 @@ The build order for Claude Code: Phase 0, Stage 0, then Phases 1 to 4, each with
 
 Revised 2026-10-18 (decision L32): Phases 2 and 3 are built as one build in parallel lanes with a single restart; Phase 4 is the second build with a second restart; everything the owner has to do is batched into two owner sessions and otherwise deferred in `docs/owner-log.md`. Section 0.1 is the operating model, Sections 4 to 6 the builds, Section 8 the prompts.
 
-Status: Build B open (2026-10-18, decisions L59 to L69). Build A done: `main` and the pre release `v0.3.0-beta.1` at `efbf757` (v0.1.0 remains the last full release; `v0.3.0` will be tagged on `efbf757`, L69). Waves B1 and B2 done: lanes 16 to 21 landed on `dev` (B2: lane 20 `b1f7d0d`, lane 21 `5754d63`, lane 19 `2d0528f` and `ddd5768`, with the integration commit that records this line; L66 to L69); no lane worktree open. Wave B3 (Section 6.2.9, the orchestrator's) is next, with the three carry overs of L69. Restart R1 happened (about 15:16Z): running `efbf757` equals deployed `efbf757`; auto deploy off (L58), so Build B's pushes stay off the instance; live validation A (Section 5.3) recorded steps 1 and 2 and waits at step 3 for the owner's permission for the live session's Home Assistant calls (O17). Owner log: open items as listed there, none blocking a build; O17 holds `v0.3.0`, O12 holds `v1.0.0`. Next: wave B3; the live session resumes Section 5.3 once O17 is done.
+Status: Build B open (2026-10-18, decisions L59 to L70). Build A done: `main` and the pre release `v0.3.0-beta.1` at `efbf757` (v0.1.0 remains the last full release; `v0.3.0` will be tagged on `efbf757`, L69). Waves B1 and B2 done (lanes 16 to 21 on `dev` by `025ceb4`; CI green through `fba3eed`, `frontend` now a required check). Wave B3 dispatched at the commit that records L70: lane 22 carry overs (`lane/carryover-b`, `/Users/jayant/agents/dr-carryover-b`) and lane 23 publication (`lane/publication`, `/Users/jayant/agents/dr-publication`) in flight; the exit (Section 6.2.9) is the orchestrator's. Restart R1 happened (about 15:16Z): running `efbf757` equals deployed `efbf757`; auto deploy off (L58); live validation A (Section 5.3) recorded steps 1 and 2 and waits at step 3 for the owner's permission for the live session's Home Assistant calls (O17); the Build B deploy waits for it (L70). Owner log: open items as listed there, none blocking a build; O17 holds `v0.3.0`, O12 holds `v1.0.0`. Next: land lanes 22 and 23, then the Build B exit up to the tag.
 
 ## 0. Rules of engagement (Claude Code reads this first)
 
@@ -605,6 +605,25 @@ Files: `panel.py` (new), `__init__.py` (the panel lines), `manifest.json` (`depe
 #### 6.2.9 Wave B3
 
 Wave B3 (orchestrator): brand assets final (`brand/icon.png` 256 and 512, `logo.png`, the `home-assistant/brands` layout under `brand/brands/`), the pull request text and the HACS default submission text prepared in `docs/publication.md` (not opened: O10, O11); `quality_scale.yaml` final with every rule done or exempt; README and the user guide complete (install, features, FAQ, privacy statement, every feature section); `CHANGELOG.md` 1.0.0; `manifest.json` 1.0.0; the whole suite; `docs/validation/phase-4.md` harness rows; fast forward `main`; tag `v1.0.0-beta.1`; deploy by hand; write the R2 request with the staged scenarios of Section 5.2 by the clock.
+
+Amended at the wave B3 dispatch (decision L70): two lanes run in parallel, and the exit stays the orchestrator's.
+
+##### Lane 22: the wave B2 carry overs
+
+Goal: the three carry overs of L69. Branch `lane/carryover-b`, worktree `/Users/jayant/agents/dr-carryover-b`. Files: `conflicts.py` (`find(planned, start, end, lookups: Lookups | None = None)` passes the lookups to `expected_state`, so a sun bound routine gets window conflicts), `summary.py` (passes its sun lookups; prefers the manager's settings, `RoutineSummary.settings: RoutineSettings | None = None` appended last, for the routine rows of the Schedule, the conflicts and the Today view, so a conflict a change creates shows at once), `manager.py` (fills `RoutineSummary.settings`; drops the interim conflict filter of L69 if the summary now answers at once), the Schedule state of a sun instant read to the whole minute ("On at 7:26 AM"; scheduling and skip targets keep the exact instant), their tests, `docs/api.md` where a payload changes.
+
+- [ ] Tests first: `test_a_sun_window_routine_gets_window_conflicts`, `test_a_conflict_a_change_creates_is_answered_at_once` (`routines/set` and `schedule/today`), `test_a_sun_instant_reads_to_the_minute`; then the code; the gates; commit `fix: wave B2 carry overs (Build B lane 22)`.
+
+##### Lane 23: publication material
+
+Goal: everything the publication needs, prepared in the repository and opened nowhere (O10, O11). Branch `lane/publication`, worktree `/Users/jayant/agents/dr-publication`. Files: `brand/` (final `icon.png` 256 square, `icon@2x.png` 512 square, `logo.png` and `logo@2x.png` landscape, transparent and trimmed, after `mdi:calendar-clock`; drawn with Pillow from a script `tools/make_brand.py` committed with them, text set in a font whose license allows it, such as the CC0 font Pillow bundles; and the `home-assistant/brands` layout under `brand/brands/custom_integrations/device_routines/`), `docs/publication.md` (the brands pull request text and checklist, the HACS default submission text and checklist, each step marked for the owner), `README.md` (install through HACS as a custom repository and by hand, features with every PRD 4 and 5 option, the console, FAQ, the privacy statement of PRD 11.3, status, links), `docs/user-guide.md` (a completeness pass: install, every feature section, FAQ, privacy; the known limits of L60 and L69), `hacs.json` if a field is missing, `tests/test_repository.py` additively (brand sizes and layout). Not `CHANGELOG.md`, `manifest.json`, `quality_scale.yaml` or this plan.
+
+- [ ] Write `tests/test_repository.py` checks for the brand files (sizes, transparency, the brands layout mirrors `brand/`); then the assets, the texts, the README and the guide; the gates; commit `docs: publication material, final brand assets, README and guide (Build B lane 23)`.
+
+##### Exit (orchestrator)
+
+- [ ] Land lanes 22 and 23; the whole suite; `quality_scale.yaml` final (every rule done or exempt, `brands` todo until the brands pull request merges, O10); `docs/validation/phase-4.md` with the harness rows of Build B; `CHANGELOG.md` 1.0.0; `manifest.json` 1.0.0; green CI; fast forward `main`; tag `v1.0.0-beta.1` (a pre release).
+- [ ] Deploy by hand (Section 0.1.6) only once live validation A has recorded Section 5.3 and `v0.3.0` is tagged, so no lazily imported Build B module meets the running beta during that validation (L70); then the R2 request (O16) with the staged scenario of Section 5.2 by the clock.
 
 ### 6.3 Restart R2 and live validation B
 

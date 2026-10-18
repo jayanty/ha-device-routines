@@ -81,6 +81,8 @@ def test_each_generic_pattern_is_detected(sample: str, kind: str) -> None:
         "0123456789abcdef" * 4,  # a sha256 is 64 characters, not a 32 character registry id
         "0123456789abcdef" * 2 + "01234567",  # a 40 character commit sha
         "z" * 32,  # the right length, not hexadecimal
+        "icon@2x.png",  # an image's scale suffix, as the brands repository names files
+        "logo@3x.webp",
     ],
 )
 def test_lookalikes_are_not_flagged(sample: str) -> None:

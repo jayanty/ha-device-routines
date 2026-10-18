@@ -70,7 +70,14 @@ GENERIC_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         "local_hostname",
         re.compile(r"\b[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.local(?![\w.-])"),
     ),
-    ("email_address", re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")),
+    # An image's scale suffix (`icon@2x.png`, which the brands repository asks for) is a
+    # file name, not an address.
+    (
+        "email_address",
+        re.compile(
+            r"\b[A-Za-z0-9._%+-]+@(?!\d+x\.(?:png|jpe?g|svg|webp)\b)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"
+        ),
+    ),
 )
 HEX_ID_PATTERN: tuple[str, re.Pattern[str]] = ("hex_id", re.compile(r"\b[0-9a-f]{32}\b"))
 DENYLIST_KIND = "denylist"
