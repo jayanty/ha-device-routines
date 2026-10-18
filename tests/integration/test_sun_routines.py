@@ -590,3 +590,5 @@ async def test_only_when_gates_the_starts_in_the_schedule_line(
     assert view is not None
     (item,) = (item for item in view.items if item.automation_entity == AUTOMATION)
     assert item.parts == ("Sunset: on (if 2 conditions pass)", "11:00 PM: off")
+    # Counted conditions are understood: the item is no custom logic, as the index says.
+    assert item.custom_logic is False

@@ -1068,7 +1068,7 @@ class RoutineManager:
         return HealthInputs(
             owned_count=len(owned),
             loaded_count=sum(self._loaded(automation_id) for automation_id in owned),
-            issues=tuple(repairs.open_issue_ids(self.hass)),
+            issues=tuple(repairs.problem_issue_ids(self.hass)),
             last_reconcile=self._last_reconcile,
             blueprint_status=self._blueprint_status,
             blueprint_schema=self._store.data.blueprint_schema,
@@ -1105,7 +1105,8 @@ class RoutineManager:
             next_run=upcoming[0].at if upcoming else None,
             source=SOURCE_PARSER,
             enabled=self._enabled(routine),
-            custom_logic=bool(routine.settings.extra_conditions),
+            # Only when reads in the lines' condition count, as in the summary's index.
+            custom_logic=any(line.custom_logic for line in lines),
             parts=tuple(writer.line(line) for line in lines),
         )
         return RoutineSummary(
