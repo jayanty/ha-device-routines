@@ -772,11 +772,20 @@ actions:
                         alias: Before Turn off at on an end day
                         condition: or
                         conditions:
+                          # Not after the time, rather than before it: the core's time
+                          # condition reads `before: 00:00:00` alone as the whole day, so a
+                          # window ending at midnight would be on all of its end day.
                           - alias: Before the time on an end day
-                            condition: time
-                            before: !input off_time
-                            weekday: !input days_end
+                            condition: and
                             enabled: !input off_time_enabled
+                            conditions:
+                              - alias: The time has not come yet
+                                condition: not
+                                conditions:
+                                  - alias: At or after the time
+                                    condition: time
+                                    after: !input off_time
+                              - *end_day
                           - alias: Before sunrise with its offset on an end day
                             condition: and
                             enabled: !input off_at_sunrise

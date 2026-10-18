@@ -26,13 +26,14 @@ from __future__ import annotations
 import ast
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field, fields, replace
-from datetime import time, timedelta
+from datetime import datetime, time, timedelta
 import importlib
 import importlib.util
 import inspect
 from pathlib import Path
 import re
 from typing import Any, Final, cast
+from zoneinfo import ZoneInfo
 
 from homeassistant.components.automation.config import (
     AUTOMATION_BLUEPRINT_SCHEMA,
@@ -43,9 +44,24 @@ from homeassistant.components.automation.helpers import async_get_blueprints
 from homeassistant.components.blueprint.models import Blueprint, BlueprintInputs
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import selector
+from homeassistant.helpers import (
+    condition as condition_helper,
+    config_validation as cv,
+    selector,
+)
+from homeassistant.helpers.sun import get_astral_event_date
+from homeassistant.util import dt as dt_util
 from homeassistant.util.yaml import parse_yaml
-from hypothesis import HealthCheck, Phase, given, settings as hypothesis_settings, strategies as st
+from hypothesis import (
+    HealthCheck,
+    Phase,
+    assume,
+    event,
+    example,
+    given,
+    settings as hypothesis_settings,
+    strategies as st,
+)
 import probatio as vol
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
@@ -68,7 +84,7 @@ from custom_components.device_routines.models import (
     TimeKind,
     Weekday,
 )
-from custom_components.device_routines.nextrun import routine_lines
+from custom_components.device_routines.nextrun import Lookups, expected_state, routine_lines
 from custom_components.device_routines.sentence import Writer, load_phrases
 from custom_components.device_routines.summary import (
     DEBOUNCE_SECONDS as SUMMARY_DEBOUNCE,
@@ -1370,3 +1386,115 @@ async def test_a_routine_taken_over_reads_as_detached_in_the_schedule(
     items = manager.summary.summaries[home.fan].items
     own = {item.kind for item in items if item.automation_entity == view.automation_entity_id}
     assert own == {KIND_DETACHED}
+
+
+# ======================================================================================
+# 4. The blueprint's expected_on is nextrun.expected_state (plan 6.2.1, wave B2, L64)
+# ======================================================================================
+
+EXPECTED_ON: Final = "The schedule expects the device on now"
+TIME_ZONE: Final = "America/Los_Angeles"
+# Instants over a whole year, so the sun moves through its seasons and both daylight saving
+# changes; a time that does not exist on the spring forward night is never drawn.
+INSTANTS: Final = st.datetimes(
+    # Hypothesis takes naive bounds and puts the zone on each draw.
+    min_value=datetime(2026, 1, 1),  # noqa: DTZ001
+    max_value=datetime(2026, 12, 31, 23, 59, 59),  # noqa: DTZ001
+    timezones=st.just(ZoneInfo(TIME_ZONE)),
+    allow_imaginary=False,
+).map(lambda moment: moment.replace(microsecond=0))
+
+
+def _alias(node: Any, alias: str) -> Mapping[str, Any] | None:
+    """Return the first mapping of a rendered config, depth first, with this alias."""
+    if isinstance(node, Mapping):
+        if node.get("alias") == alias:
+            return node
+        node = list(node.values())
+    if isinstance(node, list):
+        for item in node:
+            if (found := _alias(item, alias)) is not None:
+                return found
+    return None
+
+
+def _sun_bounds(settings: RoutineSettings, moment: datetime, lookups: Lookups) -> list[datetime]:
+    """Return the instants of the routine's sun bounds on the day of `moment` and before.
+
+    A crossing window's end runs the day after its start, so both days can hold a bound
+    that the instant is compared with.
+    """
+    assert lookups.sun is not None
+    found: list[datetime] = []
+    for kind, offset in (
+        (settings.on_kind, settings.on_sun_offset_min),
+        (settings.off_kind, settings.off_sun_offset_min),
+    ):
+        if kind is TimeKind.TIME:
+            continue
+        for day in (moment.date(), moment.date() - timedelta(days=1)):
+            event = lookups.sun(day, kind.value)
+            if event is not None:
+                found.append(event.astimezone(moment.tzinfo) + timedelta(minutes=offset))
+    return found
+
+
+@harness(150)
+@given(
+    case=strategies.routines(),
+    moments=st.lists(INSTANTS, min_size=1, max_size=6),
+    schedule_state=st.sampled_from(["on", "off"]),
+)
+@example(
+    # A window ending at midnight is off on its end day after midnight. The blueprint
+    # tested `before: 00:00:00`, which the core's time condition holds all day (found here).
+    case=(PROFILES["switch"], None, RoutineSettings(FAN, on_time=time(17), off_time=time(0))),
+    moments=[datetime(2026, 10, 20, 10, tzinfo=ZoneInfo(TIME_ZONE))],
+    schedule_state="off",
+)
+async def test_expected_on_equals_expected_state(
+    hass: HomeAssistant,
+    freezer: Any,
+    case: tuple[DomainProfile, str | None, RoutineSettings],
+    moments: list[datetime],
+    schedule_state: str,
+) -> None:
+    """The blueprint's `expected_on` means exactly what `nextrun.expected_state` computes.
+
+    The condition is taken from the shipped blueprint as the core renders a routine's
+    automation, validated and checked the way an automation run checks it, at drawn
+    instants; `expected_state` reads the same sun lookup the manager and the summary pass
+    (the core's astral helper), and a weekly schedule's drawn state. Without a window
+    `expected_state` has no answer and the blueprint's condition never holds. No instant
+    is drawn on a sun bound: there the core's `sun` condition counts a `before` bound's
+    instant as still before, where `nextrun` and the time condition do not (L64).
+    """
+    await hass.config.async_set_time_zone(TIME_ZONE)
+    profile, _device_class, settings = case
+    inputs = compiler.compile(settings, profile, REFS).inputs
+    raw = _alias(render(routine_entry(inputs)), EXPECTED_ON)
+    assert raw is not None
+    # As an automation's validation does: the schema first, then the condition platforms.
+    validated = await condition_helper.async_validate_condition_config(
+        hass, cv.CONDITION_SCHEMA(dict(raw))
+    )
+    expected_on = await condition_helper.async_from_config(hass, validated)
+    weekly = settings.days is Days.WEEKLY_SCHEDULE
+    if weekly:
+        hass.states.async_set(str(settings.schedule_entity), schedule_state)
+    lookups = Lookups(sun=lambda day, sun_event: get_astral_event_date(hass, sun_event, day))
+    on, off = (settings.on_kind, settings.has_on), (settings.off_kind, settings.has_off)
+    sides = [kind for kind, is_set in (on, off) if is_set]
+    event(f"{sum(kind is not TimeKind.TIME for kind in sides)} of {len(sides)} sides at the sun")
+
+    for moment in moments:
+        bounds = _sun_bounds(settings, moment, lookups)
+        assume(all(abs(moment - bound) > timedelta(seconds=1) for bound in bounds))
+        freezer.move_to(moment)
+        state = expected_state(settings, dt_util.now(), schedule_state if weekly else None, lookups)
+        held = expected_on(hass, {})
+        event(f"expected {state}")
+        if state is None:
+            assert not held, (settings, moment)
+        else:
+            assert bool(held) is (state == "on"), (settings, moment, state)
