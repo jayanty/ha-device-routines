@@ -66,6 +66,9 @@ async def test_the_time_condition_refuses_a_datetime_entity(hass: HomeAssistant)
 async def test_a_timestamp_sensor_works_in_trigger_and_condition(
     hass: HomeAssistant, freezer: Any
 ) -> None:
+    # The time condition compares a timestamp sensor by time of day only (V12), so the
+    # five minutes must not cross local midnight: the test runs at a fixed midday.
+    freezer.move_to(datetime(2026, 10, 17, 19, 0, tzinfo=dt_util.UTC))
     end = dt_util.utcnow().replace(microsecond=0) + timedelta(minutes=5)
     hass.states.async_set(SENSOR, end.isoformat(), {"device_class": "timestamp"})
     calls = async_mock_service(hass, "test", "record")

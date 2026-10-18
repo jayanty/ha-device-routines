@@ -151,7 +151,7 @@ blind shows "Open at".
 | Turn on at | Configuration | Yes | The time the device turns on. Setting it creates the routine. |
 | Turn off at | Configuration | Yes | The time the device turns off. Either time alone is fine. |
 | Days | Configuration | Yes | Every day, Weekdays, Weekends, Some days or Weekly schedule. |
-| Turn off after | Configuration | Where the device supports it | Minutes after any turn on before the device turns off again; 0 is off. |
+| Turn off after | Configuration | Where the device supports it | Minutes after any turn on before the device turns off again; 0 is off. It reads "Close after" on a blind or a valve and "Lock after" on a lock. |
 | Turn back on after | Configuration | No, advanced | Minutes after a turn off before the device turns back on; 0 is off. See [Turn back on after](#turn-back-on-after). |
 | Catch up after restart | Configuration | No, advanced | On by default. See [After a restart](#after-a-restart-catch-up). |
 | Respect manual changes | Configuration | No, advanced | On by default. See [Manual changes](#manual-changes). |
@@ -187,7 +187,7 @@ Days limits the scheduled times; run timers apply every day.
 | Every day | Every day. |
 | Weekdays | Monday to Friday. |
 | Weekends | Saturday and Sunday. |
-| Some days | A day set you choose in the routine's automation form (the device page select shows Some days). |
+| Some days | A day set you choose in the routine's automation form, or through the WebSocket API (the device page select shows Some days). A day set chosen on its own means Some days. |
 | Weekly schedule | The blocks of a weekly schedule helper instead of the two times. See [Weekly schedules](#weekly-schedules). |
 
 A window that crosses midnight belongs to the day it starts. With Weekdays, 5:00 PM to
@@ -263,7 +263,9 @@ Skip next skips the action the Schedule sentence shows next:
 - **A running countdown:** the timer is cancelled and the device stays as it is.
 
 Pressing Skip next again extends the skip to the following action. Skip next is
-unavailable when nothing is scheduled.
+unavailable (reason `nothing_to_skip`) when nothing is scheduled; a running countdown
+counts, so Skip next can keep a device on this time. Resume is unavailable (reason
+`not_paused`) unless the routine is paused or skipping.
 
 ### Pause until
 
@@ -315,7 +317,9 @@ Turn back on after keeps a device on: after any turn off the routine did not mak
 turns the device back on after N minutes. Example: a fan that turns itself off at 2:00 PM
 is back on at 2:10 PM with Turn back on after 10.
 
-- It never fires during a scheduled off period: with a window, it acts only inside it.
+- It never fires during a scheduled off period: with a window, it acts only inside it, and
+  its control on the device page is unavailable (reason `schedule_off`) while the window or
+  the weekly schedule says off.
 - Turning the device on yourself cancels the countdown.
 - The countdown survives a restart, like Turn off after.
 - It wins over Respect manual changes by design, because undoing offs is its purpose. To
