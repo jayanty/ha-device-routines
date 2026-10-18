@@ -545,6 +545,229 @@ async def test_delete_leaves_an_automation_defined_outside_the_file_alone(
 
 
 # --------------------------------------------------------------------------------------
+# Removal: take control, the release write, the blueprint and the system user (lane 10)
+# --------------------------------------------------------------------------------------
+
+FORMERLY = "Formerly managed by Device Routines."
+PACKAGE_CONFIGURATION = (
+    "automation: !include automations.yaml\nautomation package: !include package.yaml\n"
+)
+
+
+async def released_form(hass: HomeAssistant) -> dict[str, Any]:
+    """Read the routine and render it the way removal with On removal keep does."""
+    stored = await ha_adapter.async_read_automation(hass, ROUTINE_ID)
+    assert stored is not None
+    plain = await ha_adapter.async_take_control_config(hass, stored)
+    return {**plain, "description": FORMERLY}
+
+
+async def reload_all(hass: HomeAssistant) -> None:
+    await hass.services.async_call("automation", "reload", {}, blocking=True)
+    await settle()
+
+
+async def test_take_control_renders_the_config_the_core_runs_for_the_entry(
+    hass: HomeAssistant, automations: Path
+) -> None:
+    await ha_adapter.async_write_automation(hass, ROUTINE_ID, {**owned(4), "mode": "queued"}, None)
+    stored = await ha_adapter.async_read_automation(hass, ROUTINE_ID)
+    assert stored is not None
+
+    plain = await ha_adapter.async_take_control_config(hass, stored)
+
+    assert plain == ha_adapter.automation_config(hass, ROUTINE)
+    assert "use_blueprint" not in plain
+    assert plain["id"] == ROUTINE_ID
+    assert plain["alias"] == "Routine: Living room fan"
+    assert plain["description"] == "Managed by Device Routines."
+    # The entry's own keys win over the blueprint's, as the core runs it.
+    assert plain["mode"] == "queued"
+    assert plain["triggers"] == [{"trigger": "event", "event_type": "living_room_fan_probe"}]
+    assert plain["actions"][0]["event_data"] == {"minutes": 4, "days": ["mon", "tue"]}
+    assert ha_adapter.is_detached(plain)
+
+
+async def test_take_control_refuses_an_unowned_config_and_reports_a_missing_blueprint(
+    hass: HomeAssistant, automations: Path
+) -> None:
+    for config in (hand_written(LOOKALIKE_ID), hand_written(ROUTINE_ID)):
+        with pytest.raises(ha_adapter.NotOwnedError):
+            await ha_adapter.async_take_control_config(hass, config)
+
+    remove(automations.parent / "blueprints" / "automation" / markers.BLUEPRINT_PATH)
+    await async_get_blueprints(hass).async_reset_cache()
+    with pytest.raises(ha_adapter.AdapterError):
+        await ha_adapter.async_take_control_config(hass, owned())
+
+
+async def test_release_turns_an_owned_entry_into_a_plain_one_that_keeps_running(
+    hass: HomeAssistant, automations: Path
+) -> None:
+    registry = er.async_get(hass)
+    await ha_adapter.async_write_automation(hass, ROUTINE_ID, owned(2), None)
+    unique_before = registry.async_get(ROUTINE).unique_id  # type: ignore[union-attr]
+    released = await released_form(hass)
+    guard = ha_adapter.file_hash(hass)
+
+    result = await ha_adapter.async_release_automation(hass, ROUTINE_ID, released, guard)
+    await settle()
+
+    assert result.created is False
+    assert result.hash == sha256_of(automations) == ha_adapter.file_hash(hass)
+    stored = entry(automations, ROUTINE_ID)
+    assert stored == released
+    assert next(iter(stored)) == "id"
+    assert ha_adapter.is_detached(stored)
+    # Same entity, same unique id: Take control keeps the id (Stage 0 V8).
+    assert registry.async_get(ROUTINE).unique_id == unique_before  # type: ignore[union-attr]
+    assert ha_adapter.automation_blueprint(hass, ROUTINE) is None
+    state = hass.states.get(ROUTINE)
+    assert state is not None
+    assert state.state == "on"
+    assert state.attributes["friendly_name"] == "Routine: Living room fan"
+    ran = record(hass, "synthetic_routine_ran")
+    hass.bus.async_fire("living_room_fan_probe")
+    await settle()
+    assert [event.data["minutes"] for event in ran] == [2]
+    assert in_flight(hass) == 1
+
+
+async def test_release_refuses_every_target_and_config_that_is_not_an_owned_routine(
+    hass: HomeAssistant, automations: Path
+) -> None:
+    await ha_adapter.async_write_automation(hass, ROUTINE_ID, owned(2), None)
+    released = await released_form(hass)
+    detached_id = markers.automation_id("synthetic-desk-lamp")
+    missing_id = markers.automation_id("synthetic-nowhere")
+    append_entry(automations, hand_written(LOOKALIKE_ID, alias="Routine: Living room fan"))
+    append_entry(automations, {**hand_written(detached_id), "alias": "Routine: Desk lamp"})
+    before = raw(automations)
+
+    refused: list[tuple[str, dict[str, Any]]] = [
+        # The config: another id, no M1, or still a blueprint automation (M2, or elsewhere).
+        (ROUTINE_ID, {**released, "id": detached_id}),
+        (LOOKALIKE_ID, {**released, "id": LOOKALIKE_ID}),
+        (ROUTINE_ID, {**released, "use_blueprint": owned()["use_blueprint"]}),
+        (ROUTINE_ID, {**released, "use_blueprint": {"path": "other/blueprint.yaml"}}),
+        # The target: missing from the file, or detached (M1 without M2).
+        (missing_id, {**released, "id": missing_id}),
+        (detached_id, {**released, "id": detached_id}),
+    ]
+    for automation_id, config in refused:
+        with pytest.raises(ha_adapter.NotOwnedError):
+            await ha_adapter.async_release_automation(hass, automation_id, config)
+
+    assert raw(automations) == before
+    assert ha_adapter.automation_blueprint(hass, ROUTINE) is not None
+
+
+async def test_release_keeps_the_write_guard(hass: HomeAssistant, automations: Path) -> None:
+    await ha_adapter.async_write_automation(hass, ROUTINE_ID, owned(2), None)
+    released = await released_form(hass)
+    guard = ha_adapter.file_hash(hass)
+    # Someone saves the blueprint form of the routine after the read: never overwritten.
+    replace_entry(automations, owned(7))
+
+    with pytest.raises(ha_adapter.WriteConflictError):
+        await ha_adapter.async_release_automation(hass, ROUTINE_ID, released, guard)
+    assert entry(automations, ROUTINE_ID)["use_blueprint"]["input"]["minutes"] == 7
+
+    # Only other entries moved since the read: the release goes ahead.
+    released = await released_form(hass)
+    guard = ha_adapter.file_hash(hass)
+    append_entry(automations, hand_written("coffee_maker_on"))
+    await ha_adapter.async_release_automation(hass, ROUTINE_ID, released, guard)
+
+    assert entry(automations, ROUTINE_ID) == released
+    assert "coffee_maker_on" in {item["id"] for item in entries(automations)}
+
+
+async def test_the_blueprint_is_removed_only_once_nothing_uses_it(
+    hass: HomeAssistant, automations: Path
+) -> None:
+    installed = automations.parent / "blueprints" / "automation" / markers.BLUEPRINT_PATH
+    await ha_adapter.async_write_automation(hass, ROUTINE_ID, owned(2), None)
+    copy = {**owned(3), "id": "living_room_fan_copy", "alias": "Living room fan copy"}
+    append_entry(automations, copy)
+    await reload_one(hass, copy["id"])
+
+    # A routine uses it.
+    assert await ha_adapter.async_remove_blueprint(hass) is False
+    await ha_adapter.async_release_automation(hass, ROUTINE_ID, await released_form(hass))
+    await settle()
+    # A person's copy of a routine (no M1) still uses it.
+    assert await ha_adapter.async_remove_blueprint(hass) is False
+
+    put(automations, dump([item for item in entries(automations) if item["id"] != copy["id"]]))
+    # A loaded automation the file does not hold (a YAML package) still uses it.
+    package = {**owned(4), "id": "package_routine_copy", "alias": "Package copy"}
+    put(automations.parent / "configuration.yaml", PACKAGE_CONFIGURATION)
+    put(automations.parent / "package.yaml", dump([package]))
+    await reload_all(hass)
+    assert await ha_adapter.async_remove_blueprint(hass) is False
+    assert installed.is_file()
+
+    put(automations.parent / "package.yaml", "[]\n")
+    await reload_all(hass)
+    assert await ha_adapter.async_remove_blueprint(hass) is True
+
+    assert not installed.exists()
+    assert await hass.async_add_executor_job(ha_adapter.installed_blueprint_text, hass) is None
+    with pytest.raises(HomeAssistantError):
+        await async_get_blueprints(hass).async_get_blueprint(markers.BLUEPRINT_PATH)
+    assert await ha_adapter.async_remove_blueprint(hass) is False
+    # The released routine keeps running without the blueprint, through a full reload.
+    await reload_all(hass)
+    ran = record(hass, "synthetic_routine_ran")
+    hass.bus.async_fire("living_room_fan_probe")
+    await settle()
+    assert [event.data["minutes"] for event in ran] == [2]
+
+
+async def test_the_file_decides_when_a_loaded_automation_still_names_the_blueprint(
+    hass: HomeAssistant, automations: Path
+) -> None:
+    """Stage 0 V8: a taken over automation may still count as a user of the blueprint."""
+    await ha_adapter.async_write_automation(hass, ROUTINE_ID, owned(2), None)
+    released = await released_form(hass)
+    # The file holds the plain form; the loaded automation is still the blueprint one.
+    put(automations, dump([long_run(), released]))
+    assert ha_adapter.automation_blueprint(hass, ROUTINE) is not None
+
+    assert await ha_adapter.async_remove_blueprint(hass) is True
+
+
+async def test_a_yaml_automation_without_an_id_on_the_blueprint_keeps_it(
+    hass: HomeAssistant, config_dir: Path
+) -> None:
+    unnamed = {key: value for key, value in owned().items() if key != "id"}
+    assert await async_setup_component(hass, "automation", {})
+    await ha_adapter.async_install_blueprint(hass, BLUEPRINT_TEXT)
+    put(config_dir / "configuration.yaml", PACKAGE_CONFIGURATION)
+    put(config_dir / "package.yaml", dump([unnamed]))
+    await reload_all(hass)
+    assert ha_adapter.automation_references(hass)
+
+    assert await ha_adapter.async_remove_blueprint(hass) is False
+
+
+async def test_the_system_user_is_removed_and_nobody_else_ever_is(hass: HomeAssistant) -> None:
+    user_id = await ha_adapter.async_ensure_system_user(hass, None)
+
+    assert await ha_adapter.async_remove_system_user(hass, user_id) is True
+    assert await hass.auth.async_get_user(user_id) is None
+    assert await ha_adapter.async_remove_system_user(hass, user_id) is False
+
+    person = await hass.auth.async_create_user("Pat")
+    other = await hass.auth.async_create_system_user("Another integration")
+    for refused in (person.id, other.id):
+        with pytest.raises(ha_adapter.AdapterError):
+            await ha_adapter.async_remove_system_user(hass, refused)
+        assert await hass.auth.async_get_user(refused) is not None
+
+
+# --------------------------------------------------------------------------------------
 # The blueprint
 # --------------------------------------------------------------------------------------
 

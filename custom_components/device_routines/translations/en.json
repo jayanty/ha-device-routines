@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Device Routines",
-        "description": "Device Routines adds start and stop times, run timers and a plain language schedule summary to your device pages. There is nothing to configure: everything else is chosen on each device page or in the options later."
+        "description": "Device Routines adds start and stop times, run timers and a plain language schedule summary to your device pages. There is nothing to configure. If automations already switch some devices at set times, the next screen offers to give them routine controls."
       }
     },
     "abort": {
@@ -84,15 +84,63 @@
   "options": {
     "step": {
       "init": {
+        "title": "Device Routines options",
+        "description": "Choose what to change.",
+        "menu_options": {
+          "settings": "Settings",
+          "devices": "Devices with routines",
+          "suggestions": "Suggested devices"
+        }
+      },
+      "settings": {
         "title": "Settings",
-        "description": "How Device Routines shows schedules. Changing a setting rebuilds every Schedule sensor.",
+        "description": "Defaults apply to routines created from now on; changing one never rewrites an existing routine. Saving reloads Device Routines and rebuilds every Schedule sensor.",
         "data": {
           "schedule_scope": "Schedule sensor scope",
-          "time_format": "Time format"
+          "time_format": "Time format",
+          "default_catch_up": "Catch up after a restart, for new routines",
+          "default_respect_manual": "Respect manual changes, for new routines",
+          "default_late_start_window_min": "Late start window, for new routines",
+          "cleanup_after_days": "Clean up after",
+          "assign_area": "Put routines in the device's area",
+          "on_removal": "On removal",
+          "ai_task_entity": "AI summary entity",
+          "ai_calls_per_hour": "AI calls per hour",
+          "offer_conversions": "Offer to convert matching automations",
+          "raise_conflict_repairs": "Raise Repairs issues for conflicts"
         },
         "data_description": {
           "schedule_scope": "Which devices get a Schedule sensor: every device an automation acts on, only devices with a routine, or none.",
-          "time_format": "How times read in every sentence. Automatic follows the country set in Home Assistant."
+          "time_format": "How times read in every sentence. Automatic follows the country set in Home Assistant.",
+          "default_catch_up": "The starting value of Catch up for routines created from now on: after a restart, the device is put in the state its schedule expects.",
+          "default_respect_manual": "The starting value of Respect manual changes for routines created from now on: a device someone switched by hand stays as it is until its next scheduled time.",
+          "default_late_start_window_min": "How long after a missed start time a new routine may still start its device, for example after a restart. 0 turns late starts off.",
+          "cleanup_after_days": "How long a routine automation and its helpers stay after their device is opted out or removed from Home Assistant. 0 keeps them.",
+          "assign_area": "Give each routine automation the area of its device, so it shows on the area page.",
+          "on_removal": "What removing Device Routines does to the routine automations. Keep turns each into a normal automation that keeps running; delete removes them with their timers and schedules.",
+          "ai_calls_per_hour": "The most summaries the AI summary entity writes in one hour.",
+          "offer_conversions": "Offer, in Repairs, to turn a hand written automation that does exactly what a routine does into a routine.",
+          "raise_conflict_repairs": "Raise a Repairs issue when a routine and another automation switch a device in opposite directions at the same minute."
+        }
+      },
+      "devices": {
+        "title": "Devices with routines",
+        "description": "Each chosen device gets routine controls on its device page and the Routines label. A device taken off the list keeps its settings and its routine turns off; it is deleted after the clean up period.",
+        "data": {
+          "devices": "Devices with routines"
+        },
+        "data_description": {
+          "devices": "Only devices with an entity a routine can switch are listed."
+        }
+      },
+      "suggestions": {
+        "title": "Suggested devices",
+        "description": "Automations switch these devices at set times. Tick the ones that should get routine controls on their device page, or leave them all unticked to skip. This list stays available in the Device Routines options.",
+        "data": {
+          "devices": "Devices"
+        },
+        "data_description": {
+          "devices": "Nothing is ticked: leave it that way to skip."
         }
       }
     },
@@ -101,7 +149,13 @@
       "invalid_boolean": "Choose on or off.",
       "out_of_range": "Enter a number in the allowed range.",
       "invalid_ai_task_entity": "Choose an AI Task entity.",
-      "unknown_setting": "This setting is not known to this version."
+      "unknown_setting": "This setting is not known to this version.",
+      "unknown_device": "{device} is no longer known to Home Assistant. Choose again.",
+      "not_eligible": "{device} has no entity a routine can switch any more. Choose again."
+    },
+    "abort": {
+      "not_loaded": "Device Routines is not loaded. Reload it, then open the options again.",
+      "no_suggestions": "No device without routine controls is switched by an automation at set times right now."
     }
   },
   "selector": {
@@ -125,6 +179,27 @@
         "auto": "Automatic",
         "12h": "12 hour (9:00 AM)",
         "24h": "24 hour (09:00)"
+      }
+    },
+    "on_removal": {
+      "options": {
+        "keep": "Keep them as normal automations",
+        "delete": "Delete them and their helpers"
+      }
+    },
+    "default_late_start_window_min": {
+      "unit_of_measurement": {
+        "minutes": "minutes"
+      }
+    },
+    "cleanup_after_days": {
+      "unit_of_measurement": {
+        "days": "days"
+      }
+    },
+    "ai_calls_per_hour": {
+      "unit_of_measurement": {
+        "calls": "calls"
       }
     }
   },

@@ -21,6 +21,10 @@ Capabilities:
 - helpers: the timer and schedule WebSocket commands dispatched in process for the
   integration's system administrator user (decision L23), then the entity registry.
 - restore state: the restore cache read for timers that ran out during a restart (L20).
+- removal (Build A lane 10, decision L37): an owned entry rendered into the plain
+  automation the editor's Take control saves, written by the one path that writes an
+  entry without M2 and only over an entry owned at that moment; the blueprint removed
+  once nothing uses it; the system user removed with the entry.
 """
 
 from __future__ import annotations
@@ -44,6 +48,7 @@ from homeassistant.components.automation import (
 from homeassistant.components.automation.const import DOMAIN as AUTOMATION_DOMAIN
 from homeassistant.components.blueprint import models as blueprint_models
 from homeassistant.components.blueprint.const import BLUEPRINT_FOLDER, CONF_USE_BLUEPRINT
+from homeassistant.components.blueprint.errors import BlueprintException
 from homeassistant.components.timer import ATTR_FINISHES_AT, STATUS_ACTIVE
 from homeassistant.components.websocket_api.connection import ActiveConnection
 from homeassistant.components.websocket_api.http import WebSocketAdapter
@@ -598,6 +603,68 @@ async def async_delete_automation(hass: HomeAssistant, automation_id: str) -> bo
     return removed
 
 
+async def async_take_control_config(
+    hass: HomeAssistant, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Return the plain automation an owned entry renders to, as Take control saves it.
+
+    The editor's Take control renders the inputs into the blueprint with the
+    `blueprint/substitute` logic and keeps the id, alias and description (Stage 0 V8).
+    The core renders a blueprint automation the same way and lets the entry's own keys
+    win over the blueprint's, so the result is exactly the config the core runs for the
+    entry. Refuses with `NotOwnedError` a config without M1 and M2; raises
+    `AdapterError` when the blueprint is missing or the inputs do not render.
+    """
+    if not markers.is_owned(config):
+        raise NotOwnedError(f"refusing to take control of {config.get(CONF_ID)}: not owned")
+    blueprints = automation_helpers.async_get_blueprints(hass)
+    try:
+        inputs = await blueprints.async_inputs_from_config(_plain(config))
+        rendered = inputs.async_substitute()
+    except (BlueprintException, ha_yaml.UndefinedSubstitution) as err:
+        raise AdapterError(f"{config.get(CONF_ID)} does not render: {err}") from err
+    plain: dict[str, Any] = _plain(rendered)
+    return plain
+
+
+async def async_release_automation(
+    hass: HomeAssistant,
+    automation_id: str,
+    config: Mapping[str, Any],
+    expected_hash: str | None = None,
+) -> WriteResult:
+    """Write a plain automation over an owned entry, then reload that id: take control.
+
+    The one path that writes an entry without M2 (decision L37), used when the
+    integration is removed with On removal set to keep. It writes only over an entry the
+    file holds with M1 and M2 at the moment of the write, under the adapter's lock with
+    the guard of `async_write_automation`, and never creates one. Refuses with
+    `NotOwnedError` a config whose id is not `automation_id` or lacks M1, a config that
+    still has a `use_blueprint` block (it would claim M2, or point elsewhere), and a
+    target that is missing or not owned. Raises `WriteConflictError` as a write does.
+    """
+    if (
+        config.get(CONF_ID) != automation_id
+        or not markers.has_routine_id(config)
+        or CONF_USE_BLUEPRINT in config
+    ):
+        raise NotOwnedError(f"refusing to release {automation_id}: not a plain routine config")
+
+    def build(entries: list[Any]) -> list[Any]:
+        if not _refuse_unowned(entries, automation_id):
+            raise NotOwnedError(f"refusing to release {automation_id}: the file does not hold it")
+        return [
+            _editor_ordered(automation_id, config) if _matches(item, automation_id) else item
+            for item in entries
+        ]
+
+    digest, _ = await _async_rewrite(hass, automation_id, expected_hash, build)
+    await hass.services.async_call(
+        AUTOMATION_DOMAIN, SERVICE_RELOAD, {CONF_ID: automation_id}, blocking=True
+    )
+    return WriteResult(hash=digest, created=False)
+
+
 # --------------------------------------------------------------------------------------
 # The blueprint
 # --------------------------------------------------------------------------------------
@@ -638,6 +705,42 @@ def installed_blueprint_text(hass: HomeAssistant) -> str | None:
         return None
 
 
+def _uses_blueprint(config: Any) -> bool:
+    block = config.get(CONF_USE_BLUEPRINT) if isinstance(config, Mapping) else None
+    return isinstance(block, Mapping) and block.get(CONF_PATH) == markers.BLUEPRINT_PATH
+
+
+def _unlink(path: str) -> bool:
+    try:
+        Path(path).unlink()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+async def async_remove_blueprint(hass: HomeAssistant) -> bool:
+    """Remove the installed routine blueprint once nothing uses it; return whether it went.
+
+    In use means an entry of `automations.yaml` on the blueprint (a routine, or a
+    person's copy of one), or a loaded automation built from it that the file does not
+    hold (a YAML package). The core's own in use check is not asked: an automation taken
+    over keeps counting there until it is removed (Stage 0 V8), so the decision is made
+    from the file.
+    """
+    entries = await async_read_automations(hass)
+    if any(_uses_blueprint(item) for item in entries):
+        return False
+    in_file = {item.get(CONF_ID) for item in entries}
+    registry = er.async_get(hass)
+    for entity_id in automation.automations_with_blueprint(hass, markers.BLUEPRINT_PATH):
+        entry = registry.async_get(entity_id)
+        if entry is None or entry.unique_id not in in_file:
+            return False
+    removed = await hass.async_add_executor_job(_unlink, _blueprint_path(hass))
+    await automation_helpers.async_get_blueprints(hass).async_reset_cache()
+    return removed
+
+
 # --------------------------------------------------------------------------------------
 # The system user and the timer and schedule helpers
 # --------------------------------------------------------------------------------------
@@ -659,6 +762,22 @@ async def async_ensure_system_user(hass: HomeAssistant, user_id: str | None) -> 
         INTEGRATION_TITLE, group_ids=[GROUP_ID_ADMIN]
     )
     return created.id
+
+
+async def async_remove_system_user(hass: HomeAssistant, user_id: str) -> bool:
+    """Remove the integration's system user with the entry (decision L23).
+
+    Returns whether a user was removed; an id that names no user is already gone. Refuses
+    with `AdapterError` a user that is not a system user named for the integration, so a
+    stored id that names a person or another integration's user never removes it.
+    """
+    user = await hass.auth.async_get_user(user_id)
+    if user is None:
+        return False
+    if not user.system_generated or user.name != INTEGRATION_TITLE:
+        raise AdapterError(f"refusing to remove user {user_id}: not the {DOMAIN} system user")
+    await hass.auth.async_remove_user(user)
+    return True
 
 
 def _decoded(message: bytes | str | dict[str, Any]) -> dict[str, Any]:
