@@ -1378,9 +1378,11 @@ class RoutineManager:
 
         The write algorithm of TECH_SPEC 4.1 under the device's lock: helpers first, then
         the read and its guard with no await between (L37), the compile, the adapter write
-        (which reloads that id), then `last_hash` and `last_valid_inputs`. A moved file
-        raises `write_conflict`, an entry without M2 is detached. With `raise_errors` every
-        failure propagates (the schema migration needs that, migration.py).
+        (which reloads that id), then `last_hash` and `last_valid_inputs`; an entry the
+        write created gets its presentation, and a new routine's its first on or off
+        (`_async_start`). A moved file raises `write_conflict`, an entry without M2 is
+        detached. With `raise_errors` every failure propagates (the schema migration
+        needs that, migration.py).
         """
         failure: Exception | None = None
         async with routine.lock:
@@ -1416,6 +1418,8 @@ class RoutineManager:
         if current is not None and not markers.is_owned(current):
             raise ha_adapter.NotOwnedError(automation_id)
         config = self._entry_config(routine, current, inputs)
+        # Without an owned record the routine is new: nobody chose its on or off (F7).
+        new = automation_id not in self._store.data.owned
         try:
             result = await ha_adapter.async_write_automation(
                 self.hass, automation_id, config, guard
@@ -1430,6 +1434,38 @@ class RoutineManager:
         self._record_write(routine, config, inputs)
         if result.created:
             self._present(routine, automation_id)
+            if new:
+                await self._async_start(routine)
+
+    async def _async_start(self, routine: _Routine) -> None:
+        """Turn a new routine's automation on, or off for the manager's reason (F7).
+
+        The core restores an automation's last on or off by its entity id, and a routine
+        created again for a device whose routine was cleaned up or deleted takes the
+        automation id and the entity id of the one it replaces, so it would start as that
+        one ended. A new routine has no on or off a person chose (the Routine switch
+        needs its automation), so the manager sets it: on, unless the device is opted
+        out (off, as opting out leaves a routine) or the manager holds the routine off
+        (inputs invalid, the target missing), when it starts off with that reason kept,
+        so it comes back on when the reason ends. Never `initial_state`: that would undo
+        a person's disable at every start.
+        """
+        if routine.device_id not in self._store.data.opted_in:
+            await self._async_turn(routine, on=False)
+            return
+        reason = (
+            _OFF_INVALID
+            if routine.invalid
+            else _OFF_MISSING_TARGET
+            if routine.missing_target
+            else self._suspended_for(routine)
+        )
+        if reason is None:
+            await self._async_turn(routine, on=True)
+            return
+        await self._async_turn(routine, on=False)
+        self._store.data.suspended[routine.automation_id] = reason
+        self._store.async_delay_save()
 
     async def _async_write_failed(self, routine: _Routine, err: Exception) -> None:
         """Turn a failed write into its outcome: detached, `write_conflict`, or a log line."""
