@@ -169,7 +169,7 @@ One instance per config entry in `entry.runtime_data`. Every method is async and
 
 `RoutineView` fields: `device_id`, `device_name`, `area_id`, `automation_id`, `automation_entity_id`, `settings`, `status`, `enabled`, `paused_until`, `skipped_action`, `next_action`, `sentence`, `items`, `conflicts`, `override`, `last_change_source`.
 
-Write algorithm (PRD 7.2 in detail): a per device `asyncio.Lock`; read the current entry through the adapter; compare its hash with `owned[id].last_hash`; if it differs and the entry no longer carries M1 and M2, stop with `detached`; compile; write; reload that id only; store `last_hash` and `last_valid_inputs`. If the file changed between the read and the write, retry once, then raise the `write_conflict` Repairs issue.
+Write algorithm (PRD 7.2 in detail): a per device `asyncio.Lock`; read the current entry through the adapter; compare its hash with `owned[id].last_hash`; if it differs and the entry no longer carries M1 and M2, stop with `detached`; compile; write; reload that id only; store `last_hash` and `last_valid_inputs`. If the file changed between the read and the write, retry once, then raise the `write_conflict` Repairs issue. A write that creates the entry while the Store holds no owned record for it is a new routine: the core may restore the on or off state an earlier automation with the same entity id left (a routine cleaned up or deleted while off), so the manager sets its first state itself: on, or off with the reason recorded in `suspended` while it holds the routine off (`invalid`, `missing_target`), or off when the device is opted out; a write over an existing record never touches the state, so a person's off sticks (decision L79).
 
 ### 4.2 ha\_adapter.py
 

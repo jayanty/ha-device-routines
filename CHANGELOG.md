@@ -64,6 +64,10 @@ routine blueprint input schema 2 with the same behavior.
 
 ### Fixed
 
+- A routine created again for a device whose earlier routine was cleaned up or deleted
+  while turned off starts turned on. Home Assistant restored the old automation's off, so
+  a conversion or an opt in could leave the device with no running schedule. A new routine
+  whose device is gone meanwhile now starts off and comes on when the device returns.
 - Health no longer reads `degraded` for a moment each time a routine is saved or Home
   Assistant reloads automations: a routine whose automation is being reloaded counts as
   loaded until the reload ends, and a routine that fails to load still turns Health
