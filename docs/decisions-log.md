@@ -814,3 +814,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | An autouse `harness_start` fixture in `tests/blueprint/conftest.py` freezes the clock at 2026-01-01 00:00 in the harness's zone (`HARNESS_START`) before the entity fixtures run, long before any date a blueprint test travels to; `test_a_fixture_entity_is_created_at_the_harness_start` pins it and fails without it on any day, as `test_b37_pulse[off_device]` now does after the test week. |
 | Consequence | No product change. The integration tests, whose clocks also stand at 2026-10-19, pass with the real date past it; their 30 day simulation runs in November 2026 and is the one to watch when the real date passes 2026-11-02. |
 | PRD register entry | no |
+
+## 2026-10-23 L82: the vite pin waits on dev for v1.0.1; main stays at v1.0.0
+
+| Field | Content |
+| --- | --- |
+| Context | GitHub reported six Dependabot alerts (two high, four medium) on `vite` 8.3.2 in `frontend/package.json` and its lock, each fixed in 8.3.3. `vite` only builds the committed console bundle; nothing installed runs it. A side session pinned `vite` 8.3.3 (`e6c162b`): the rebuilt bundle is byte identical, the gates and every CI job are green, and `dev` fast forwarded to it. Dependabot clears an alert only when the fix reaches the default branch, `main`, which rule 5 moves only at a build exit. |
+| Options | Fast forward `main` now, outside a build exit, to close the alerts; or leave `main` at the `v1.0.0` release and let the fix reach it with the next release. |
+| Choice | Leave `main` at `v1.0.0` (`8632604`), the owner's choice on 2026-10-23. The pin reaches `main` with `v1.0.1`, and the six alerts stay open until then; no shipped file changes with it, so no changelog line. |
+| Consequence | A session preparing `v1.0.1` fast forwards `main` past `e6c162b`, which closes the alerts; until then the open alerts are known and expected. |
+| PRD register entry | no |
