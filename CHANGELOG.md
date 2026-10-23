@@ -6,11 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-10-18
+## [1.0.0] - 2026-10-23
 
 Sun times, Only when, conversion offers and the console (Phase 4), first published as the
-pre release `v1.0.0-beta.1`. The first start of this version moves every routine to
-routine blueprint input schema 2 with the same behavior.
+pre releases `v1.0.0-beta.1` and `v1.0.0-beta.2`. The first start of this version moves
+every routine to routine blueprint input schema 2 with the same behavior.
 
 ### Added
 

@@ -22,11 +22,11 @@ anyone turns it on, start the robot vacuum at 9:45 AM on weekdays, turn the pati
 at sunset. And it answers, on every device page, what will happen to that device next,
 whichever automation does it.
 
-> **Status: 1.0.0 is in its last round of testing.** Everything below is built and proven
-> in a real Home Assistant test harness and ships as the pre release `v1.0.0-beta.1`;
-> `v1.0.0` follows once it has run on a real home. Version 0.1.0 brought the Schedule
-> sensor, 0.3.0 the routines (first as the pre release `v0.3.0-beta.1`), and 1.0.0 adds
-> sun times, Only when, conversion offers and the console. See [Status](#status).
+> **Status: 1.0.0.** Everything below is built and proven in a real Home Assistant test
+> harness, and its pre release `v1.0.0-beta.2` ran on a real home before `v1.0.0`.
+> Version 0.1.0 brought the Schedule sensor, 0.3.0 the routines (first as the pre release
+> `v0.3.0-beta.1`), and 1.0.0 adds sun times, Only when, conversion offers and the
+> console. See [Status](#status).
 
 ## What it does
 
@@ -268,7 +268,7 @@ whole minutes and durations are minutes, up to 1440.
 | --- | --- | --- |
 | 0.1.0 | The Schedule sensor on every device an automation acts on | `v0.1.0` |
 | 0.3.0 | Routines: the device page controls, run timers, catch up, manual changes, skip and pause, weekly schedules, keep alive, pulse, the actions, triggers and conditions, conflicts, the AI summary, the WebSocket API | `v0.3.0-beta.1`, then `v0.3.0` |
-| 1.0.0 | Sun times, Only when, conversion offers, the console | `v1.0.0-beta.1`, then `v1.0.0` |
+| 1.0.0 | Sun times, Only when, conversion offers, the console | `v1.0.0-beta.1` and `v1.0.0-beta.2`, then `v1.0.0` |
 
 Each beta follows its test harness record; each full release follows a run on a real
 home. After 1.0.0 the plan is listing in the HACS default list; the icon and logo
