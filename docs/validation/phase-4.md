@@ -54,6 +54,18 @@ counts are those of the commit that tags `v1.0.0-beta.1`.
 | R2 requested | Owner log O16 | the restart waits for the owner, after the live session stages the scenario of the hour | Pending | 2026-10-18 | Jayant |
 | The live suite after R2 (F5, F6 fixed, L76) | `.venv/bin/python -m pytest -m live` from the development clone, read only, with the Home Assistant test plugin loaded | 4 passed: `test_health_runs_the_deployed_commit` (Health on `01ca0b3`, the commit of `v1.0.0-beta.2`, version 1.0.0), `test_schedule_sensors_exist_with_valid_states`, `test_no_open_issue_from_this_integration`, `test_share_of_unparsed_lines_is_reported` | Pass | 2026-10-18 | L26 |
 
+## The v1.0.0 release and its deploy
+
+| Step | Method | Evidence | Result | Date | Approved by |
+| --- | --- | --- | --- | --- | --- |
+| Release commit CI | GitHub Actions on `3577f44` | `test (pinned)` and `test (latest)` failed `tests/blueprint/test_pulse.py::test_b37_pulse[off_device]`: a harness entity carried the real date (L81), no product change | Fail, fixed | 2026-10-23 | n/a |
+| Exit CI | GitHub Actions on `8632604` (the harness fix of L81) | every job green; `main` fast forwarded `01ca0b3..8632604` | Pass | 2026-10-23 | n/a |
+| Release | `release.yml` on the tag `v1.0.0` (L80, the owner's choice) | a full release, the repository's latest, with `device_routines.zip`, published 17:37:47Z | Pass | 2026-10-23 | Jayant |
+| Read before the deploy | `device_routines_deploy_status` and Health over MCP | deployed and running `01ca0b3` (`v1.0.0-beta.2`), Health `ok`, version 1.0.0, blueprint schema 2, one routine loaded, no issue; auto deploy `off` | Pass | 2026-10-23 | L26 |
+| Hand deploy of `v1.0.0` | `shell_command.deploy_device_routines` with `ref: v1.0.0` | `ok: true`, `changed: true`, commit `8632604`, previous `01ca0b3`, 11 changed files (the blueprint, the `brand/` folder, `compiler.py`, `health.py`, `manager.py`, `quality_scale.yaml`), `restart_required: true`, no warnings | Pass | 2026-10-23 | L26 |
+| Read after the deploy | `device_routines_deploy_status`, Health, the auto deploy switch | deployed `8632604` at 17:37:39Z with a backup of `01ca0b3`; Health `ok` still running `01ca0b3`; auto deploy `off` | Pass | 2026-10-23 | L26 |
+| Restart requested | Owner log O19 | the restart that loads `v1.0.0` waits for the owner | Pending | 2026-10-23 | Jayant |
+
 ## Live rows
 
 Filled after restart R2 (plan Section 6.3).
