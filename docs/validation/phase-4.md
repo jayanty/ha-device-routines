@@ -64,7 +64,22 @@ counts are those of the commit that tags `v1.0.0-beta.1`.
 | Read before the deploy | `device_routines_deploy_status` and Health over MCP | deployed and running `01ca0b3` (`v1.0.0-beta.2`), Health `ok`, version 1.0.0, blueprint schema 2, one routine loaded, no issue; auto deploy `off` | Pass | 2026-10-23 | L26 |
 | Hand deploy of `v1.0.0` | `shell_command.deploy_device_routines` with `ref: v1.0.0` | `ok: true`, `changed: true`, commit `8632604`, previous `01ca0b3`, 11 changed files (the blueprint, the `brand/` folder, `compiler.py`, `health.py`, `manager.py`, `quality_scale.yaml`), `restart_required: true`, no warnings | Pass | 2026-10-23 | L26 |
 | Read after the deploy | `device_routines_deploy_status`, Health, the auto deploy switch | deployed `8632604` at 17:37:39Z with a backup of `01ca0b3`; Health `ok` still running `01ca0b3`; auto deploy `off` | Pass | 2026-10-23 | L26 |
-| Restart requested | Owner log O19 | the restart that loads `v1.0.0` waits for the owner | Pending | 2026-10-23 | Jayant |
+| Restart requested | Owner log O19 | the restart that loads `v1.0.0` waits for the owner | Done: the owner restarted at about 20:20Z, with the core updated to 2026.10.2 | 2026-10-23 | Jayant |
+
+### After the restart that loaded v1.0.0 (O19)
+
+Nothing was staged before this restart (the owner restarted without a live session), so the
+restart halves left from live validation A (S3 or S4 with S5, S12) still stand on their
+harness rows.
+
+| Step | Method | Evidence | Result | Date | Approved by |
+| --- | --- | --- | --- | --- | --- |
+| Health on the release | MCP read of the Health sensor | `ok` since 20:20:50Z, `commit` `8632604`, `branch` `v1.0.0`, `version` 1.0.0, core 2026.10.2, `blueprint_schema: 2`, `blueprint_status: ok`, `owned_count: 1`, `loaded_count: 1`, no issue, last reconcile 20:20:57Z | Pass | 2026-10-23 | n/a (read only) |
+| The live suite | `.venv/bin/python -m pytest -m live` from the development clone | 4 passed | Pass | 2026-10-23 | n/a (read only) |
+| The form layout (L74) | `blueprint/list` over the WebSocket: the installed copy of the shipped blueprint | `min_version` 2026.10.2; Target and Schedule `collapsed: false`; Timers, Behavior and Advanced `collapsed: true`; the last section "Set by Device Routines (do not edit)" `collapsed: true` with its 11 inputs; the four required inputs under Target each described "Set by Device Routines: ..." | Pass | 2026-10-23 | n/a (read only) |
+| The sandbox routine after the start | `routines/list`, states of the routine, the hand automation and the plug | the routine `active` and on, 17:00 to 09:00 every day in schema 2 form, sentence `On at 5:00 PM`, next action on at 17:00; its start trigger ran at 20:20:57Z and left the plug `off` (the off period); the hand written automation still `off` | Pass | 2026-10-23 | n/a (read only) |
+| Repairs and the system log | `repairs/list_issues`; the system log searched for the integration | no system log entry; from Device Routines only the two conversion offers of 2026-10-18 (the 60 minute failsafes, as designed). Spook's `automation_unknown_entity_references` warning on the sandbox routine since 2026-10-19 00:05Z, naming the sentinel `timer.device_routines_unused`: live finding F8 (decision L83) | Partly: F8 | 2026-10-23 | n/a (read only) |
+| F7 re check (L79) | Read before (above), then `devices/opt` `out` on the sandbox device as the first step of opt out, Clean up now, opt in and set | the auto mode classifier refused the first write as "Modify Shared Resources" (as on 2026-10-18, O17); nothing was written, so the instance is as the restart left it | Not run: owner item O20; F7 stands on its harness tests | 2026-10-23 | L26 |
 
 ## Live rows
 
