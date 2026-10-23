@@ -101,7 +101,21 @@ harness rows.
 | Read before the deploy | `device_routines_deploy_status`, Health, the two package switches over MCP | deployed and running `8632604` (`v1.0.0`), Health `ok`, version 1.0.0, blueprint schema 2, one routine loaded, no issue; auto deploy and auto restart `off` | Pass | 2026-10-23 | L26 |
 | Hand deploy of `v1.0.1` | `shell_command.deploy_device_routines` with `ref: v1.0.1` | `ok: true`, `changed: true`, commit `ddc73a4`, previous `8632604`, 4 changed files (the blueprint, `compiler.py`, `manifest.json`, `migration.py`), `restart_required: true`, no warnings | Pass | 2026-10-23 | L26 |
 | Read after the deploy | `device_routines_deploy_status`, Health, the auto deploy switch | deployed `ddc73a4` at 21:25:42Z with a backup of `8632604`; Health `ok` still running `8632604`; auto deploy `off` | Pass | 2026-10-23 | L26 |
-| Restart requested | Owner log O21 | the restart that loads `v1.0.1` waits for the owner | Pending | 2026-10-23 | Jayant |
+| Restart requested | Owner log O21 | the restart that loads `v1.0.1` waits for the owner | Done: the owner restarted at about 22:29Z | 2026-10-23 | Jayant |
+
+### After the restart that loaded v1.0.1 (O21)
+
+The owner allowed the session's reads and writes on the sandbox plug for the F7 re check
+in chat (O20).
+
+| Step | Method | Evidence | Result | Date | Approved by |
+| --- | --- | --- | --- | --- | --- |
+| Health on the release | MCP read of the Health sensor | `ok` since 22:29:38Z, `commit` `ddc73a4`, `branch` `v1.0.1`, `version` 1.0.1, core 2026.10.2, `blueprint_schema: 3`, `blueprint_status: ok`, `owned_count: 1`, `loaded_count: 1`, no issue | Pass | 2026-10-23 | n/a (read only) |
+| The schema 3 first start (L83) | The routine's config and the logbook over MCP | the start trigger ran at 22:29:49Z, then two reloads within a second (the blueprint upgrade and the rewrite), Health steady through both (the F4 hold of L76); the entry rewritten with the schema 3 inputs, `timer_enabled: false`, every setting unchanged (17:00 to 09:00 every day); the plug untouched | Pass | 2026-10-23 | n/a (read only) |
+| The live suite | `.venv/bin/python -m pytest -m live` from the development clone | 4 passed | Pass | 2026-10-23 | n/a (read only) |
+| Repairs and the system log | `repairs/list_issues`; the system log searched for the integration | no system log entry; from Device Routines only the two conversion offers of 2026-10-18 | Pass | 2026-10-23 | n/a (read only) |
+| F7 re check (L79) | Read before (`routines/get`: `active`, `On at 5:00 PM`; a Clean up now dry run touching nothing); `devices/opt` `out`; the dry run again; `maintenance` `clean_up_now`; `devices/opt` `in`; `routines/set` 17:00 to 09:00; reads of the view, the states, the config, the logbook and Health after each step | opt out: the routine `off` (22:30:57Z), settings kept, the plug untouched; the dry run: `would_change` the sandbox device only; Clean up now: the routine's automation and its own entities gone, `routines/list` empty, Health `ok` with `owned_count: 0`; opt in: no routine yet; the set: the routine written under the same automation id and entity id and `on` at 22:31:19Z, `active`, enabled, `On at 5:00 PM`, next action on at 17:00, its config equal to the one the first start wrote (same config hash), the Manual override and Paused until made again; Health `ok`, `owned_count: 1`, `loaded_count: 1`. On `v1.0.0-beta.2` the same steps left the routine off (F7) | Pass | 2026-10-23 | Jayant (in chat: reads and writes on the sandbox plug, O20) |
+| F8 cleared live (L83) | `repairs/list_issues` at 22:31:42Z (Spook not yet inspected: none of its issues active) and again a few minutes later | once Spook had inspected again (its unrelated warnings back: the unused labels, the unused Zone Notification blueprint, a template's unknown entities), no `automation_unknown_entity_references` warning on the sandbox routine | Pass | 2026-10-23 | n/a (read only) |
 
 ## Live rows
 
