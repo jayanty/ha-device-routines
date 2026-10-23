@@ -91,6 +91,18 @@ harness rows.
 | Schema 2 read rule and the first start | Harness: `tests/integration/test_migration.py` (schema 2 cases rewritten to the same inputs plus `timer_enabled`, `DECOMPILERS[2]` refusing schema 3 keys), `tests/integration/test_schema_2_first_load.py::test_first_load_migrates_every_routine_of_an_older_schema[2]` | a v1.0.0 instance: the shipped file installed, every routine on schema 3 with `timer_enabled` false and its schema 2 inputs kept, no device change, Health `blueprint_schema: 3` | Pass | 2026-10-23 | n/a |
 | The whole suite | `pytest -m "not live" --cov`, `ruff`, `mypy --strict` | every test passes, coverage 99.86 percent | Pass | 2026-10-23 | n/a |
 
+### The v1.0.1 release and its deploy
+
+| Step | Method | Evidence | Result | Date | Approved by |
+| --- | --- | --- | --- | --- | --- |
+| Lane 27 integrated | Rebased onto `dev`, fast forwarded, the whole suite run (L85) | every test passes, coverage 99.86 percent; worktree and branch removed | Pass | 2026-10-23 | n/a |
+| Exit CI | GitHub Actions on `ddc73a4` (`chore(release): 1.0.1`) | every job green; `main` fast forwarded `8632604..ddc73a4` | Pass | 2026-10-23 | n/a |
+| Release | `release.yml` on the tag `v1.0.1` | a full release, the repository's latest, with `device_routines.zip`, published 21:25:11Z, its notes the `[1.0.1]` changelog section | Pass | 2026-10-23 | n/a |
+| Read before the deploy | `device_routines_deploy_status`, Health, the two package switches over MCP | deployed and running `8632604` (`v1.0.0`), Health `ok`, version 1.0.0, blueprint schema 2, one routine loaded, no issue; auto deploy and auto restart `off` | Pass | 2026-10-23 | L26 |
+| Hand deploy of `v1.0.1` | `shell_command.deploy_device_routines` with `ref: v1.0.1` | `ok: true`, `changed: true`, commit `ddc73a4`, previous `8632604`, 4 changed files (the blueprint, `compiler.py`, `manifest.json`, `migration.py`), `restart_required: true`, no warnings | Pass | 2026-10-23 | L26 |
+| Read after the deploy | `device_routines_deploy_status`, Health, the auto deploy switch | deployed `ddc73a4` at 21:25:42Z with a backup of `8632604`; Health `ok` still running `8632604`; auto deploy `off` | Pass | 2026-10-23 | L26 |
+| Restart requested | Owner log O21 | the restart that loads `v1.0.1` waits for the owner | Pending | 2026-10-23 | Jayant |
+
 ## Live rows
 
 Filled after restart R2 (plan Section 6.3).
