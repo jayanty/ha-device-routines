@@ -21,6 +21,10 @@ schema 1 plus the nine of sun bounds; `schema_1_inputs(**overrides)` writes what
 compiler wrote, `SCHEMA_1_BLUEPRINT` is the schema 1 file as v0.3.0-beta.1 shipped it, and
 `sun_instant(hass, event, day, offset)` says when a sun bound runs on a day (lane 19 reuses
 all three).
+
+Schema 3 (decision L83): the mirror adds `timer_enabled`, on exactly when `timer_entity`
+names a helper; `schema_2_inputs(**overrides)` writes what a schema 2 compiler wrote and
+`SCHEMA_2_BLUEPRINT` is the schema 2 file as v1.0.0 shipped it.
 """
 
 from __future__ import annotations
@@ -77,6 +81,10 @@ BLUEPRINT_SOURCE: Final = (
 SCHEMA_1_BLUEPRINT: Final = (
     REPO_ROOT / "tests" / "fixtures" / "blueprint" / "device_routine_schema_1.yaml"
 )
+# The schema 2 file byte for byte as v1.0.0 shipped it, for the upgrade rows (B51).
+SCHEMA_2_BLUEPRINT: Final = (
+    REPO_ROOT / "tests" / "fixtures" / "blueprint" / "device_routine_schema_2.yaml"
+)
 
 # The compiler's names (plan Sections 4.2 and 6.2.1), written out by hand: lane 1 wrote
 # `compiler.py` in parallel, lane 16 moves it to schema 2 in parallel, and the contract
@@ -87,7 +95,7 @@ UNUSED_TIMER: Final = "timer.device_routines_unused"
 UNUSED_SCHEDULE: Final = "schedule.device_routines_unused"
 UNUSED_SWITCH: Final = "switch.device_routines_unused"
 UNUSED_DATETIME: Final = "datetime.device_routines_unused"
-BLUEPRINT_SCHEMA_VERSION: Final = 2
+BLUEPRINT_SCHEMA_VERSION: Final = 3
 SCHEMA_1_INPUT_KEYS: Final = (
     "target_entity",
     "on_action",
@@ -137,6 +145,7 @@ SET_IN_MANAGED_SECTION: Final = (
     "off_at_sunset",
     "days_end",
     "crosses_midnight",
+    "timer_enabled",
     "timer_entity",
     "late_window_end",
     "late_sun_offset",
@@ -144,7 +153,7 @@ SET_IN_MANAGED_SECTION: Final = (
     "paused_until_entity",
 )
 SET_BY_DEVICE_ROUTINES: Final = (*SET_IN_TARGET, *SET_IN_MANAGED_SECTION)
-# The 38 inputs in file order, the order the core flattens the sections in: Target (the
+# The 39 inputs in file order, the order the core flattens the sections in: Target (the
 # device, then the four set by Device Routines), what a person may change in the form
 # (Schedule, Timers, Behavior, Advanced), then the collapsed last section.
 INPUT_KEYS: Final = (
@@ -174,8 +183,13 @@ INPUT_KEYS: Final = (
     "extra_conditions",
     *SET_IN_MANAGED_SECTION,
 )
-# The nine inputs schema 2 adds (plan Section 6.2.1), in their order among the 38.
-SCHEMA_2_NEW_KEYS: Final = tuple(key for key in INPUT_KEYS if key not in SCHEMA_1_INPUT_KEYS)
+# The one input schema 3 adds (decision L83), and the 38 inputs of schema 2 in file order.
+SCHEMA_3_NEW_KEYS: Final = ("timer_enabled",)
+SCHEMA_2_INPUT_KEYS: Final = tuple(key for key in INPUT_KEYS if key not in SCHEMA_3_NEW_KEYS)
+# The nine inputs schema 2 adds (plan Section 6.2.1), in their order among its 38.
+SCHEMA_2_NEW_KEYS: Final = tuple(
+    key for key in SCHEMA_2_INPUT_KEYS if key not in SCHEMA_1_INPUT_KEYS
+)
 WEEKDAYS: Final = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 # A bound's kind (`models.TimeKind`) and the nominal sun times that decide only whether a
 # window crosses midnight (`models.NOMINAL_SUN_TIMES`, decision L60).
@@ -248,6 +262,7 @@ _DEFAULTS: Final[Mapping[str, Any]] = {
     "crosses_midnight": False,
     "schedule_enabled": False,
     "schedule_entity": UNUSED_SCHEDULE,
+    "timer_enabled": False,
     "timer_entity": UNUSED_TIMER,
     "turn_off_after_min": 0,
     "turn_back_on_after_min": 0,
@@ -314,14 +329,15 @@ def _side_set(values: Mapping[str, Any], side: str) -> bool:
 
 
 def inputs(**overrides: Any) -> dict[str, Any]:
-    """Return the 38 blueprint inputs of schema 2 in order, as `compile` would emit them.
+    """Return the 39 blueprint inputs of schema 3 in order, as `compile` would emit them.
 
     Unused helpers are the sentinels and every flag has its spec default. The derived
     inputs follow from what is given, as TECH_SPEC 3.3 and plan Section 6.2.1 derive them,
     unless given too: `on_time_enabled` and `off_time_enabled` turn on when their time is
     given for a time bound; `on_at_sunrise`, `on_at_sunset`, `off_at_sunrise` and
     `off_at_sunset` follow `on_kind` and `off_kind`; `schedule_enabled` and `pulse_enabled`
-    turn on when their entity or time is given; `crosses_midnight` when the on bound is
+    turn on when their entity or time is given; `timer_enabled` when `timer_entity` names a
+    helper (decision L83); `crosses_midnight` when the on bound is
     later than the off bound, a sun bound read at its nominal time plus its offset (sunrise
     06:00, sunset 18:00, decision L60); `days_end` is `days_start` shifted by one day for a
     window crossing midnight; `late_window_end` is the on time plus the late start window
@@ -346,6 +362,7 @@ def inputs(**overrides: Any) -> dict[str, Any]:
             derive(f"{side}_at_{event}", values[f"{side}_kind"] == event)
     derive("schedule_enabled", "schedule_entity" in overrides)
     derive("pulse_enabled", "pulse_at" in overrides)
+    derive("timer_enabled", values["timer_entity"] != UNUSED_TIMER)
     derive(
         "crosses_midnight",
         _side_set(values, "on")
@@ -373,6 +390,19 @@ def schema_1_inputs(**overrides: Any) -> dict[str, Any]:
         raise KeyError(f"not a schema 1 input: {sorted(refused)}")
     written = inputs(**overrides)
     return {key: written[key] for key in SCHEMA_1_INPUT_KEYS}
+
+
+def schema_2_inputs(**overrides: Any) -> dict[str, Any]:
+    """Return the 38 inputs a schema 2 compiler wrote for the same settings.
+
+    The schema 2 mirror is the schema 3 one without `timer_enabled`, which defaults to on:
+    a schema 2 routine runs every step that names the timer, sentinel or not.
+    """
+    refused = set(overrides) - set(SCHEMA_2_INPUT_KEYS)
+    if refused:
+        raise KeyError(f"not a schema 2 input: {sorted(refused)}")
+    written = inputs(**overrides)
+    return {key: written[key] for key in SCHEMA_2_INPUT_KEYS}
 
 
 def sun_instant(

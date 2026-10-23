@@ -85,9 +85,37 @@ def decompile_schema_1(inputs: Mapping[str, Any]) -> RoutineSettings:
     return compiler.decompile(inputs)
 
 
+# The 38 inputs of blueprint input schema 2, as `v1.0.0` shipped them: schema 1's and the
+# nine of sun bounds (decision L60).
+SCHEMA_2_KEYS: Final = SCHEMA_1_KEYS | frozenset(
+    {
+        "on_kind",
+        "on_sun_offset",
+        "off_kind",
+        "off_sun_offset",
+        "on_at_sunrise",
+        "on_at_sunset",
+        "off_at_sunrise",
+        "off_at_sunset",
+        "late_sun_offset",
+    }
+)
+
+
+def decompile_schema_2(inputs: Mapping[str, Any]) -> RoutineSettings:
+    """Read schema 2 inputs: refuse any later key, read the rest as the compiler does.
+
+    The one input schema 3 adds, `timer_enabled`, is derived and never read (decision L83),
+    so `compiler.decompile` reads schema 2 exactly as schema 2 did.
+    """
+    if not isinstance(inputs, Mapping) or not set(inputs) <= SCHEMA_2_KEYS:
+        raise CompileError("invalid_inputs")
+    return compiler.decompile(inputs)
+
+
 # The rules of every older blueprint input schema, by schema number. The current schema
 # reads with `compiler.decompile`; a schema change freezes the old rules here.
-DECOMPILERS: Final[dict[int, Decompiler]] = {1: decompile_schema_1}
+DECOMPILERS: Final[dict[int, Decompiler]] = {1: decompile_schema_1, 2: decompile_schema_2}
 
 
 class SchemaMigrationTarget(Protocol):

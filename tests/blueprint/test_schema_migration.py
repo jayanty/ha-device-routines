@@ -1,4 +1,4 @@
-"""Behavior matrix: a schema 1 routine through the upgrade to blueprint schema 2 (B50).
+"""Behavior matrix: a routine through the upgrades of the blueprint input schema (B50, B51).
 
 TECH_SPEC 4.11 and 5.6: the integration replaces the installed blueprint file, the
 automations built on it re read it, and the migration then rewrites every owned routine
@@ -6,11 +6,16 @@ with the inputs of the new schema. Between the two steps a routine runs schema 1
 on the schema 2 file, which is why every new input defaults to schema 1 behavior (plan
 Section 6.2.1, decision L60). The schema 2 inputs here are hand written through the
 mirror, as `compile` writes them for the same settings; the compiler's side is lane 16's.
+
+B50 runs a schema 1 routine on the current file. B51 runs a schema 2 routine with a
+countdown on the schema 3 file: `timer_enabled` (decision L83) defaults to on, so every
+step that names the timer runs until the migration writes the flag.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
+from datetime import timedelta
 import hashlib
 from pathlib import Path
 from typing import Any
@@ -32,6 +37,8 @@ from tests.blueprint.conftest import (
     PAUSED,
     SCHEMA_1_BLUEPRINT,
     SCHEMA_1_INPUT_KEYS,
+    SCHEMA_2_BLUEPRINT,
+    SCHEMA_2_INPUT_KEYS,
     SCHEMA_2_NEW_KEYS,
     SWITCH,
     TIMER,
@@ -42,12 +49,15 @@ from tests.blueprint.conftest import (
     automation_entries,
     inputs,
     schema_1_inputs,
+    schema_2_inputs,
     sun_offset,
 )
 
 Routine = Callable[[Mapping[str, Any]], Awaitable[str]]
 # The sha256 of the schema 1 file v0.3.0-beta.1 ships; the fixture is that file unchanged.
 SCHEMA_1_SHA256 = "2e286fdf5a877635340cef02adae5a81f8424361522c869e9a77daae38a3cb58"
+# The sha256 of the schema 2 file v1.0.0 ships; the fixture is that file unchanged.
+SCHEMA_2_SHA256 = "ed51f2c55ce72ab2367404261ca8b94f2c12fc447ee95f901f19629a7cfb6093"
 
 # Settings a schema 1 compiler could write, as the mirror's primary inputs: a window
 # crossing midnight on weekdays with a countdown for manual changes, and a window the same
@@ -149,6 +159,18 @@ def test_the_schema_1_fixture_is_the_shipped_schema_1_file() -> None:
     assert raw != BLUEPRINT_SOURCE.read_bytes()
 
 
+def test_the_schema_2_fixture_is_the_shipped_schema_2_file() -> None:
+    raw = SCHEMA_2_BLUEPRINT.read_bytes()
+    data = parse_yaml(raw.decode("utf-8"))
+    assert isinstance(data, dict)
+    loaded = Blueprint(data, expected_domain="automation", schema=AUTOMATION_BLUEPRINT_SCHEMA)
+
+    assert hashlib.sha256(raw).hexdigest() == SCHEMA_2_SHA256
+    assert raw.decode("utf-8").splitlines()[0] == "# Device Routines blueprint, schema 2."
+    assert tuple(loaded.inputs) == SCHEMA_2_INPUT_KEYS
+    assert raw != BLUEPRINT_SOURCE.read_bytes()
+
+
 @pytest.mark.parametrize("settings", list(SETTINGS))
 def test_schema_1_and_2_inputs_of_the_same_settings_differ_by_the_new_defaults(
     settings: str,
@@ -221,3 +243,46 @@ async def test_b50_schema_1_routine_keeps_running_on_schema_2(
         after_the_window
     )
     assert changes == ["on", *after_the_window]
+
+
+async def test_b51_schema_2_countdown_keeps_running_on_schema_3(
+    hass: HomeAssistant,
+    clock: Clock,
+    routine_automation: Routine,
+    sandbox_switch: SandboxSwitch,
+    routine_timer: str,
+) -> None:
+    given = {"timer_entity": TIMER, "turn_off_after_min": 30}
+
+    async def a_manual_on_turns_off_after_30_minutes(day: int, at: str) -> None:
+        await clock.to(clock.at(day, at))
+        sandbox_switch.device_change(on=True)
+        await hass.async_block_till_done()
+        timer = hass.states.get(TIMER)
+        assert timer is not None
+        assert timer.state == "active"
+        await clock.to(clock.at(day, at) + timedelta(minutes=29, seconds=58))
+        assert sandbox_switch.state_now == "on"
+        await clock.to(clock.at(day, at) + timedelta(minutes=30, seconds=1))
+        assert sandbox_switch.state_now == "off"
+
+    # A routine on the schema 2 file with schema 2 inputs, as v1.0.0 runs it.
+    clock.set(clock.at(0, "09:00"))
+    assert await async_setup_component(hass, "automation", {})
+    await async_install_blueprint(hass, SCHEMA_2_BLUEPRINT)
+    await routine_automation(schema_2_inputs(**given))
+    assert await installed_inputs(hass) == SCHEMA_2_INPUT_KEYS
+    await a_manual_on_turns_off_after_30_minutes(0, "10:00")
+
+    # The schema 3 file is installed over it and the automations reload: the countdown
+    # still runs with the schema 2 inputs, `timer_enabled` at its default.
+    await async_install_blueprint(hass, BLUEPRINT_SOURCE)
+    await reload_automations(hass)
+    assert await installed_inputs(hass) == INPUT_KEYS
+    assert tuple(written_inputs(hass)) == SCHEMA_2_INPUT_KEYS
+    await a_manual_on_turns_off_after_30_minutes(0, "12:00")
+
+    # The migration writes `timer_enabled` on for a routine with a timer: no change.
+    await routine_automation(inputs(**given))
+    assert written_inputs(hass)["timer_enabled"] is True
+    await a_manual_on_turns_off_after_30_minutes(0, "14:00")

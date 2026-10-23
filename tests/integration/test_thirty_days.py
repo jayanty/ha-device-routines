@@ -972,7 +972,8 @@ async def downgrade_to_schema_0(sim: Simulation) -> dict[str, dict[str, Any]]:
     """
     shipped = maintenance.shipped_blueprint_text()
     old_blueprint = shipped.replace(NEW_KEY, OLD_KEY).replace(
-        "# Device Routines blueprint, schema 2.", "# Device Routines blueprint, schema 0."
+        f"# Device Routines blueprint, schema {compiler.BLUEPRINT_SCHEMA_VERSION}.",
+        "# Device Routines blueprint, schema 0.",
     )
     installed_blueprint(sim.config_dir).write_text(old_blueprint, encoding="utf-8")
     entries = sim.file_entries()

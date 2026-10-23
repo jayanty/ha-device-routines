@@ -1,14 +1,15 @@
 """Routine settings to blueprint inputs and back (TECH_SPEC 3.3 and 5.2).
 
-`compile` writes the exact input mapping of the blueprint: the 38 keys of input schema 2
-(plan Section 6.2.1) in the blueprint's file order (`INPUT_KEYS`), the derived inputs
+`compile` writes the exact input mapping of the blueprint: the 39 keys of input schema 3
+(plan Section 6.2.1, decision L83) in the blueprint's file order (`INPUT_KEYS`), the derived inputs
 included, as plain YAML types
 (times as `HH:MM:SS`, sun offsets as `[-]HH:MM:SS` text with whole minutes, kinds as
 `time`, `sunrise` or `sunset`, days as lists of weekday values from Monday to Sunday,
 minutes as `int`, flags as `bool`, entity ids and action names as `str`, conditions as a
 list of mappings). `decompile` reads it back. The blueprint form is the second editor, so
 `decompile` reads only the primary inputs and never the derived ones (`days_end`,
-`crosses_midnight`, `late_window_end`, the four sun flags, `late_sun_offset`) or the
+`crosses_midnight`, `late_window_end`, the four sun flags, `late_sun_offset`,
+`timer_enabled`) or the
 profile's (`on_action`, `off_action`, `inactive_state`): a form edit of a primary input
 reads correctly, and the next write repairs the rest.
 
@@ -27,8 +28,11 @@ offset 0 and a sun bound no time. For every `s` that `validate` accepts,
 `compile(decompile(i), profile, refs_of(i)) == i`.
 
 Helpers. An input that names a helper holds the sentinel while its feature is off: the
-timer without a duration, the schedule without Weekly schedule. The override switch and
-the Paused until entity belong to every routine and always come from `HelperRefs`.
+timer without a duration, the schedule without Weekly schedule. A step that names a
+sentinel never runs: `schedule_enabled` switches the schedule's steps and, since schema 3,
+`timer_enabled` the timer's, off exactly when the timer input holds its sentinel (live
+finding F8, decision L83). The override switch and the Paused until entity belong to every
+routine and always come from `HelperRefs`.
 
 Refusals (PRD 5.4) are data in `domains`: a profile for a refused device class has no
 activating action. A profile without one writes its deactivating action into `on_action`
@@ -63,7 +67,7 @@ from .models import (
     Weekday,
 )
 
-BLUEPRINT_SCHEMA_VERSION: Final = 2
+BLUEPRINT_SCHEMA_VERSION: Final = 3
 # Defined in `markers` (decision L34) and re-exported here: the same object.
 BLUEPRINT_PATH: Final = markers.BLUEPRINT_PATH
 
@@ -88,7 +92,7 @@ MAX_SUN_OFFSET_MIN: Final = 180
 # sections in (owner decision O3, decision L74): Target holds the device and, marked as set
 # by Device Routines, the four inputs without a default (the core's form keeps a section
 # with one open); then the inputs `decompile` reads, which a person may change in the
-# form (Schedule, Timers, Behavior, Advanced); then the 11 other inputs Device Routines
+# form (Schedule, Timers, Behavior, Advanced); then the 12 other inputs Device Routines
 # sets itself and `decompile` never reads, in the collapsed last section. The order is
 # layout only: inputs are stored flat, and `decompile` reads them in any order.
 INPUT_KEYS: Final[tuple[str, ...]] = (
@@ -125,6 +129,7 @@ INPUT_KEYS: Final[tuple[str, ...]] = (
     "off_at_sunset",
     "days_end",
     "crosses_midnight",
+    "timer_enabled",
     "timer_entity",
     "late_window_end",
     "late_sun_offset",
@@ -141,7 +146,8 @@ _ALL_DAY_VALUES: Final = [day.value for day in Weekday]
 
 # The blueprint's defaults (TECH_SPEC 5.2, plan 6.2.1), which `decompile` assumes for
 # omitted inputs. The schema 2 ones reproduce schema 1 behavior: time bounds, no sun
-# trigger, the late window of a time start. Read only: the lists are shared.
+# trigger, the late window of a time start; the schema 3 one reproduces schema 2's: the
+# timer's steps on. Read only: the lists are shared.
 INPUT_DEFAULTS: Final[Mapping[str, Any]] = {
     "on_time_enabled": False,
     "on_time": UNUSED_TIME,
@@ -171,6 +177,7 @@ INPUT_DEFAULTS: Final[Mapping[str, Any]] = {
     "off_at_sunset": False,
     "days_end": _ALL_DAY_VALUES,
     "crosses_midnight": False,
+    "timer_enabled": True,
     "timer_entity": UNUSED_TIMER,
     "late_window_end": "00:15:00",
     "late_sun_offset": "00:15:00",
@@ -404,6 +411,7 @@ def compile(  # noqa: A001  # the contract name (plan Section 4.2)
     weekly = settings.days is Days.WEEKLY_SCHEDULE
     schedule = settings.schedule_entity if weekly and settings.schedule_entity else None
     timed = bool(settings.turn_off_after_min or settings.turn_back_on_after_min)
+    timer = refs.timer_entity if timed else UNUSED_TIMER
     pulse = settings.pulse or Pulse(time())
     inputs: dict[str, Any] = {
         "target_entity": settings.target_entity,
@@ -439,7 +447,8 @@ def compile(  # noqa: A001  # the contract name (plan Section 4.2)
         "off_at_sunset": settings.off_kind is TimeKind.SUNSET,
         "days_end": _day_values(settings.end_days),
         "crosses_midnight": settings.crosses_midnight,
-        "timer_entity": refs.timer_entity if timed else UNUSED_TIMER,
+        "timer_enabled": timer != UNUSED_TIMER,
+        "timer_entity": timer,
         "late_window_end": _late_window_end(settings.on_time, settings.late_start_window_min),
         "late_sun_offset": _offset(settings.on_sun_offset_min + settings.late_start_window_min),
         "override_entity": refs.override_entity,
@@ -546,6 +555,7 @@ _KINDS: Final[Mapping[str, Callable[[object], bool]]] = {
     "off_at_sunset": _is_flag,
     "days_end": _is_days,
     "crosses_midnight": _is_flag,
+    "timer_enabled": _is_flag,
     "timer_entity": _is_name,
     "late_window_end": _is_time,
     "late_sun_offset": _is_offset,
@@ -559,8 +569,8 @@ def is_valid_shape(inputs: object) -> bool:
 
     Readable means no unknown key, no missing required key, and every value of the type
     `compile` writes. A form may write `HH:MM` times and offsets and whole numbers as
-    floats, which read the same. The schema 2 inputs may be missing, as every input with a
-    default may: schema 1 inputs are readable.
+    floats, which read the same. The inputs of a later schema may be missing, as every input
+    with a default may: schema 1 and schema 2 inputs are readable.
     """
     if not isinstance(inputs, Mapping):
         return False

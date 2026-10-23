@@ -1,4 +1,4 @@
-# Device Routines blueprint, schema 2.
+# Device Routines blueprint, schema 3.
 # Do not edit: changes are detected and offered for restore.
 #
 # One automation per device runs this blueprint. Every rule lives in native conditions;
@@ -12,6 +12,12 @@
 # a time, and is tested with the `sun` condition, one half of a window per side with its
 # day set. The four sun flags are derived from the kinds by Device Routines; with every new
 # input at its default the routine runs exactly as on schema 1.
+#
+# Schema 3 adds `timer_enabled` (live finding F8, decision L83). Every step that names the
+# timer reads it in `enabled:`, as every step that names the weekly schedule reads
+# `schedule_enabled`, so a routine without a countdown runs no step that names the timer
+# sentinel, which never exists. It defaults to on, so a schema 2 routine runs exactly as
+# on schema 2 until Device Routines rewrites it.
 #
 # The form shows what a person may change in the sections Target to Advanced, and the
 # inputs Device Routines sets itself apart (owner decision O3, decision L74): the derived
@@ -328,6 +334,12 @@ blueprint:
           default: false
           selector:
             boolean: {}
+        timer_enabled:
+          name: Use the countdown timer
+          description: On when Turn off after or Turn back on after is set; the steps that use the timer run only then.
+          default: true
+          selector:
+            boolean: {}
         timer_entity:
           name: Timer
           description: The timer helper that counts down Turn off after or Turn back on after, so a countdown survives a restart.
@@ -470,6 +482,7 @@ triggers:
     trigger: timer.finished
     target:
       entity_id: !input timer_entity
+    enabled: !input timer_enabled
   - alias: The countdown ran out while Home Assistant was down (caught up by the integration)
     id: timer_done
     trigger: event
@@ -652,6 +665,7 @@ actions:
                 then:
                   - &start_turn_off_after
                     alias: Start the Turn off after countdown
+                    enabled: !input timer_enabled
                     action: timer.start
                     target:
                       entity_id: !input timer_entity
@@ -710,6 +724,7 @@ actions:
                       entity_id: !input target_entity
               - &cancel_timer
                 alias: Cancel the countdown
+                enabled: !input timer_enabled
                 if:
                   - alias: The countdown is running or paused
                     condition: or
@@ -887,6 +902,7 @@ actions:
                   - *has_window
         sequence:
           - alias: Start the Turn back on after countdown
+            enabled: !input timer_enabled
             action: timer.start
             target:
               entity_id: !input timer_entity
@@ -965,6 +981,7 @@ actions:
               - *not_paused
         sequence:
           - alias: Pause a running countdown
+            enabled: !input timer_enabled
             if:
               - alias: The countdown is running
                 condition: timer.is_active
@@ -984,6 +1001,7 @@ actions:
             id: pause_changed
         sequence:
           - alias: Resume a paused countdown with its remaining time
+            enabled: !input timer_enabled
             if:
               - alias: The countdown is paused
                 condition: timer.is_paused

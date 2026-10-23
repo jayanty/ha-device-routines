@@ -670,10 +670,14 @@ def test_schema_1_fixture_reads_unchanged(case: dict[str, Any]) -> None:
     [case for case in SCHEMA_1_CASES if not case["name"].startswith("form edit")],
     ids=[case["name"] for case in SCHEMA_1_CASES if not case["name"].startswith("form edit")],
 )
-def test_a_schema_1_routine_rewrites_to_the_same_inputs_plus_the_schema_2_defaults(
+def test_a_schema_1_routine_rewrites_to_the_same_inputs_plus_the_later_defaults(
     case: dict[str, Any],
 ) -> None:
-    """The migration writes what schema 1 had, and the new inputs at their defaults."""
+    """The migration writes what schema 1 had, and the new inputs at their defaults.
+
+    Except `timer_enabled` (schema 3, decision L83), which is on exactly when the routine
+    has a timer.
+    """
     old = case["inputs"]
     domain, _, device_class = case["name"].partition(":")[0].partition(" ")
     profile = profile_for(domain, device_class or None)
@@ -686,8 +690,13 @@ def test_a_schema_1_routine_rewrites_to_the_same_inputs_plus_the_schema_2_defaul
     added = {key: new[key] for key in new if key not in migration.SCHEMA_1_KEYS}
     window = old["late_start_window_min"]
     assert added == {
-        key: compiler.INPUT_DEFAULTS[key] for key in added if key != "late_sun_offset"
-    } | {"late_sun_offset": f"{window // 60:02d}:{window % 60:02d}:00"}
+        key: compiler.INPUT_DEFAULTS[key]
+        for key in added
+        if key not in {"late_sun_offset", "timer_enabled"}
+    } | {
+        "late_sun_offset": f"{window // 60:02d}:{window % 60:02d}:00",
+        "timer_enabled": old["timer_entity"] != compiler.UNUSED_TIMER,
+    }
     assert compiler.decompile(new) == settings_
 
 
@@ -706,9 +715,67 @@ def test_decompilers_1_refuses_schema_2_keys(key: str) -> None:
 
 
 def test_decompilers_1_refuses_what_is_not_schema_1_inputs() -> None:
-    schema_2 = compiled(FAN_NEW, FAN_DEVICE)
-    assert migration.decompile_inputs(schema_2, compiler.BLUEPRINT_SCHEMA_VERSION) == FAN_NEW
-    for broken in (schema_2, ["not", "a", "mapping"], {"unknown_input": 1}):
+    current = compiled(FAN_NEW, FAN_DEVICE)
+    assert migration.decompile_inputs(current, compiler.BLUEPRINT_SCHEMA_VERSION) == FAN_NEW
+    for broken in (current, ["not", "a", "mapping"], {"unknown_input": 1}):
         with pytest.raises(CompileError) as raised:
             migration.decompile_inputs(broken, 1)  # type: ignore[arg-type]
+        assert raised.value.translation_key == "invalid_inputs"
+
+
+# --------------------------------------------------------------------------------------
+# Schema 2, read by DECOMPILERS[2] (live finding F8, decision L83)
+# --------------------------------------------------------------------------------------
+
+
+def schema_2_inputs_of(case: Mapping[str, Any]) -> tuple[dict[str, Any], RoutineSettings, Any]:
+    """Return the inputs a schema 2 compiler wrote for a fixture case, its settings, profile.
+
+    Schema 3 adds only `timer_enabled`, so what a schema 2 compiler wrote is what the
+    current one writes without it.
+    """
+    domain, _, device_class = case["name"].partition(":")[0].partition(" ")
+    profile = profile_for(domain, device_class or None)
+    assert profile is not None
+    settings_ = migration.decompile_inputs(case["inputs"], 1)
+    current = compiler.compile(settings_, profile, compiler.refs_of(case["inputs"])).inputs
+    schema_2 = {key: value for key, value in current.items() if key != "timer_enabled"}
+    return schema_2, settings_, profile
+
+
+def test_schema_2_is_the_current_schema_without_timer_enabled() -> None:
+    assert len(migration.SCHEMA_2_KEYS) == 38
+    assert migration.SCHEMA_1_KEYS < migration.SCHEMA_2_KEYS < set(compiler.INPUT_KEYS)
+    assert set(compiler.INPUT_KEYS) - migration.SCHEMA_2_KEYS == {"timer_enabled"}
+    assert migration.DECOMPILERS[2] is migration.decompile_schema_2
+
+
+@pytest.mark.parametrize(
+    "case",
+    [case for case in SCHEMA_1_CASES if not case["name"].startswith("form edit")],
+    ids=[case["name"] for case in SCHEMA_1_CASES if not case["name"].startswith("form edit")],
+)
+def test_a_schema_2_routine_rewrites_to_the_same_inputs_plus_timer_enabled(
+    case: dict[str, Any],
+) -> None:
+    """The migration writes what schema 2 had, and `timer_enabled` on exactly with a timer."""
+    old, settings_, profile = schema_2_inputs_of(case)
+    assert set(old) == migration.SCHEMA_2_KEYS
+
+    read = migration.decompile_inputs(old, 2)
+    new = dict(compiler.compile(read, profile, compiler.refs_of(old)).inputs)
+
+    assert read == settings_
+    assert {key: value for key, value in new.items() if key != "timer_enabled"} == old
+    assert new["timer_enabled"] is (old["timer_entity"] != compiler.UNUSED_TIMER)
+    assert compiler.decompile(new) == settings_
+
+
+def test_decompilers_2_refuses_what_is_not_schema_2_inputs() -> None:
+    current = compiled(FAN_NEW, FAN_DEVICE)
+    schema_2 = {key: value for key, value in current.items() if key != "timer_enabled"}
+    assert migration.decompile_inputs(schema_2, 2) == FAN_NEW
+    for broken in (current, ["not", "a", "mapping"], {"unknown_input": 1}):
+        with pytest.raises(CompileError) as raised:
+            migration.decompile_inputs(broken, 2)  # type: ignore[arg-type]
         assert raised.value.translation_key == "invalid_inputs"

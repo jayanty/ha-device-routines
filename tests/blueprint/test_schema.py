@@ -2,10 +2,11 @@
 
 These tests read the file itself. The behavior of each rule is proven by the matrix tests
 next to this file; here only the structure the spec and decisions L20, L22, L24, L60 and
-the A6 note pin is checked. The file is blueprint input schema 2 (plan Section 6.2.1): the
-29 inputs of schema 1 plus the nine of sun bounds, each new one defaulting to schema 1
-behavior. Its last section, collapsed, holds the inputs Device Routines sets itself that
-have a default; the four without one stay in Target, marked (owner decision O3, L74).
+the A6 note pin is checked. The file is blueprint input schema 3: the 29 inputs of schema 1,
+the nine of sun bounds that schema 2 added (plan Section 6.2.1), each defaulting to schema 1
+behavior, and `timer_enabled` (decision L83), defaulting to schema 2 behavior. Its last
+section, collapsed, holds the inputs Device Routines sets itself that have a default; the
+four without one stay in Target, marked (owner decision O3, L74).
 """
 
 from __future__ import annotations
@@ -32,7 +33,9 @@ from tests.blueprint.conftest import (
     INPUT_KEYS,
     SCHEDULE,
     SCHEMA_1_INPUT_KEYS,
+    SCHEMA_2_INPUT_KEYS,
     SCHEMA_2_NEW_KEYS,
+    SCHEMA_3_NEW_KEYS,
     SET_BY_DEVICE_ROUTINES,
     SET_IN_MANAGED_SECTION,
     SET_IN_TARGET,
@@ -44,6 +47,7 @@ from tests.blueprint.conftest import (
     inputs,
     owned_automation,
     schema_1_inputs,
+    schema_2_inputs,
     sun_offset,
     target_inputs,
 )
@@ -162,6 +166,16 @@ def sun_nodes(root: Any) -> Iterator[tuple[tuple[str, ...], Mapping[str, Any]]]:
             yield path, value
 
 
+def nodes_naming(root: Any, name: Any) -> Iterator[tuple[tuple[str, ...], Mapping[str, Any]]]:
+    """Yield every trigger, condition or action that names a value in its `entity_id`."""
+    for path, value in walk(root):
+        if isinstance(value, Mapping) and name in (
+            value.get("entity_id"),
+            (value.get("target") or {}).get("entity_id"),
+        ):
+            yield path, value
+
+
 def switches_of(root: Any, path: tuple[str, ...]) -> list[Any]:
     """Return the `enabled` values of a node and of every node above it."""
     return [
@@ -212,11 +226,14 @@ def test_every_input_of_the_contract_exists_once_in_order(blueprint: dict[str, A
     keys = [key for key, _ in flat_inputs(blueprint)]
 
     assert tuple(keys) == INPUT_KEYS
-    assert len(keys) == len(set(keys)) == 38
+    assert len(keys) == len(set(keys)) == 39
     assert list(inputs()) == list(INPUT_KEYS)
-    # Schema 2 is schema 1 with nine inputs added; none went away. The form's sections
-    # moved some (owner decision O3), which is layout only: inputs are stored flat.
-    assert set(SCHEMA_1_INPUT_KEYS) <= set(keys)
+    # Schema 2 is schema 1 with nine inputs added and schema 3 is schema 2 with one; none
+    # went away. The form's sections moved some (owner decision O3), which is layout only:
+    # inputs are stored flat.
+    assert set(SCHEMA_1_INPUT_KEYS) <= set(SCHEMA_2_INPUT_KEYS) <= set(keys)
+    assert set(keys) - set(SCHEMA_2_INPUT_KEYS) == set(SCHEMA_3_NEW_KEYS) == {"timer_enabled"}
+    assert section_of(blueprint, "timer_enabled") == "managed"
     assert tuple(SCHEMA_2_DEFAULTS) == SCHEMA_2_NEW_KEYS
     assert {key: section_of(blueprint, key) for key in SCHEMA_2_NEW_KEYS} == {
         **dict.fromkeys(SCHEMA_2_NEW_KEYS, "managed"),
@@ -333,15 +350,18 @@ def test_defaults_carry_the_sentinels(blueprint: dict[str, Any]) -> None:
 
     assert defaults["schedule_entity"] == UNUSED_SCHEDULE
     assert defaults["timer_entity"] == UNUSED_TIMER
+    assert defaults["timer_enabled"] is True
     assert defaults["override_entity"] == UNUSED_SWITCH
     assert defaults["paused_until_entity"] == UNUSED_DATETIME
     assert defaults["extra_conditions"] == []
-    # Required inputs have no default; every other default equals the mirror's.
+    # Required inputs have no default; every other default equals the mirror's, except
+    # `timer_enabled`: it defaults to schema 2 behavior (on), and the mirror derives it
+    # from the timer, here the sentinel (off).
     required = {"target_entity", "on_action", "off_action", "inactive_state", "device_id"}
     assert {key for key, value in defaults.items() if value is None} == required
     assert {key: value for key, value in defaults.items() if key not in required} == {
         key: value for key, value in inputs().items() if key not in required
-    }
+    } | {"timer_enabled": True}
 
 
 def test_every_new_input_defaults_to_schema_1_behavior(blueprint: dict[str, Any]) -> None:
@@ -364,11 +384,50 @@ def test_every_new_input_defaults_to_schema_1_behavior(blueprint: dict[str, Any]
         assert False in switches_of(substituted, path), path
 
 
-def test_header_names_schema_2() -> None:
+@pytest.mark.parametrize(
+    ("helper", "switch"),
+    [("timer_entity", "timer_enabled"), ("schedule_entity", "schedule_enabled")],
+)
+def test_every_step_that_names_a_helper_is_switched_by_its_flag(
+    blueprint: dict[str, Any], helper: str, switch: str
+) -> None:
+    # Live finding F8 (decision L83): a step that names a helper's sentinel must not run,
+    # or the automation names an entity that never exists.
+    found = [path for path, _ in nodes_naming(blueprint, Input(helper))]
+
+    assert found
+    for path in found:
+        assert Input(switch) in switches_of(blueprint, path), path
+
+
+@pytest.mark.parametrize("countdown", [False, True])
+def test_timer_enabled_defaults_to_schema_2_behavior(
+    blueprint: dict[str, Any], countdown: bool
+) -> None:
+    loaded = Blueprint(blueprint, expected_domain="automation", schema=AUTOMATION_BLUEPRINT_SCHEMA)
+    given: dict[str, Any] = {"on_time": "17:00:00", "off_time": "09:00:00"}
+    if countdown:
+        given |= {"timer_entity": TIMER, "turn_off_after_min": 30}
+
+    # A schema 2 routine (inputs without `timer_enabled`) runs every step that names the
+    # timer, as on schema 2; the schema 3 inputs of the same settings switch them off
+    # exactly when the timer is the sentinel.
+    for routine, expected in (
+        (schema_2_inputs(**given), True),
+        (inputs(**given), countdown),
+    ):
+        substituted = BlueprintInputs(loaded, owned_automation(routine)).async_substitute()
+        found = [path for path, _ in nodes_naming(substituted, routine["timer_entity"])]
+        assert len(found) == len(list(nodes_naming(blueprint, Input("timer_entity"))))
+        for path in found:
+            assert switches_of(substituted, path)[-1] is expected, path
+
+
+def test_header_names_the_schema() -> None:
     header = BLUEPRINT_SOURCE.read_text(encoding="utf-8").splitlines()[:3]
 
     assert header[0] == f"# Device Routines blueprint, schema {BLUEPRINT_SCHEMA_VERSION}."
-    assert header[0] == "# Device Routines blueprint, schema 2."
+    assert header[0] == "# Device Routines blueprint, schema 3."
     assert "do not edit" in header[1].lower()
 
 

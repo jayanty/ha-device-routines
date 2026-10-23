@@ -81,6 +81,16 @@ harness rows.
 | Repairs and the system log | `repairs/list_issues`; the system log searched for the integration | no system log entry; from Device Routines only the two conversion offers of 2026-10-18 (the 60 minute failsafes, as designed). Spook's `automation_unknown_entity_references` warning on the sandbox routine since 2026-10-19 00:05Z, naming the sentinel `timer.device_routines_unused`: live finding F8 (decision L83) | Partly: F8 | 2026-10-23 | n/a (read only) |
 | F7 re check (L79) | Read before (above), then `devices/opt` `out` on the sandbox device as the first step of opt out, Clean up now, opt in and set | the auto mode classifier refused the first write as "Modify Shared Resources" (as on 2026-10-18, O17); nothing was written, so the instance is as the restart left it | Not run: owner item O20; F7 stands on its harness tests | 2026-10-23 | L26 |
 
+### v1.0.1: live finding F8 in the harness (decision L83)
+
+| Step | Method | Evidence | Result | Date | Approved by |
+| --- | --- | --- | --- | --- | --- |
+| F8 regression, first | Harness: `tests/blueprint/test_references.py` on the v1.0.0 blueprint | `test_every_entity_a_running_step_names_exists` over eight routine shapes on the real core: the five without a countdown (a window, Turn on only, a pulse, a sun window, a weekly schedule) failed, each naming `timer.device_routines_unused` from a running step; the three with one passed | Fail, as expected | 2026-10-23 | n/a |
+| F8 fixed: blueprint input schema 3 | Harness: the same test, `tests/blueprint/test_schema.py` (`test_every_step_that_names_a_helper_is_switched_by_its_flag` for the timer and the schedule, `test_timer_enabled_defaults_to_schema_2_behavior`) | every shape passes; every step that names the timer is switched by `timer_enabled`, every step that names the schedule by `schedule_enabled`; schema 2 inputs leave the timer's steps on | Pass | 2026-10-23 | n/a |
+| B51 schema 2 to 3 | Harness: `tests/blueprint/test_schema_migration.py::test_b51_schema_2_countdown_keeps_running_on_schema_3`, the v1.0.0 file pinned by its sha256 | a manual on turns off 30 minutes later on the schema 2 file, on the schema 3 file with the schema 2 inputs, and after the rewrite; with the input's default set to `false` the test fails at the schema 3 reload | Pass | 2026-10-23 | n/a |
+| Schema 2 read rule and the first start | Harness: `tests/integration/test_migration.py` (schema 2 cases rewritten to the same inputs plus `timer_enabled`, `DECOMPILERS[2]` refusing schema 3 keys), `tests/integration/test_schema_2_first_load.py::test_first_load_migrates_every_routine_of_an_older_schema[2]` | a v1.0.0 instance: the shipped file installed, every routine on schema 3 with `timer_enabled` false and its schema 2 inputs kept, no device change, Health `blueprint_schema: 3` | Pass | 2026-10-23 | n/a |
+| The whole suite | `pytest -m "not live" --cov`, `ruff`, `mypy --strict` | every test passes, coverage 99.86 percent | Pass | 2026-10-23 | n/a |
+
 ## Live rows
 
 Filled after restart R2 (plan Section 6.3).

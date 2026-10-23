@@ -1,14 +1,16 @@
-"""Build B lane 19: the first start on blueprint input schema 2 (TECH_SPEC 4.11, PRD 3.1).
+"""Build B lane 19: the first start on a newer blueprint input schema (TECH_SPEC 4.11, PRD 3.1).
 
 An instance updated from v0.3.0 has the schema 1 blueprint installed (the file as
 v0.3.0-beta.1 ships it, `tests/fixtures/blueprint/device_routine_schema_1.yaml`), owned
 automations whose inputs a schema 1 compiler wrote (`tests/fixtures/schema1/inputs.json`,
 the identity inputs set to the synthetic home's devices) and a Store on schema 1. Setting
-the entry up installs the shipped schema 2 blueprint and migrates every routine through
+the entry up installs the shipped blueprint and migrates every routine through
 `migration.async_migrate_blueprint_schema`, the machinery of Build A's task A2.2 used for
-real here: the inputs move to schema 2 with the previous ones kept, and no device changes
-state on the way. A rewrite that fails is `automation_load_failed`, and that issue's fix
-migrates the automation again (the L48 carry over). Every id and name is synthetic.
+real here: the inputs move to the current schema with the previous ones kept, and no
+device changes state on the way. A rewrite that fails is `automation_load_failed`, and
+that issue's fix migrates the automation again (the L48 carry over). An instance updated
+from v1.0.0 has the schema 2 file and routines instead, and moves to schema 3 the same way
+(live finding F8, decision L83). Every id and name is synthetic.
 """
 
 from __future__ import annotations
@@ -34,7 +36,7 @@ from custom_components.device_routines.manager import RoutineManager
 from custom_components.device_routines.models import Status
 from custom_components.device_routines.sentence import load_phrases
 from custom_components.device_routines.store import STORAGE_KEY, OwnedRecord, StoreData
-from tests.blueprint.conftest import SCHEMA_1_BLUEPRINT
+from tests.blueprint.conftest import SCHEMA_1_BLUEPRINT, SCHEMA_2_BLUEPRINT
 from tests.integration.conftest import (
     FAN,
     GARAGE,
@@ -81,8 +83,13 @@ def schema_1_entry(case: str, device_id: str, target: str, name: str) -> dict[st
     }
 
 
-def schema_1_store(entries: list[dict[str, Any]], blueprint: str) -> dict[str, Any]:
-    """The Store v0.3.0 left: every record on schema 1, its blueprint and its schema."""
+def schema_1_store(
+    entries: list[dict[str, Any]], blueprint: str, schema: int = 1
+) -> dict[str, Any]:
+    """The Store v0.3.0 left: every record on schema 1, its blueprint and its schema.
+
+    With `schema` 2, the Store v1.0.0 left.
+    """
     data = StoreData(
         owned={
             entry["id"]: OwnedRecord(
@@ -90,27 +97,34 @@ def schema_1_store(entries: list[dict[str, Any]], blueprint: str) -> dict[str, A
                 target_entity=entry["use_blueprint"]["input"]["target_entity"],
                 last_hash=markers.config_hash(entry),
                 last_valid_inputs=entry["use_blueprint"]["input"],
-                schema=1,
+                schema=schema,
                 alias_history=(entry["alias"],),
             )
             for entry in entries
         },
         opted_in={entry["use_blueprint"]["input"]["device_id"] for entry in entries},
         blueprint_hash=maintenance.blueprint_hash(blueprint),
-        blueprint_schema=1,
+        blueprint_schema=schema,
     )
     return {"version": 1, "minor_version": 2, "key": STORAGE_KEY, "data": data.to_dict()}
 
 
-def schema_2_of(old: Mapping[str, Any]) -> dict[str, Any]:
-    """The schema 2 inputs of the same settings: schema 1's, plus the nine at their defaults.
+def current_of(old: Mapping[str, Any]) -> dict[str, Any]:
+    """The current inputs of the same settings: the old ones, plus the new at their defaults.
 
-    The late sun offset is the on offset (0 for a time) plus the late start window.
+    The late sun offset is the on offset (0 for a time) plus the late start window, and
+    `timer_enabled` is on exactly when the routine has a timer (decision L83).
     """
     window = old["late_start_window_min"]
     added = {key: compiler.INPUT_DEFAULTS[key] for key in compiler.INPUT_KEYS if key not in old}
     added["late_sun_offset"] = f"{window // 60:02d}:{window % 60:02d}:00"
+    added["timer_enabled"] = old["timer_entity"] != compiler.UNUSED_TIMER
     return {**old, **added}
+
+
+def schema_2_of(old: Mapping[str, Any]) -> dict[str, Any]:
+    """The schema 2 inputs of the same settings, as the schema 1 to 2 migration wrote them."""
+    return {key: value for key, value in current_of(old).items() if key in migration.SCHEMA_2_KEYS}
 
 
 def watch(hass: HomeAssistant, entity_ids: tuple[str, ...]) -> list[tuple[str, str]]:
@@ -129,7 +143,7 @@ def watch(hass: HomeAssistant, entity_ids: tuple[str, ...]) -> list[tuple[str, s
 
 
 async def on_schema_1(
-    hass: HomeAssistant, home: Home, hass_storage: dict[str, Any]
+    hass: HomeAssistant, home: Home, hass_storage: dict[str, Any], schema: int = 1
 ) -> list[dict[str, Any]]:
     """Put the instance where v0.3.0 left it; return the owned entries.
 
@@ -137,26 +151,32 @@ async def on_schema_1(
     night and the garage door's an off time every day. The automation component comes
     first, because installing a blueprint over an existing file reloads its automations
     through the core (L64); the schema 1 file goes in as the adapter installs a file,
-    with its exact text, as v0.3.0 installed it.
+    with its exact text, as v0.3.0 installed it. With `schema` 2, where v1.0.0 left it: the
+    schema 2 file and the same routines with the inputs the schema 1 to 2 migration wrote.
     """
     assert await async_setup_component(hass, "automation", {})
-    blueprint = SCHEMA_1_BLUEPRINT.read_text(encoding="utf-8")
+    source = SCHEMA_1_BLUEPRINT if schema == 1 else SCHEMA_2_BLUEPRINT
+    blueprint = source.read_text(encoding="utf-8")
     await ha_adapter.async_install_blueprint(hass, blueprint)
     entries = [
         schema_1_entry("switch: same day window on weekdays", home.fan, FAN, "Living room fan"),
         schema_1_entry("light: night window at the weekend", home.lamp, LAMP, "Desk lamp"),
         schema_1_entry("cover garage: off time every day", home.garage, GARAGE, "Garage door"),
     ]
+    if schema == 2:
+        for entry in entries:
+            entry["use_blueprint"]["input"] = schema_2_of(entry["use_blueprint"]["input"])
     (Path(hass.config.config_dir) / AUTOMATION_CONFIG_PATH).write_text(
         dump(entries), encoding="utf-8"
     )
     await hass.services.async_call("automation", "reload", blocking=True)
     await hass.async_block_till_done()
+    keys = migration.SCHEMA_1_KEYS if schema == 1 else migration.SCHEMA_2_KEYS
     for entry in entries:
-        assert set(entry["use_blueprint"]["input"]) == migration.SCHEMA_1_KEYS
+        assert set(entry["use_blueprint"]["input"]) == keys
         entity_id = f"automation.{markers.slugify(entry['alias'])}"
         assert state_of(hass, entity_id) == "on", entity_id
-    hass_storage[STORAGE_KEY] = schema_1_store(entries, blueprint)
+    hass_storage[STORAGE_KEY] = schema_1_store(entries, blueprint, schema)
     return entries
 
 
@@ -179,13 +199,14 @@ def installed_text(hass: HomeAssistant) -> str:
     return path.read_text(encoding="utf-8")
 
 
-async def test_first_load_migrates_every_schema_1_routine(
-    hass: HomeAssistant, home: Home, hass_storage: dict[str, Any], clock: Clock
+@pytest.mark.parametrize("schema", [1, 2])
+async def test_first_load_migrates_every_routine_of_an_older_schema(
+    hass: HomeAssistant, home: Home, hass_storage: dict[str, Any], clock: Clock, schema: int
 ) -> None:
     clock.set(clock.at(0, "08:00"))  # Monday
-    entries = await on_schema_1(hass, home, hass_storage)
+    entries = await on_schema_1(hass, home, hass_storage, schema)
     await clock.to(clock.at(0, "09:00:01"))
-    assert home.switch.state_now == "on"  # the fan's window runs on schema 1
+    assert home.switch.state_now == "on"  # the fan's window runs on the old schema
     changes = watch(hass, (FAN, LAMP, GARAGE))
     states = {entity_id: state_of(hass, entity_id) for entity_id in (FAN, LAMP, GARAGE)}
 
@@ -193,32 +214,35 @@ async def test_first_load_migrates_every_schema_1_routine(
 
     manager: RoutineManager = routines.runtime_data.manager
     data = manager.store.data
-    # The shipped schema 2 blueprint is installed, and recorded as installed.
+    # The shipped blueprint is installed, and recorded as installed.
+    current = compiler.BLUEPRINT_SCHEMA_VERSION
     shipped = maintenance.shipped_blueprint_text()
     assert installed_text(hass) == shipped
     assert data.blueprint_hash == maintenance.blueprint_hash(shipped)
-    assert data.blueprint_schema == compiler.BLUEPRINT_SCHEMA_VERSION == 2
-    # Every owned automation is on schema 2, with the inputs it had kept for a restore.
+    assert data.blueprint_schema == current == 3
+    # Every owned automation is on the current schema, with the inputs it had kept for a
+    # restore; none has a countdown, so none runs a step that names the timer (F8).
     for entry in entries:
         automation_id, old = entry["id"], entry["use_blueprint"]["input"]
         written = inputs_of(hass, automation_id)
         assert list(written) == list(compiler.INPUT_KEYS), automation_id
-        assert written == schema_2_of(old), automation_id
+        assert written == current_of(old), automation_id
+        assert written["timer_enabled"] is False, automation_id
         record = data.owned[automation_id]
-        assert (record.schema, record.previous_inputs) == (2, old)
+        assert (record.schema, record.previous_inputs) == (current, old)
         assert record.last_valid_inputs == written
         assert record.last_hash == markers.config_hash(file_entry(hass, automation_id) or {})
         assert issue_of(hass, "automation_load_failed", automation_id) is None
         view = manager.get(record.device_id)
         assert view is not None
         assert view.status is Status.ACTIVE
-        assert view.settings == migration.decompile_inputs(old, 1)
+        assert view.settings == migration.decompile_inputs(old, schema)
     # No device changed state on the way, and the fan's window goes on as it was.
     assert changes == []
     assert {entity_id: state_of(hass, entity_id) for entity_id in states} == states
     health = hass.states.get(HEALTH)
     assert health is not None
-    assert health.attributes["blueprint_schema"] == 2
+    assert health.attributes["blueprint_schema"] == current
     assert health.attributes["owned_count"] == health.attributes["loaded_count"] == 3
     await clock.to(clock.at(0, "17:30:01"))
     assert home.switch.state_now == "off"
@@ -260,8 +284,9 @@ async def test_a_failed_migration_is_automation_load_failed_and_its_fix_retries(
     assert state_of(hass, "automation.routine_desk_lamp") == "on"
     # The others migrated, and the next starts would retry only the lamp's.
     others = [entry["id"] for entry in entries if entry["id"] != lamp]
-    assert all(manager.store.data.owned[key].schema == 2 for key in others)
-    assert manager.store.data.blueprint_schema == 2
+    current = compiler.BLUEPRINT_SCHEMA_VERSION
+    assert all(manager.store.data.owned[key].schema == current for key in others)
+    assert manager.store.data.blueprint_schema == current
     failing[0] = False
     assert await async_setup_component(hass, "repairs", {})
     fixer = repairs_flow_manager(hass)
@@ -283,9 +308,9 @@ async def test_a_failed_migration_is_automation_load_failed_and_its_fix_retries(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert issue_of(hass, "automation_load_failed", lamp) is None
     assert issue_of(hass, "blueprint_modified") is None
-    assert inputs_of(hass, lamp) == schema_2_of(old)
+    assert inputs_of(hass, lamp) == current_of(old)
     record = manager.store.data.owned[lamp]
-    assert (record.schema, record.previous_inputs) == (2, old)
+    assert (record.schema, record.previous_inputs) == (current, old)
     view = manager.get(home.lamp)
     assert view is not None
     assert view.status is Status.ACTIVE

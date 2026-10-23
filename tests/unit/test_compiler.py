@@ -72,10 +72,10 @@ SUN_WINDOW = RoutineSettings(
 )
 LIGHT = domains.PROFILES["light"]
 
-# Blueprint input schema 2 (plan Section 6.2.1), 38 inputs in the blueprint's file order
-# (TECH_SPEC 5.2, owner decision O3, decision L74): Target (the device and the four required
-# inputs Device Routines sets), the inputs a person may change in the form, then the 11
-# other inputs Device Routines sets, in the collapsed last section.
+# Blueprint input schema 3 (plan Section 6.2.1, decision L83), 39 inputs in the blueprint's
+# file order (TECH_SPEC 5.2, owner decision O3, decision L74): Target (the device and the four
+# required inputs Device Routines sets), the inputs a person may change in the form, then
+# the 12 other inputs Device Routines sets, in the collapsed last section.
 SPEC_KEYS = (
     "target_entity",
     "on_action",
@@ -110,6 +110,7 @@ SPEC_KEYS = (
     "off_at_sunset",
     "days_end",
     "crosses_midnight",
+    "timer_enabled",
     "timer_entity",
     "late_window_end",
     "late_sun_offset",
@@ -149,8 +150,8 @@ def problems(settings: RoutineSettings, profile: DomainProfile = FAN) -> list[Pr
 
 def test_input_keys_order_is_fixed() -> None:
     assert compiler.INPUT_KEYS == SPEC_KEYS
-    assert len(compiler.INPUT_KEYS) == 38
-    assert compiler.BLUEPRINT_SCHEMA_VERSION == 2
+    assert len(compiler.INPUT_KEYS) == 39
+    assert compiler.BLUEPRINT_SCHEMA_VERSION == 3
     assert list(compiled(WINDOW)) == list(SPEC_KEYS)
     assert list(compiled(SUN_WINDOW, LIGHT)) == list(SPEC_KEYS)
     assert {
@@ -165,7 +166,7 @@ def test_input_keys_order_is_fixed() -> None:
 
 
 def test_contract_constants() -> None:
-    assert compiler.BLUEPRINT_SCHEMA_VERSION == 2
+    assert compiler.BLUEPRINT_SCHEMA_VERSION == 3
     assert compiler.MAX_SUN_OFFSET_MIN == 180
     assert compiler.BLUEPRINT_PATH == "device_routines/device_routine.yaml"
     assert compiler.BLUEPRINT_PATH is markers.BLUEPRINT_PATH
@@ -209,6 +210,7 @@ def test_compile_writes_every_input_of_a_window() -> None:
         "crosses_midnight": True,
         "schedule_enabled": False,
         "schedule_entity": compiler.UNUSED_SCHEDULE,
+        "timer_enabled": False,
         "timer_entity": compiler.UNUSED_TIMER,
         "turn_off_after_min": 0,
         "turn_back_on_after_min": 0,
@@ -311,6 +313,7 @@ def test_disabled_inputs_carry_sentinels() -> None:
     assert defaults["schedule_enabled"] is False
     assert defaults["schedule_entity"] == compiler.UNUSED_SCHEDULE
     assert defaults["timer_entity"] == compiler.UNUSED_TIMER
+    assert defaults["timer_enabled"] is False
     assert defaults["override_entity"] == compiler.UNUSED_SWITCH
     assert defaults["paused_until_entity"] == compiler.UNUSED_DATETIME
     assert defaults["pulse_enabled"] is False
@@ -320,8 +323,11 @@ def test_disabled_inputs_carry_sentinels() -> None:
         5,
     )
     assert defaults["extra_conditions"] == []
+    # `timer_enabled` defaults to on for schema 2 routines (decision L83); compile switches
+    # the timer's steps off whenever the timer is the sentinel.
+    assert compiler.INPUT_DEFAULTS["timer_enabled"] is True
     for key, default in compiler.INPUT_DEFAULTS.items():
-        if key not in {"off_time_enabled", "off_time"}:
+        if key not in {"off_time_enabled", "off_time", "timer_enabled"}:
             assert defaults[key] == default, key
 
     # Real helpers are written only where their feature is on.
@@ -330,8 +336,10 @@ def test_disabled_inputs_carry_sentinels() -> None:
     assert with_refs["schedule_entity"] == compiler.UNUSED_SCHEDULE
     assert with_refs["override_entity"] == REFS.override_entity
     assert with_refs["paused_until_entity"] == REFS.paused_until_entity
+    assert with_refs["timer_enabled"] is False
     timed = compiled(replace(off_only, turn_off_after_min=30))
     assert timed["timer_entity"] == REFS.timer_entity
+    assert timed["timer_enabled"] is True
     kept_alive = compiled(replace(off_only, off_time=None, turn_back_on_after_min=10))
     assert kept_alive["timer_entity"] == REFS.timer_entity
     weekly = compiled(
@@ -916,6 +924,7 @@ def test_decompile_reads_the_primary_inputs_and_ignores_the_derived_ones() -> No
         "days_end": ["mon"],
         "crosses_midnight": False,
         "late_window_end": "12:00:00",
+        "timer_enabled": True,
         "on_action": "fan.toggle",
         "on_time_enabled": False,
     }

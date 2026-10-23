@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+The first start of this version moves every routine to routine blueprint input schema 3
+with the same behavior.
+
+### Fixed
+
+- A routine without Turn off after or Turn back on after no longer names a timer that
+  does not exist. Tools that check the entities an automation uses, such as Spook's
+  unknown entity references repair, warned about `timer.device_routines_unused` on every
+  such routine. The routine blueprint moves to input schema 3, which adds a switch for the
+  countdown's steps set by Device Routines, and the first start rewrites every routine once
+  without changing any device.
+
 ## [1.0.0] - 2026-10-23
 
 Sun times, Only when, conversion offers and the console (Phase 4), first published as the
