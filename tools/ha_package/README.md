@@ -92,5 +92,7 @@ only after a deploy has happened in between.
 
 When a release exists, install Device Routines through HACS as a custom repository
 (README at the repository root), then turn `input_boolean.device_routines_auto_deploy`
-off and remove this package and `/config/tools/ha_deploy.py`. The deploy tool warns in its
+off and remove this package. Remove `/config/tools/ha_deploy.py` only when nothing else
+calls it: the tool is shared with a sibling project (PRD D15), whose shell commands may
+use the same file. The deploy tool warns in its
 output when it finds a HACS managed install, and the Health sensor reports the channel.
