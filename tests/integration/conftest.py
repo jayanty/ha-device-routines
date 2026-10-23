@@ -12,6 +12,10 @@ and the Paused until datetime claim the registry entries the manager creates at 
 render the manager's runtime state and call the manager back, so the blueprint reads the
 integration's own entities.
 
+Every test here starts at the blueprint fixtures' `HARNESS_START` (the autouse
+`harness_start`, re exported below), never at the real date: the home's entities and the
+entry's are created there, before any date a test travels to (decision L81).
+
 Every name is generic and every id synthetic (CLAUDE.md Section 6).
 """
 
@@ -46,6 +50,7 @@ from tests.blueprint.conftest import (  # noqa: F401  # fixtures re exported for
     Clock,
     SandboxSwitch,
     clock,
+    harness_start,
     routine_config_dir,
     sandbox_switch,
     skipped_events,

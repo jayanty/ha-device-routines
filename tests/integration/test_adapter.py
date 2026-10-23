@@ -966,6 +966,9 @@ async def test_a_non_admin_system_user_is_refused(hass: HomeAssistant) -> None:
     assert unknown.value.code == "unknown_user"
 
 
+# The silent command below times out only while the clock runs: from the harness start it
+# ticks, instead of standing still.
+@pytest.mark.freeze_time(tick=True)
 async def test_helper_errors_carry_the_command_code(
     hass: HomeAssistant, system_user: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

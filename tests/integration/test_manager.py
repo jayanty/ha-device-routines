@@ -62,10 +62,13 @@ from custom_components.device_routines.models import (
 )
 from custom_components.device_routines.nextrun import routine_lines
 from custom_components.device_routines.sentence import Writer, load_phrases
+from tests.blueprint.conftest import HARNESS_START
 from tests.integration.conftest import (
     ALIAS,
     AUTOMATION,
+    DOOR,
     FAN,
+    GARAGE,
     LAMP,
     OVERRIDE,
     PAUSED,
@@ -577,6 +580,39 @@ async def test_two_devices_with_the_same_name_get_distinct_automation_ids_and_he
     assert views[home.fan].automation_entity_id == AUTOMATION
     assert views[twin].automation_entity_id == b["timer_entity"].replace("timer.", "automation.")
     assert state_of(hass, b["timer_entity"]) == "idle"
+
+
+# --------------------------------------------------------------------------------------
+# A pulse on a device steady since the home was built (FR-R8, L81)
+# --------------------------------------------------------------------------------------
+
+
+async def test_a_pulse_runs_on_a_device_steady_since_the_home_was_built(
+    hass: HomeAssistant, home: Home, manager: RoutineManager, clock: Clock, freezer: Any
+) -> None:
+    # The fan has been off since the home fixture made it; at 08:00 it is on for 3
+    # minutes, then off.
+    clock.set(clock.at(0, "06:00"))
+    await give_routine(hass, manager, home.fan, freezer, pulse={"at": "08:00", "minutes": 3})
+
+    await clock.to(clock.at(0, "08:00:01"), settle="yield")
+    assert home.switch.state_now == "on"
+    await clock.to(clock.at(0, "08:03:02"), settle="yield")
+    await hass.async_block_till_done()
+    assert home.switch.state_now == "off"
+
+
+async def test_a_fixture_entity_is_created_at_the_harness_start(
+    hass: HomeAssistant, home: Home, manager: RoutineManager
+) -> None:
+    """Every entity of the home and the entry dates from the harness start, never today.
+
+    A fixture entity created at the real date would carry a `last_changed` after the test
+    week once that date passes it, and the pulse's steady check above would refuse.
+    """
+    changed = {state.entity_id: state.last_changed for state in hass.states.async_all()}
+    assert {FAN, LAMP, GARAGE, DOOR} <= changed.keys()
+    assert changed == dict.fromkeys(changed, HARNESS_START)
 
 
 # --------------------------------------------------------------------------------------
