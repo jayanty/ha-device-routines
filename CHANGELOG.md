@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-23
+
 The first start of this version moves every routine to routine blueprint input schema 3
 with the same behavior.
 

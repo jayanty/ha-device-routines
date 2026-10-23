@@ -129,7 +129,7 @@ Before opening, check (step owner):
 - [ ] The `hacs` and `hassfest` jobs passed on `main` with nothing ignored, and their runs
       are linked in the body.
 - [ ] A full release (not a pre release) with `device_routines.zip` was published after
-      those runs: `v1.0.0`, or `v1.0.1` if `v1.0.0` came before L78 reached `main`.
+      those runs: the latest full release (`v1.0.1` since 2026-10-23).
 - [ ] `jayanty/ha-device-routines` is not in the list yet.
 - [ ] The owner opens it from the owner's own account: HACS asks that the submitter owns
       or maintains the repository.
@@ -180,7 +180,7 @@ the integration. An admin console lists every routine in the house.
 
 ## Links
 
-Link to current release: https://github.com/jayanty/ha-device-routines/releases/tag/v1.0.0
+Link to current release: https://github.com/jayanty/ha-device-routines/releases/tag/v1.0.1
 Link to successful HACS action (without the `ignore` key): <link to the hacs job run>
 Link to successful hassfest action (if integration): <link to the hassfest job run>
 ```
