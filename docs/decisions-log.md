@@ -804,3 +804,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | (b), chosen by the owner on 2026-10-23. `v1.0.0` is tagged on the release commit after green CI, `main` fast forwards to it, the tag is deployed by hand with a read before and after, and the restart that loads it is requested in the owner log. After the restart a session reads Health, re checks F7 and the form layout, and runs `pytest -m live`; a defect found then ships as `v1.0.1` with a harness test first. |
 | Consequence | The `[1.0.0]` notes carry every change since 0.3.0. The HACS default submission (O11) stays on hold until the owner says so. The channel switch (O13) stays the owner's. |
 | PRD register entry | no |
+
+## 2026-10-23 L81: every blueprint test starts at a fixed moment, never at the real date
+
+| Field | Content |
+| --- | --- |
+| Context | CI on the 1.0.0 release commit failed `tests/blueprint/test_pulse.py::test_b37_pulse[off_device]` in both test jobs, with no code change since the last green run. The blueprint harness creates its fixture entities before a test moves the clock, so they took the real date as `last_changed`; the off device's `device_change(on=False)` changes nothing, so that timestamp stayed, and since 2026-10-19 13:00Z (the test week's 06:00) the real date lies after the test's clock: the pulse's steady check read a change in its own future and refused. Before that date the gap was positive and the test passed. |
+| Options | Write the state again in the test, or freeze the clock for every blueprint test before any fixture runs. |
+| Choice | An autouse `harness_start` fixture in `tests/blueprint/conftest.py` freezes the clock at 2026-01-01 00:00 in the harness's zone (`HARNESS_START`) before the entity fixtures run, long before any date a blueprint test travels to; `test_a_fixture_entity_is_created_at_the_harness_start` pins it and fails without it on any day, as `test_b37_pulse[off_device]` now does after the test week. |
+| Consequence | No product change. The integration tests, whose clocks also stand at 2026-10-19, pass with the real date past it; their 30 day simulation runs in November 2026 and is the one to watch when the real date passes 2026-11-02. |
+| PRD register entry | no |

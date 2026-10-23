@@ -15,6 +15,7 @@ from homeassistant.core import Event, HomeAssistant, State
 import pytest
 
 from tests.blueprint.conftest import (
+    HARNESS_START,
     OVERRIDE,
     PAUSED,
     SWITCH,
@@ -59,6 +60,20 @@ async def test_b37_pulse(
     await clock.to(clock.at(0, "08:03:02"), settle="yield")
     await hass.async_block_till_done()
     assert sandbox_switch.state_now == after
+
+
+async def test_a_fixture_entity_is_created_at_the_harness_start(
+    hass: HomeAssistant, sandbox_switch: SandboxSwitch
+) -> None:
+    """The off device of B37 has been off since its creation, which must not be today.
+
+    A fixture entity created at the real date would carry a `last_changed` after the test
+    week once that date passes it, and the pulse's steady check would refuse.
+    """
+    state = hass.states.get(SWITCH)
+    assert state is not None
+    assert state.state == "off"
+    assert state.last_changed == HARNESS_START
 
 
 async def test_b37_no_pulse_unless_steady(

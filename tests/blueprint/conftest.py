@@ -185,6 +185,11 @@ NOMINAL_SUN_TIMES: Final[Mapping[str, time]] = {"sunrise": time(6), "sunset": ti
 # The synthetic home every test uses. Generic names only (CLAUDE.md Section 6).
 TIME_ZONE: Final = "America/Los_Angeles"
 MONDAY: Final = date(2026, 10, 19)
+# Where every blueprint test's clock stands before the test moves it: long before any
+# date a test travels to. A fixture entity takes the moment it is created as its
+# `last_changed`; at the real date, which passes the test week, a `for:` condition (the
+# pulse's steady check) would read a change in its own future and refuse.
+HARNESS_START: Final = datetime(2026, 1, 1, tzinfo=ZoneInfo(TIME_ZONE))
 DEVICE_ID: Final = "sandbox_device_living_room_fan"
 AUTOMATION_ID: Final = markers.automation_id(DEVICE_ID)
 ALIAS: Final = "Routine: Living room fan"
@@ -730,6 +735,12 @@ def restored_timer(finishes_at: datetime, duration_min: int) -> State:
 # --------------------------------------------------------------------------------------
 # Fixtures
 # --------------------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def harness_start(freezer: Any) -> None:
+    """Freeze the clock at `HARNESS_START` before any entity fixture runs (autouse first)."""
+    freezer.move_to(HARNESS_START)
 
 
 @pytest.fixture
