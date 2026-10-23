@@ -834,3 +834,13 @@ repeated here; they apply at their defaults unless an entry below says otherwise
 | Choice | (c). Blueprint input schema 3 adds `timer_enabled` to the collapsed last section, default `true`, and every step that names `timer_entity` reads it in `enabled:`. `compile` writes it true exactly when `timer_entity` names a helper, so no step that runs names a sentinel; `decompile` never reads it. The default keeps schema 2 behavior, so a schema 2 routine runs unchanged on the schema 3 file until the first start rewrites it through `async_migrate_blueprint_schema` (`DECOMPILERS[2]` freezes schema 2's rule, `migration.SCHEMA_2_KEYS` its 38 inputs, the previous inputs kept for a restore). Harness first: `tests/blueprint/test_references.py` asserts, for eight routine shapes on the real core, that every entity the core lists for the routine and a step that runs names exists; five shapes failed before the change. B51 runs a schema 2 routine with Turn off after on the schema 3 file before and after its rewrite, and fails with the default set to `false`; the first start tests cover schema 1 and schema 2 instances. |
 | Consequence | Ships as `v1.0.1` (plan Section 7). The first start after the deploy rewrites every routine once (one reload each; no device changes state, as for schema 1 to 2), after which Spook's warning clears on its own. TECH_SPEC 3.3, 4.11, 5.2 and 11.2 amended; `tests/fixtures/blueprint/device_routine_schema_2.yaml` is the v1.0.0 file byte for byte. The core's `search/related` still lists both sentinels, because it reads disabled steps; nothing acts on that. |
 | PRD register entry | no |
+
+## 2026-10-23 L84: `v1.0.1` keeps `vite` 8.3.3; Dependabot's 8.3.5 waits for the monthly pass
+
+| Field | Content |
+| --- | --- |
+| Context | Dependabot pull request 2 bumps `vite` from 8.3.2 to 8.3.5 against `main`. `dev` already pins 8.3.3 (L82), which fixes the six advisories. 8.3.5 was published on 2026-10-21, two days before `v1.0.1` is prepared, and carries bug fixes and dependency updates, no security fix. L63 resolves the console's dependencies with `npm install --before` two weeks back, so new releases age before they are used. |
+| Options | Take 8.3.5 into `v1.0.1`; keep 8.3.3 and leave the pull request for the monthly Dependabot pass (plan Section 7). |
+| Choice | Keep 8.3.3 for `v1.0.1`. The pull request stays open; once `main` carries 8.3.3, Dependabot rebases it, and the monthly pass after 2026-11-04 (two weeks after 8.3.5's release) takes it on `dev` with the L63 resolution, the bundle checked byte for byte. |
+| Consequence | `v1.0.1` closes the six alerts when `main` fast forwards to it (L82). Nothing installed changes: `vite` only builds the committed bundle. |
+| PRD register entry | no |

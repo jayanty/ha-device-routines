@@ -88,8 +88,8 @@ replace the folder's contents with the new zip's and restart. Until the restart 
 Assistant still runs the old version, so restart before you open the options, Repairs
 fixes or diagnostics of Device Routines. The first start of a new version installs the
 new blueprint when it changed. When its inputs changed too (as in 1.0.0, which added sun
-times), that start also rewrites every routine's automation to the new inputs with the
-same behavior and keeps the previous inputs in its store. After an update, reload the
+times, and in 1.0.1), that start also rewrites every routine's automation to the new
+inputs with the same behavior and keeps the previous inputs in its store. After an update, reload the
 browser page to load the new [console](#console).
 
 Pre releases are named like `v1.0.0-beta.1`. To try one, let HACS show pre releases when
@@ -958,6 +958,17 @@ diagnostics; the Device Routines hub device offers the same. Attach the file to 
 report. It holds counts, settings, the adapter report, the Health report and one shape
 per routine. Entity ids, device ids, device and area names, aliases and anything that
 looks like a token or an address are redacted.
+
+### Known issues in version 1.0.0
+
+Version 1.0.1 fixes it; its first start rewrites every routine once, with nothing to
+change.
+
+- **An unknown entity warning with Spook.** With the Spook integration installed, every
+  routine without **Turn off after** or **Turn back on after** shows a Repairs warning
+  that its automation uses `timer.device_routines_unused`, an entity that does not exist.
+  The routine works as set; the name only stands in for a timer the routine does not use.
+  Until you update, you can ignore the warning in Repairs.
 
 ### Known issues in version 0.3.0
 
