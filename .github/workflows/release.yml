@@ -51,7 +51,7 @@ jobs:
           match = re.search(rf"^## \[{re.escape(version)}\].*?$(.*?)(?=^## \[|\Z)", text, re.M | re.S)
           print(match.group(1).strip() if match else f"Release {version}.")
           PY
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: device_routines.zip
           body_path: notes.md
