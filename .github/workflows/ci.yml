@@ -131,7 +131,7 @@ jobs:
       - uses: actions/checkout@v5
       # The same Node major as release.yml, so the bundle checked here is the one released;
       # the build is byte identical across Node 22 and 26 (decision L62).
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
