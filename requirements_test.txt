@@ -1,6 +1,6 @@
 # The Home Assistant core this integration is validated against. The harness pins the
 # core itself, so these two lines always move together (TECH_SPEC Section 9).
-homeassistant==2026.10.2
+homeassistant==2026.10.4
 pytest-homeassistant-custom-component==0.13.373
 
 # The harness brings pytest, pytest-asyncio and pytest-cov at the versions it needs.
